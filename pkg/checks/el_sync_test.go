@@ -89,6 +89,7 @@ func TestELSyncCheck_Run(t *testing.T) {
 
 			if tt.expectError {
 				require.Error(t, err)
+
 				return
 			}
 
