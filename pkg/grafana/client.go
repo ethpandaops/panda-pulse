@@ -80,7 +80,7 @@ func (c *client) Query(ctx context.Context, query string) (*QueryResponse, error
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
 	var response QueryResponse

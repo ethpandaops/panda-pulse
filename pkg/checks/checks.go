@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -84,13 +85,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, e
 
 		result, err := check.Run(ctx, cfg)
 		if err != nil {
-			result = &Result{
-				Name:        check.Name(),
-				Category:    check.Category(),
-				Status:      StatusFail,
-				Description: err.Error(),
-				Timestamp:   time.Now(),
-			}
+			return nil, fmt.Errorf("failed to run check %s: %w", check.Name(), err)
 		}
 
 		results = append(results, result)

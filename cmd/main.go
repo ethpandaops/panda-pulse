@@ -15,27 +15,30 @@ import (
 )
 
 const (
-	grafanaBaseURL         = "https://grafana.observability.ethpandaops.io"
-	prometheusDatasourceID = "UhcO3vy7z"
+	defaultGrafanaBaseURL   = "https://grafana.observability.ethpandaops.io"
+	defaultPromDatasourceID = "UhcO3vy7z"
 )
 
 // Config contains the configuration for the panda-pulse tool.
 type Config struct {
-	Network        string
-	ConsensusNode  string
-	ExecutionNode  string
-	DiscordChannel string
-	GrafanaToken   string
-	DiscordToken   string
-	OpenRouterKey  string
+	Network          string
+	ConsensusNode    string
+	ExecutionNode    string
+	DiscordChannel   string
+	GrafanaToken     string
+	DiscordToken     string
+	OpenRouterKey    string
+	GrafanaBaseURL   string
+	PromDatasourceID string
 }
 
 func main() {
 	var cfg Config
 
 	rootCmd := &cobra.Command{
-		Use:   "panda-pulse",
-		Short: "EthPandaOps dev-net monitoring tool",
+		Use:          "panda-pulse",
+		Short:        "EthPandaOps dev-net monitoring tool",
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cfg.GrafanaToken == "" {
 				return fmt.Errorf("GRAFANA_SERVICE_TOKEN environment variable is required")
@@ -66,10 +69,12 @@ func main() {
 		},
 	}
 
-	rootCmd.Flags().StringVar(&cfg.Network, "network", "", "Network to monitor (e.g., pectra-devnet-5)")
-	rootCmd.Flags().StringVar(&cfg.DiscordChannel, "discord-channel", "", "Discord channel to notify")
-	rootCmd.Flags().StringVar(&cfg.ConsensusNode, "ethereum-cl", checks.ClientTypeAll.String(), "Consensus client to monitor")
-	rootCmd.Flags().StringVar(&cfg.ExecutionNode, "ethereum-el", checks.ClientTypeAll.String(), "Execution client to monitor")
+	rootCmd.Flags().StringVar(&cfg.Network, "network", "", "network to monitor (e.g., pectra-devnet-5)")
+	rootCmd.Flags().StringVar(&cfg.DiscordChannel, "discord-channel", "", "discord channel to notify")
+	rootCmd.Flags().StringVar(&cfg.ConsensusNode, "ethereum-cl", checks.ClientTypeAll.String(), "consensus client to monitor")
+	rootCmd.Flags().StringVar(&cfg.ExecutionNode, "ethereum-el", checks.ClientTypeAll.String(), "execution client to monitor")
+	rootCmd.Flags().StringVar(&cfg.GrafanaBaseURL, "grafana-base-url", defaultGrafanaBaseURL, "grafana base URL")
+	rootCmd.Flags().StringVar(&cfg.PromDatasourceID, "prometheus-datasource-id", defaultPromDatasourceID, "prometheus datasource ID")
 
 	if err := rootCmd.MarkFlagRequired("network"); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -88,8 +93,6 @@ func main() {
 	cfg.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-
 		os.Exit(1)
 	}
 }
@@ -99,7 +102,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	// Initialize Grafana client.
-	grafanaClient := grafana.NewClient(grafanaBaseURL, prometheusDatasourceID, cfg.GrafanaToken, httpClient)
+	grafanaClient := grafana.NewClient(cfg.GrafanaBaseURL, cfg.PromDatasourceID, cfg.GrafanaToken, httpClient)
 
 	// Initialize Discord notifier.
 	discordNotifier, err := discord.NewNotifier(cfg.DiscordToken, cfg.OpenRouterKey)
