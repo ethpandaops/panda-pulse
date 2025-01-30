@@ -4,15 +4,27 @@ A monitoring tool for Ethereum networks that checks node health and reports issu
 
 ## Usage
 
-### Docker (Recommended)
+### Docker
 
 ```bash
 docker run -e GRAFANA_SERVICE_TOKEN=your_token \
           -e DISCORD_BOT_TOKEN=your_token \
           -e OPENROUTER_API_KEY=optional_key \
-          ethpandaops/panda-pulse:0.0.1 \
+          ethpandaops/panda-pulse:0.0.2 \
           --discord-channel CHANNEL_ID \
           --network NETWORK_NAME
+```
+
+You can also pass in a target client to scope the checks + notification. This can be done with `--ethereum-cl` or `--ethereum-el`:
+
+```bash
+docker run -e GRAFANA_SERVICE_TOKEN=your_token \
+          -e DISCORD_BOT_TOKEN=your_token \
+          -e OPENROUTER_API_KEY=optional_key \
+          ethpandaops/panda-pulse:0.0.2 \
+          --discord-channel CHANNEL_ID \
+          --network NETWORK_NAME \
+          --ethereum-cl CLIENT_NAME
 ```
 
 ### Configuration

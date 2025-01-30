@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 			continue
 		}
 
-		if err := n.sendCategoryIssues(network, thread.ID, category, cat); err != nil {
+		if err := n.sendCategoryIssues(network, thread.ID, category, cat, targetClient); err != nil {
 			return err
 		}
 	}
@@ -256,10 +257,11 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 
 // sendCategoryIssues sends category-specific issues to the thread.
 func (n *Notifier) sendCategoryIssues(
-	network,
+	network string,
 	threadID string,
 	category checks.Category,
 	cat *categoryResults,
+	targetClient string,
 ) error {
 	msg := fmt.Sprintf("\n\n**%s %s Issues**\n------------------------------------------\n", getCategoryEmoji(category), category.String())
 	msg += "**Issues detected**\n"
@@ -290,8 +292,14 @@ func (n *Notifier) sendCategoryIssues(
 		return err
 	}
 
-	// Send SSH commands.
-	return n.sendSSHCommands(threadID, instances, network)
+	// Only send SSH commands if a specific client is targeted.
+	if targetClient != "" {
+		if err := n.sendSSHCommands(threadID, instances, network); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // extractInstances extracts instance names from check results.
@@ -328,7 +336,16 @@ func (n *Notifier) extractInstances(checks []*checks.Result) map[string]bool {
 func (n *Notifier) sendInstanceList(threadID string, instances map[string]bool) error {
 	msg := "\n**Affected instances**\n```bash\n"
 
+	// Convert map keys to slice for sorting
+	sortedInstances := make([]string, 0, len(instances))
 	for instance := range instances {
+		sortedInstances = append(sortedInstances, instance)
+	}
+
+	sort.Strings(sortedInstances)
+
+	// Build message with sorted instances
+	for _, instance := range sortedInstances {
 		msg += fmt.Sprintf("%s\n", instance)
 	}
 
@@ -343,7 +360,16 @@ func (n *Notifier) sendInstanceList(threadID string, instances map[string]bool) 
 func (n *Notifier) sendSSHCommands(threadID string, instances map[string]bool, network string) error {
 	msg := "\n**SSH commands**\n```bash\n"
 
+	// Convert map keys to slice for sorting
+	sortedInstances := make([]string, 0, len(instances))
 	for instance := range instances {
+		sortedInstances = append(sortedInstances, instance)
+	}
+
+	sort.Strings(sortedInstances)
+
+	// Build message with sorted instances
+	for _, instance := range sortedInstances {
 		msg += fmt.Sprintf("ssh devops@%s.%s.ethpandaops.io\n\n", instance, network)
 	}
 
