@@ -1,0 +1,76 @@
+project_name: panda-pulse
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd
+    binary: panda-pulse
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+dockers:
+  - use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    image_templates:
+      - "ethpandaops/panda-pulse:{{ .Version }}-amd64"
+      - "ethpandaops/panda-pulse:latest-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    extra_files:
+      - go.mod
+      - go.sum
+
+  - use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    image_templates:
+      - "ethpandaops/panda-pulse:{{ .Version }}-arm64v8"
+      - "ethpandaops/panda-pulse:latest-arm64v8"
+    build_flag_templates:
+      - "--platform=linux/arm64/v8"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    extra_files:
+      - go.mod
+      - go.sum
+
+docker_manifests:
+  - name_template: ethpandaops/panda-pulse:{{ .Version }}
+    image_templates:
+      - ethpandaops/panda-pulse:{{ .Version }}-amd64
+      - ethpandaops/panda-pulse:{{ .Version }}-arm64v8
+  - name_template: ethpandaops/panda-pulse:latest
+    image_templates:
+      - ethpandaops/panda-pulse:latest-amd64
+      - ethpandaops/panda-pulse:latest-arm64v8
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
