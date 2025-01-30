@@ -20,20 +20,6 @@ type Notifier struct {
 	httpClient    *http.Client
 }
 
-// NewNotifier creates a new Notifier.
-func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
-	session, err := discordgo.New("Bot " + token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Discord session: %w", err)
-	}
-
-	return &Notifier{
-		session:       session,
-		openRouterKey: openRouterKey,
-		httpClient:    &http.Client{},
-	}, nil
-}
-
 // openRouterResponse is the response from the OpenRouter API.
 type openRouterResponse struct {
 	Choices []struct {
@@ -49,6 +35,26 @@ type categoryResults struct {
 	hasFailed    bool
 }
 
+// Order categories as we want them to be displayed.
+var orderedCategories = []checks.Category{
+	checks.CategoryGeneral,
+	checks.CategorySync,
+}
+
+// NewNotifier creates a new Notifier.
+func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
+	session, err := discordgo.New("Bot " + token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Discord session: %w", err)
+	}
+
+	return &Notifier{
+		session:       session,
+		openRouterKey: openRouterKey,
+		httpClient:    &http.Client{},
+	}, nil
+}
+
 // SendResults sends the results to Discord.
 func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result) error {
 	title := fmt.Sprintf("🐼 Pulse Check (%s)", network)
@@ -56,7 +62,70 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		title = fmt.Sprintf("🐼 Pulse Check (%s - %s)", network, targetClient)
 	}
 
-	// Create the main embed for summary.
+	// Create and populate the main embed.
+	embed, allIssues, hasFailed := n.createEmbed(title, results)
+	n.updateEmbedStatus(embed, hasFailed, allIssues, targetClient)
+
+	// Create the main message.
+	mainMsg := n.createMainMessage(embed, network)
+
+	// Send the main message.
+	msg, err := n.session.ChannelMessageSendComplex(channelID, mainMsg)
+	if err != nil {
+		return fmt.Errorf("failed to send Discord message: %w", err)
+	}
+
+	// If there are no issues, we're done.
+	if !hasFailed {
+		return nil
+	}
+
+	// Create a thread which we'll punch our issues into.
+	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
+		Name:                fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02")),
+		AutoArchiveDuration: 60,
+		Invitable:           false,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create thread: %w", err)
+	}
+
+	// Group results by category.
+	categories := make(map[checks.Category]*categoryResults)
+
+	for _, result := range results {
+		if result.Status == checks.StatusOK {
+			continue
+		}
+
+		if _, exists := categories[result.Category]; !exists {
+			categories[result.Category] = &categoryResults{
+				failedChecks: make([]*checks.Result, 0),
+			}
+		}
+
+		cat := categories[result.Category]
+		cat.hasFailed = true
+		cat.failedChecks = append(cat.failedChecks, result)
+	}
+
+	// Process each category's issues.
+	for _, category := range orderedCategories {
+		cat, exists := categories[category]
+		if !exists || !cat.hasFailed {
+			continue
+		}
+
+		if err := n.sendCategoryIssues(network, thread.ID, category, cat); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// createEmbed creates the main embed message.
+func (n *Notifier) createEmbed(title string, results []*checks.Result) (*discordgo.MessageEmbed, []string, bool) {
 	embed := &discordgo.MessageEmbed{
 		Title:     title,
 		Color:     0x555555,
@@ -64,18 +133,14 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		Fields:    make([]*discordgo.MessageEmbedField, 0),
 	}
 
-	// Group results by category and collect all issues.
+	// Group results by category and collect all issues
 	var (
-		hasFailed         bool
-		allIssues         = make([]string, 0)
-		categories        = make(map[checks.Category]*categoryResults)
-		orderedCategories = []checks.Category{
-			checks.CategoryGeneral,
-			checks.CategorySync,
-		}
+		categories = make(map[checks.Category]*categoryResults)
+		allIssues  = make([]string, 0)
+		hasFailed  bool
 	)
 
-	// First pass: group results and collect any issues.
+	// First pass: group results and collect issues
 	for _, result := range results {
 		if result.Status == checks.StatusOK {
 			continue
@@ -92,7 +157,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		cat.failedChecks = append(cat.failedChecks, result)
 		hasFailed = true
 
-		// Collect the issue so we can print an AI summary.
+		// Collect issue for AI summary
 		allIssues = append(allIssues, fmt.Sprintf("Category: %s", result.Category.String()))
 		issue := fmt.Sprintf("[FAIL] %s: %s", result.Name, result.Description)
 
@@ -103,7 +168,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		allIssues = append(allIssues, issue)
 	}
 
-	// Add summary fields for each category.
+	// Add summary fields for each category
 	for _, category := range orderedCategories {
 		cat, exists := categories[category]
 		if !exists || !cat.hasFailed {
@@ -128,11 +193,15 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		})
 	}
 
-	// Set notification color and content based on status.
+	return embed, allIssues, hasFailed
+}
+
+// updateEmbedStatus updates the embed with status information.
+func (n *Notifier) updateEmbedStatus(embed *discordgo.MessageEmbed, hasFailed bool, allIssues []string, targetClient string) {
 	if hasFailed {
 		embed.Color = 0xff0000 // Red
 
-		// Fetch an AI summary if there are issues and an OpenRouter key is available.
+		// Get AI summary if there are issues and OpenRouter key is available.
 		if len(allIssues) > 0 && n.openRouterKey != "" {
 			aiSummary, err := n.getAISummary(allIssues, targetClient)
 			if err == nil && aiSummary != "" {
@@ -144,10 +213,9 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 			}
 		}
 	} else {
-		// We're good, no issues detected.
 		embed.Color = 0x00ff00 // Green
-
 		desc := "No issues detected"
+
 		if targetClient != "" {
 			desc = fmt.Sprintf("No issues detected for %s", targetClient)
 		}
@@ -158,13 +226,14 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		})
 	}
 
-	// 🐼's rule.
 	embed.Footer = &discordgo.MessageEmbedFooter{
 		Text: "With ❤️ from ethPandaOps",
 	}
+}
 
-	// Build our message out, with appropriate buttons linking out to grafana and loki.
-	mainMsg := discordgo.MessageSend{
+// createMainMessage creates the main message with embed and buttons.
+func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network string) *discordgo.MessageSend {
+	return &discordgo.MessageSend{
 		Embed: embed,
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
@@ -183,127 +252,106 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 			},
 		},
 	}
+}
 
-	// Send the main message.
-	msg, err := n.session.ChannelMessageSendComplex(channelID, &mainMsg)
-	if err != nil {
-		return fmt.Errorf("failed to send Discord message: %w", err)
+// sendCategoryIssues sends category-specific issues to the thread.
+func (n *Notifier) sendCategoryIssues(
+	network,
+	threadID string,
+	category checks.Category,
+	cat *categoryResults,
+) error {
+	msg := fmt.Sprintf("\n\n**%s %s Issues**\n------------------------------------------\n", getCategoryEmoji(category), category.String())
+	msg += "**Issues detected**\n"
+
+	names := make(map[string]bool)
+	for _, check := range cat.failedChecks {
+		if _, ok := names[check.Name]; !ok {
+			names[check.Name] = true
+		}
 	}
 
-	// If there are no issues, we're done.
-	if !hasFailed {
+	for name := range names {
+		msg += fmt.Sprintf("- %s\n", name)
+	}
+
+	if _, err := n.session.ChannelMessageSend(threadID, msg); err != nil {
+		return fmt.Errorf("failed to send category message: %w", err)
+	}
+
+	// Extract instances from this category's checks.
+	instances := n.extractInstances(cat.failedChecks)
+	if len(instances) == 0 {
 		return nil
 	}
 
-	// Otherwise, create a thread and punch the issues into it.
-	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
-		Name:                fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02")),
-		AutoArchiveDuration: 60, // Archive thread after an hour.
-		Invitable:           false,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create thread: %w", err)
+	// Send affected instances.
+	if err := n.sendInstanceList(threadID, instances); err != nil {
+		return err
 	}
 
-	// Send each category's issues
-	for _, category := range orderedCategories {
-		cat, exists := categories[category]
-		if !exists || !cat.hasFailed {
-			continue
-		}
+	// Send SSH commands.
+	return n.sendSSHCommands(threadID, instances, network)
+}
 
-		// Send category header and issues.
-		msg := fmt.Sprintf("\n\n**%s %s Issues**\n------------------------------------------\n", getCategoryEmoji(category), category.String())
-		msg += "**Issues detected**\n"
+// extractInstances extracts instance names from check results.
+func (n *Notifier) extractInstances(checks []*checks.Result) map[string]bool {
+	instances := make(map[string]bool)
 
-		names := make(map[string]bool)
-
-		for _, check := range cat.failedChecks {
-			if _, ok := names[check.Name]; !ok {
-				names[check.Name] = true
-			}
-		}
-
-		for name := range names {
-			msg += fmt.Sprintf("- %s\n", name)
-		}
-
-		if _, err := n.session.ChannelMessageSend(thread.ID, msg); err != nil {
-			return fmt.Errorf("failed to send category message: %w", err)
-		}
-
-		// Determine the instances affected by this category's checks.
-		instances := make(map[string]bool)
-
-		for _, check := range cat.failedChecks {
-			if details := check.Details; details != nil {
-				for k, v := range details {
-					if k == "lowPeerNodes" || k == "notSyncedNodes" || k == "stuckNodes" || k == "behindNodes" {
-						if str, ok := v.(string); ok {
-							for _, line := range strings.Split(str, "\n") {
-								parts := strings.Fields(line)
-								if len(parts) > 0 {
-									instance := parts[0]
-
-									if strings.HasPrefix(instance, "(") && len(parts) > 1 {
-										instance = parts[1]
-									}
-
-									instance = strings.Split(instance, " (")[0]
-									instances[instance] = true
+	for _, check := range checks {
+		if details := check.Details; details != nil {
+			for k, v := range details {
+				if k == "lowPeerNodes" || k == "notSyncedNodes" || k == "stuckNodes" || k == "behindNodes" {
+					if str, ok := v.(string); ok {
+						for _, line := range strings.Split(str, "\n") {
+							parts := strings.Fields(line)
+							if len(parts) > 0 {
+								instance := parts[0]
+								if strings.HasPrefix(instance, "(") && len(parts) > 1 {
+									instance = parts[1]
 								}
+
+								instance = strings.Split(instance, " (")[0]
+								instances[instance] = true
 							}
 						}
 					}
 				}
 			}
 		}
-
-		// If there are no instances, we're done.
-		if len(instances) == 0 {
-			continue
-		}
-
-		// Add affected instances (if any).
-		msg = "\n**Affected instances**\n```bash\n"
-
-		for instance := range instances {
-			msg += fmt.Sprintf("%s\n", instance)
-		}
-
-		msg += "```"
-
-		if _, err := n.session.ChannelMessageSend(thread.ID, msg); err != nil {
-			return fmt.Errorf("failed to send instance message: %w", err)
-		}
-
-		// Add SSH commands for easy copy/paste by users.
-		msg = "\n**SSH commands**\n```bash\n"
-
-		for instance := range instances {
-			msg += fmt.Sprintf("ssh devops@%s.%s.ethpandaops.io\n\n", instance, network)
-		}
-
-		msg += "```"
-
-		if _, err := n.session.ChannelMessageSend(thread.ID, msg); err != nil {
-			return fmt.Errorf("failed to send instance message: %w", err)
-		}
 	}
 
-	return nil
+	return instances
 }
 
-// getCategoryEmoji returns the emoji for a given category.
-func getCategoryEmoji(category checks.Category) string {
-	switch category {
-	case checks.CategorySync:
-		return "🔄"
-	case checks.CategoryGeneral:
-		return "⚡"
-	default:
-		return "📋"
+// sendInstanceList sends the list of affected instances.
+func (n *Notifier) sendInstanceList(threadID string, instances map[string]bool) error {
+	msg := "\n**Affected instances**\n```bash\n"
+
+	for instance := range instances {
+		msg += fmt.Sprintf("%s\n", instance)
 	}
+
+	msg += "```"
+
+	_, err := n.session.ChannelMessageSend(threadID, msg)
+
+	return err
+}
+
+// sendSSHCommands sends SSH commands for the affected instances.
+func (n *Notifier) sendSSHCommands(threadID string, instances map[string]bool, network string) error {
+	msg := "\n**SSH commands**\n```bash\n"
+
+	for instance := range instances {
+		msg += fmt.Sprintf("ssh devops@%s.%s.ethpandaops.io\n\n", instance, network)
+	}
+
+	msg += "```"
+
+	_, err := n.session.ChannelMessageSend(threadID, msg)
+
+	return err
 }
 
 // getAISummary fetches an AI summary of the issues provided, optionally scoped to a specific client.
@@ -411,4 +459,16 @@ func uniqueChecks(results []*checks.Result) []*checks.Result {
 	}
 
 	return unique
+}
+
+// getCategoryEmoji returns the emoji for a given category.
+func getCategoryEmoji(category checks.Category) string {
+	switch category {
+	case checks.CategorySync:
+		return "🔄"
+	case checks.CategoryGeneral:
+		return "⚡"
+	default:
+		return "📋"
+	}
 }
