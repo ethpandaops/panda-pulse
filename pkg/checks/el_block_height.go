@@ -18,11 +18,11 @@ const queryELBlockHeight = `
 
 // ELBlockHeightCheck is a check that verifies if the EL nodes are advancing.
 type ELBlockHeightCheck struct {
-	grafanaClient *grafana.Client
+	grafanaClient grafana.GrafanaClient
 }
 
 // NewELBlockHeightCheck creates a new ELBlockHeightCheck.
-func NewELBlockHeightCheck(grafanaClient *grafana.Client) *ELBlockHeightCheck {
+func NewELBlockHeightCheck(grafanaClient grafana.GrafanaClient) *ELBlockHeightCheck {
 	return &ELBlockHeightCheck{
 		grafanaClient: grafanaClient,
 	}

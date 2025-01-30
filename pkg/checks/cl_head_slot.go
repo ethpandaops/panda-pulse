@@ -17,11 +17,11 @@ const queryCLHeadSlot = `
 
 // HeadSlotCheck is a check that verifies if the CL head slot is advancing.
 type HeadSlotCheck struct {
-	grafanaClient *grafana.Client
+	grafanaClient grafana.GrafanaClient
 }
 
 // NewHeadSlotCheck creates a new HeadSlotCheck.
-func NewHeadSlotCheck(grafanaClient *grafana.Client) *HeadSlotCheck {
+func NewHeadSlotCheck(grafanaClient grafana.GrafanaClient) *HeadSlotCheck {
 	return &HeadSlotCheck{
 		grafanaClient: grafanaClient,
 	}

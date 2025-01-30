@@ -14,6 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	grafanaBaseURL         = "https://grafana.observability.ethpandaops.io"
+	prometheusDatasourceID = "UhcO3vy7z"
+)
+
 // Config contains the configuration for the panda-pulse tool.
 type Config struct {
 	Network        string
@@ -94,7 +99,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	// Initialize Grafana client.
-	grafanaClient := grafana.NewClient(cfg.GrafanaToken, httpClient)
+	grafanaClient := grafana.NewClient(grafanaBaseURL, prometheusDatasourceID, cfg.GrafanaToken, httpClient)
 
 	// Initialize Discord notifier.
 	discordNotifier, err := discord.NewNotifier(cfg.DiscordToken, cfg.OpenRouterKey)

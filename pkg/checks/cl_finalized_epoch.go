@@ -18,11 +18,11 @@ const queryCLFinalizedEpoch = `
 
 // CLFinalizedEpochCheck is a check that verifies if the CL finalized epoch is advancing.
 type CLFinalizedEpochCheck struct {
-	grafanaClient *grafana.Client
+	grafanaClient grafana.GrafanaClient
 }
 
 // NewCLFinalizedEpochCheck creates a new CLFinalizedEpochCheck.
-func NewCLFinalizedEpochCheck(grafanaClient *grafana.Client) *CLFinalizedEpochCheck {
+func NewCLFinalizedEpochCheck(grafanaClient grafana.GrafanaClient) *CLFinalizedEpochCheck {
 	return &CLFinalizedEpochCheck{
 		grafanaClient: grafanaClient,
 	}

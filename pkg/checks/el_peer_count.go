@@ -15,11 +15,11 @@ const queryELPeerCount = `
 
 // ELPeerCountCheck is a check that verifies if the EL nodes have sufficient peers.
 type ELPeerCountCheck struct {
-	grafanaClient *grafana.Client
+	grafanaClient grafana.GrafanaClient
 }
 
 // NewELPeerCountCheck creates a new ELPeerCountCheck.
-func NewELPeerCountCheck(grafanaClient *grafana.Client) *ELPeerCountCheck {
+func NewELPeerCountCheck(grafanaClient grafana.GrafanaClient) *ELPeerCountCheck {
 	return &ELPeerCountCheck{
 		grafanaClient: grafanaClient,
 	}

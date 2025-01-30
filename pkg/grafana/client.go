@@ -9,53 +9,40 @@ import (
 	"net/http"
 )
 
-const (
-	prometheusDatasourceID = "UhcO3vy7z"
-	grafanaBaseURL         = "https://grafana.observability.ethpandaops.io"
-)
+//go:generate mockgen -package mock -destination mock/client.mock.go github.com/ethpandaops/panda-pulse/pkg/grafana GrafanaClient
 
-// Client is a Grafana client.
-type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+// GrafanaClient is the interface for Grafana operations.
+type GrafanaClient interface {
+	// Query executes a Grafana query.
+	Query(ctx context.Context, query string) (*QueryResponse, error)
 }
 
-// QueryResponse is the response from a Grafana query.
-type QueryResponse struct {
-	Results struct {
-		PandaPulse struct {
-			Frames []struct {
-				Schema struct {
-					Fields []struct {
-						Labels map[string]string `json:"labels"`
-					} `json:"fields"`
-				} `json:"schema"`
-				Data struct {
-					Values []interface{} `json:"values"`
-				} `json:"data"`
-			} `json:"frames"`
-		} `json:"pandaPulse"`
-	} `json:"results"`
+// client is a Grafana client implementation of GrafanaClient.
+type client struct {
+	baseURL      string
+	dataSourceID string
+	apiKey       string
+	httpClient   *http.Client
 }
 
 // NewClient creates a new Grafana client.
-func NewClient(apiKey string, httpClient *http.Client) *Client {
-	return &Client{
-		baseURL:    grafanaBaseURL,
-		apiKey:     apiKey,
-		httpClient: httpClient,
+func NewClient(baseURL string, dataSourceID string, apiKey string, httpClient *http.Client) GrafanaClient {
+	return &client{
+		baseURL:      baseURL,
+		dataSourceID: dataSourceID,
+		apiKey:       apiKey,
+		httpClient:   httpClient,
 	}
 }
 
 // Query executes a Grafana query.
-func (c *Client) Query(ctx context.Context, query string) (*QueryResponse, error) {
+func (c *client) Query(ctx context.Context, query string) (*QueryResponse, error) {
 	payload := map[string]interface{}{
 		"queries": []map[string]interface{}{
 			{
 				"refId": "pandaPulse",
 				"datasource": map[string]interface{}{
-					"uid": prometheusDatasourceID,
+					"uid": c.dataSourceID,
 				},
 				"expr":          query,
 				"maxDataPoints": 1,

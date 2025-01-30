@@ -15,11 +15,11 @@ const queryCLPeerCount = `
 
 // CLPeerCountCheck is a check that verifies if the CL peer count is sufficient.
 type CLPeerCountCheck struct {
-	grafanaClient *grafana.Client
+	grafanaClient grafana.GrafanaClient
 }
 
 // NewCLPeerCountCheck creates a new CLPeerCountCheck.
-func NewCLPeerCountCheck(grafanaClient *grafana.Client) *CLPeerCountCheck {
+func NewCLPeerCountCheck(grafanaClient grafana.GrafanaClient) *CLPeerCountCheck {
 	return &CLPeerCountCheck{
 		grafanaClient: grafanaClient,
 	}
