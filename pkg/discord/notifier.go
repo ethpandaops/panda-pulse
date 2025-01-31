@@ -82,8 +82,13 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	}
 
 	// Create a thread which we'll punch our issues into.
+	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
+	if targetClient != "" {
+		threadName = fmt.Sprintf("%s Issues - %s", targetClient, time.Now().Format("2006-01-02"))
+	}
+
 	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
-		Name:                fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02")),
+		Name:                threadName,
 		AutoArchiveDuration: 60,
 		Invitable:           false,
 	})
