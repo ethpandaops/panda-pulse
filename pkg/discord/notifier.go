@@ -58,14 +58,100 @@ func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
 
 // SendResults sends the results to Discord.
 func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result) error {
+	// First pass: check if we have any failures
+	var hasFailures bool
+	for _, result := range results {
+		if result.Status == checks.StatusFail {
+			hasFailures = true
+			break
+		}
+	}
+
+	// If no failures, don't send any notification
+	if !hasFailures {
+		return nil
+	}
+
 	title := fmt.Sprintf("🐼 Pulse Check (%s)", network)
 	if targetClient != "" {
 		title = fmt.Sprintf("🐼 Pulse Check (%s - %s)", network, targetClient)
 	}
 
 	// Create and populate the main embed.
-	embed, allIssues, hasFailed := n.createEmbed(title, results)
-	n.updateEmbedStatus(embed, hasFailed, allIssues, targetClient)
+	embed := &discordgo.MessageEmbed{
+		Title:     title,
+		Color:     0xff0000, // Always red since we only show failures
+		Timestamp: time.Now().Format(time.RFC3339),
+		Fields:    make([]*discordgo.MessageEmbedField, 0),
+	}
+
+	// Group results by category and collect all issues
+	var (
+		categories = make(map[checks.Category]*categoryResults)
+		allIssues  = make([]string, 0)
+	)
+
+	// Process only failed results
+	for _, result := range results {
+		if result.Status != checks.StatusFail {
+			continue
+		}
+
+		if _, exists := categories[result.Category]; !exists {
+			categories[result.Category] = &categoryResults{
+				failedChecks: make([]*checks.Result, 0),
+			}
+		}
+
+		cat := categories[result.Category]
+		cat.failedChecks = append(cat.failedChecks, result)
+		cat.hasFailed = true
+
+		// Collect issue for AI summary
+		allIssues = append(allIssues, fmt.Sprintf("Category: %s", result.Category.String()))
+		issue := fmt.Sprintf("[FAIL] %s: %s", result.Name, result.Description)
+
+		if details := formatDetails(result.Details); details != "" {
+			issue += " " + strings.ReplaceAll(details, "```", "")
+		}
+
+		allIssues = append(allIssues, issue)
+	}
+
+	// Add summary fields for each category
+	for _, category := range orderedCategories {
+		cat, exists := categories[category]
+		if !exists || len(cat.failedChecks) == 0 {
+			continue
+		}
+
+		var plural string
+		if len(cat.failedChecks) > 1 {
+			plural = "s"
+		}
+
+		summary := fmt.Sprintf("%d %s issue%s detected", len(uniqueChecks(cat.failedChecks)), strings.ToLower(category.String()), plural)
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Value:  summary,
+			Inline: false,
+		})
+	}
+
+	// Get AI summary if available
+	if len(allIssues) > 0 && n.openRouterKey != "" {
+		aiSummary, err := n.getAISummary(allIssues, targetClient)
+		if err == nil && aiSummary != "" {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "🤖 AI Analysis",
+				Value:  aiSummary,
+				Inline: false,
+			})
+		}
+	}
+
+	embed.Footer = &discordgo.MessageEmbedFooter{
+		Text: "With ❤️ from ethPandaOps",
+	}
 
 	// Create the main message.
 	mainMsg := n.createMainMessage(embed, network)
@@ -76,12 +162,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return fmt.Errorf("failed to send Discord message: %w", err)
 	}
 
-	// If there are no issues, we're done.
-	if !hasFailed {
-		return nil
-	}
-
-	// Create a thread which we'll punch our issues into.
+	// Create a thread for the issues
 	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
 	if targetClient != "" {
 		threadName = fmt.Sprintf("%s Issues - %s", targetClient, time.Now().Format("2006-01-02"))
@@ -96,26 +177,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return fmt.Errorf("failed to create thread: %w", err)
 	}
 
-	// Group results by category.
-	categories := make(map[checks.Category]*categoryResults)
-
-	for _, result := range results {
-		if result.Status == checks.StatusOK {
-			continue
-		}
-
-		if _, exists := categories[result.Category]; !exists {
-			categories[result.Category] = &categoryResults{
-				failedChecks: make([]*checks.Result, 0),
-			}
-		}
-
-		cat := categories[result.Category]
-		cat.hasFailed = true
-		cat.failedChecks = append(cat.failedChecks, result)
-	}
-
-	// Process each category's issues.
+	// Process each category's issues
 	for _, category := range orderedCategories {
 		cat, exists := categories[category]
 		if !exists || !cat.hasFailed {
