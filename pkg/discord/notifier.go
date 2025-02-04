@@ -58,16 +58,18 @@ func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
 
 // SendResults sends the results to Discord.
 func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result) error {
-	// First pass: check if we have any failures
+	// First pass: check if we have any failures.
 	var hasFailures bool
+
 	for _, result := range results {
 		if result.Status == checks.StatusFail {
 			hasFailures = true
+
 			break
 		}
 	}
 
-	// If no failures, don't send any notification
+	// If no failures, don't send any notification.
 	if !hasFailures {
 		return nil
 	}
@@ -80,18 +82,18 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	// Create and populate the main embed.
 	embed := &discordgo.MessageEmbed{
 		Title:     title,
-		Color:     0xff0000, // Always red since we only show failures
+		Color:     0xff0000, // Always red since we only show failures.
 		Timestamp: time.Now().Format(time.RFC3339),
 		Fields:    make([]*discordgo.MessageEmbedField, 0),
 	}
 
-	// Group results by category and collect all issues
+	// Group results by category and collect all issues.
 	var (
 		categories = make(map[checks.Category]*categoryResults)
 		allIssues  = make([]string, 0)
 	)
 
-	// Process only failed results
+	// Process only failed results.
 	for _, result := range results {
 		if result.Status != checks.StatusFail {
 			continue
@@ -190,113 +192,6 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	}
 
 	return nil
-}
-
-// createEmbed creates the main embed message.
-func (n *Notifier) createEmbed(title string, results []*checks.Result) (*discordgo.MessageEmbed, []string, bool) {
-	embed := &discordgo.MessageEmbed{
-		Title:     title,
-		Color:     0x555555,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Fields:    make([]*discordgo.MessageEmbedField, 0),
-	}
-
-	// Group results by category and collect all issues
-	var (
-		categories = make(map[checks.Category]*categoryResults)
-		allIssues  = make([]string, 0)
-		hasFailed  bool
-	)
-
-	// First pass: group results and collect issues
-	for _, result := range results {
-		if result.Status == checks.StatusOK {
-			continue
-		}
-
-		if _, exists := categories[result.Category]; !exists {
-			categories[result.Category] = &categoryResults{
-				failedChecks: make([]*checks.Result, 0),
-			}
-		}
-
-		cat := categories[result.Category]
-		cat.hasFailed = true
-		cat.failedChecks = append(cat.failedChecks, result)
-		hasFailed = true
-
-		// Collect issue for AI summary
-		allIssues = append(allIssues, fmt.Sprintf("Category: %s", result.Category.String()))
-		issue := fmt.Sprintf("[FAIL] %s: %s", result.Name, result.Description)
-
-		if details := formatDetails(result.Details); details != "" {
-			issue += " " + strings.ReplaceAll(details, "```", "")
-		}
-
-		allIssues = append(allIssues, issue)
-	}
-
-	// Add summary fields for each category
-	for _, category := range orderedCategories {
-		cat, exists := categories[category]
-		if !exists || !cat.hasFailed {
-			continue
-		}
-
-		var summary string
-
-		if len(cat.failedChecks) > 0 {
-			var plural string
-
-			if len(cat.failedChecks) > 1 {
-				plural = "s"
-			}
-
-			summary += fmt.Sprintf("%d %s issue%s detected", len(uniqueChecks(cat.failedChecks)), strings.ToLower(category.String()), plural)
-		}
-
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Value:  summary,
-			Inline: false,
-		})
-	}
-
-	return embed, allIssues, hasFailed
-}
-
-// updateEmbedStatus updates the embed with status information.
-func (n *Notifier) updateEmbedStatus(embed *discordgo.MessageEmbed, hasFailed bool, allIssues []string, targetClient string) {
-	if hasFailed {
-		embed.Color = 0xff0000 // Red
-
-		// Get AI summary if there are issues and OpenRouter key is available.
-		if len(allIssues) > 0 && n.openRouterKey != "" {
-			aiSummary, err := n.getAISummary(allIssues, targetClient)
-			if err == nil && aiSummary != "" {
-				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-					Name:   "🤖 AI Analysis",
-					Value:  aiSummary,
-					Inline: false,
-				})
-			}
-		}
-	} else {
-		embed.Color = 0x00ff00 // Green
-		desc := "No issues detected"
-
-		if targetClient != "" {
-			desc = fmt.Sprintf("No issues detected for %s", targetClient)
-		}
-
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Value:  desc,
-			Inline: false,
-		})
-	}
-
-	embed.Footer = &discordgo.MessageEmbedFooter{
-		Text: "With ❤️ from ethPandaOps",
-	}
 }
 
 // createMainMessage creates the main message with embed and buttons.
