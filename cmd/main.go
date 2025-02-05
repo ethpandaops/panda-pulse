@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -33,6 +34,9 @@ type Config struct {
 }
 
 func main() {
+	// Remove timestamp from log output, makes it harder to grok.
+	log.SetFlags(0)
+
 	var cfg Config
 
 	rootCmd := &cobra.Command{
@@ -114,12 +118,12 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	runner := checks.NewDefaultRunner()
 
 	// Register checks.
-	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewCLSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewCLPeerCountCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELPeerCountCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewCLPeerCountCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewELPeerCountCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewELBlockHeightCheck(grafanaClient))
 
 	// Determine if we're running checks for a specific client.
@@ -131,7 +135,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	}
 
 	// Execute the checks.
-	results, err := runner.RunChecks(context.Background(), checks.Config{
+	results, analysis, err := runner.RunChecks(context.Background(), checks.Config{
 		Network:       cfg.Network,
 		ConsensusNode: cfg.ConsensusNode,
 		ExecutionNode: cfg.ExecutionNode,
@@ -142,7 +146,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	}
 
 	// Send results to Discord.
-	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results); err != nil {
+	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results, analysis); err != nil {
 		return fmt.Errorf("failed to send discord notification: %w", err)
 	}
 

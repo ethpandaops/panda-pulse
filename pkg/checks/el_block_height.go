@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -45,7 +46,6 @@ func (c *ELBlockHeightCheck) ClientType() ClientType {
 
 // Run executes the check.
 func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
-	// Query for block heights that are more than 5 blocks behind the max.
 	query := fmt.Sprintf(
 		queryELBlockHeight,
 		cfg.Network,
@@ -55,6 +55,8 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, erro
 		cfg.ConsensusNode,
 		cfg.ExecutionNode,
 	)
+
+	log.Print("\n=== Running EL block height check")
 
 	response, err := c.grafanaClient.Query(ctx, query)
 	if err != nil {
@@ -68,13 +70,17 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, erro
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					stuckNodes = append(stuckNodes, strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1))
+					nodeName := strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1)
+					stuckNodes = append(stuckNodes, nodeName)
+					log.Printf("  - Not advancing block height: %s", nodeName)
 				}
 			}
 		}
 	}
 
 	if len(stuckNodes) == 0 {
+		log.Printf("  - All nodes are advancing properly")
+
 		return &Result{
 			Name:        c.Name(),
 			Category:    c.Category(),
@@ -84,6 +90,7 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, erro
 			Details: map[string]interface{}{
 				"query": query,
 			},
+			AffectedNodes: []string{},
 		}, nil
 	}
 
@@ -97,5 +104,6 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, erro
 			"query":      query,
 			"stuckNodes": strings.Join(stuckNodes, "\n"),
 		},
+		AffectedNodes: stuckNodes,
 	}, nil
 }

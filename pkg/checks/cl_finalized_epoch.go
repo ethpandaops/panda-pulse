@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -55,6 +56,8 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, e
 		cfg.ExecutionNode,
 	)
 
+	log.Print("\n=== Running CL finalized epoch check")
+
 	response, err := c.grafanaClient.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
@@ -67,13 +70,17 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, e
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					stuckNodes = append(stuckNodes, strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1))
+					nodeName := strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1)
+					stuckNodes = append(stuckNodes, nodeName)
+					log.Printf("  - Not finalizing: %s", nodeName)
 				}
 			}
 		}
 	}
 
 	if len(stuckNodes) == 0 {
+		log.Printf("  - All nodes are finalizing properly")
+
 		return &Result{
 			Name:        c.Name(),
 			Category:    c.Category(),
@@ -83,6 +90,7 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, e
 			Details: map[string]interface{}{
 				"query": query,
 			},
+			AffectedNodes: []string{},
 		}, nil
 	}
 
@@ -96,5 +104,6 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, e
 			"query":      query,
 			"stuckNodes": strings.Join(stuckNodes, "\n"),
 		},
+		AffectedNodes: stuckNodes,
 	}, nil
 }

@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ func (c *ELSyncCheck) ClientType() ClientType {
 func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(queryELSync, cfg.Network, cfg.ConsensusNode, cfg.ExecutionNode)
 
+	log.Print("\n=== Running EL sync check")
+
 	response, err := c.grafanaClient.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
@@ -58,13 +61,17 @@ func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					notSyncedNodes = append(notSyncedNodes, strings.Replace(labels["instance"], labels["network"]+"-", "", -1))
+					nodeName := strings.Replace(labels["instance"], labels["network"]+"-", "", -1)
+					notSyncedNodes = append(notSyncedNodes, nodeName)
+					log.Printf("  - Unsynced node: %s", nodeName)
 				}
 			}
 		}
 	}
 
 	if len(notSyncedNodes) == 0 {
+		log.Printf("  - All nodes are synced")
+
 		return &Result{
 			Name:        c.Name(),
 			Category:    c.Category(),
@@ -74,6 +81,7 @@ func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
 			Details: map[string]interface{}{
 				"query": query,
 			},
+			AffectedNodes: []string{},
 		}, nil
 	}
 
@@ -87,5 +95,6 @@ func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
 			"query":          query,
 			"notSyncedNodes": strings.Join(notSyncedNodes, "\n"),
 		},
+		AffectedNodes: notSyncedNodes,
 	}, nil
 }
