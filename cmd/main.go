@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -33,6 +34,9 @@ type Config struct {
 }
 
 func main() {
+	// Remove timestamp from log output, makes it harder to grok.
+	log.SetFlags(0)
+
 	var cfg Config
 
 	rootCmd := &cobra.Command{
@@ -47,19 +51,25 @@ func main() {
 				return fmt.Errorf("DISCORD_BOT_TOKEN environment variable is required")
 			}
 
-			// Check for mutually exclusive flags.
-			if cmd.Flags().Changed("ethereum-cl") && cmd.Flags().Changed("ethereum-el") {
+			// We enforce that one of --ethereum-cl or --ethereum-el is specified.
+			clSpecified := cmd.Flags().Changed("ethereum-cl")
+			elSpecified := cmd.Flags().Changed("ethereum-el")
+
+			if !clSpecified && !elSpecified {
+				return fmt.Errorf("must specify either --ethereum-cl or --ethereum-el")
+			}
+
+			if clSpecified && elSpecified {
 				return fmt.Errorf("cannot specify both --ethereum-cl and --ethereum-el flags")
 			}
 
-			// Validate client flags.
-			if cmd.Flags().Changed("ethereum-cl") {
+			if clSpecified {
 				if err := validateClient(cfg.ConsensusNode, true); err != nil {
 					return err
 				}
 			}
 
-			if cmd.Flags().Changed("ethereum-el") {
+			if elSpecified {
 				if err := validateClient(cfg.ExecutionNode, false); err != nil {
 					return err
 				}
@@ -114,12 +124,12 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	runner := checks.NewDefaultRunner()
 
 	// Register checks.
-	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewCLSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewCLPeerCountCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELPeerCountCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewCLPeerCountCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
+	runner.RegisterCheck(checks.NewELPeerCountCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewELBlockHeightCheck(grafanaClient))
 
 	// Determine if we're running checks for a specific client.
@@ -131,7 +141,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	}
 
 	// Execute the checks.
-	results, err := runner.RunChecks(context.Background(), checks.Config{
+	results, analysis, err := runner.RunChecks(context.Background(), checks.Config{
 		Network:       cfg.Network,
 		ConsensusNode: cfg.ConsensusNode,
 		ExecutionNode: cfg.ExecutionNode,
@@ -142,7 +152,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	}
 
 	// Send results to Discord.
-	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results); err != nil {
+	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results, analysis); err != nil {
 		return fmt.Errorf("failed to send discord notification: %w", err)
 	}
 

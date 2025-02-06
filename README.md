@@ -6,22 +6,9 @@ The checks are run against a Grafana instance, which is configured with a Promet
 
 ## Usage
 
-### Pulse Check All Clients
+### Pulse Check
 
-```bash
-docker run -e GRAFANA_SERVICE_TOKEN=your_token \
-          -e DISCORD_BOT_TOKEN=your_token \
-          -e OPENROUTER_API_KEY=optional_key \
-          ethpandaops/panda-pulse:0.0.2 \
-          --discord-channel CHANNEL_ID \
-          --network NETWORK_NAME
-```
-
-### Pulse Check Specific Client
-
-You can also pass in a target client to scope the checks + notification. 
-
-This can be done with `--ethereum-cl` or `--ethereum-el`:
+Run by passing in a network name, a discord channel ID and one of `--ethereum-cl` or `--ethereum-el`.
 
 ```bash
 docker run -e GRAFANA_SERVICE_TOKEN=your_token \

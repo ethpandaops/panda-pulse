@@ -31,6 +31,7 @@ const (
 	CLTeku       = "teku"
 	CLGrandine   = "grandine"
 	ELNethermind = "nethermind"
+	ELNimbusel   = "nimbusel"
 	ELBesu       = "besu"
 	ELGeth       = "geth"
 	ELReth       = "reth"
@@ -41,7 +42,7 @@ const (
 // Buckets of known clients.
 var (
 	CLClients = []string{CLLighthouse, CLPrysm, CLLodestar, CLNimbus, CLTeku, CLGrandine}
-	ELClients = []string{ELNethermind, ELBesu, ELGeth, ELReth, ELErigon, ELEthereumJS}
+	ELClients = []string{ELNethermind, ELNimbusel, ELBesu, ELGeth, ELReth, ELErigon, ELEthereumJS}
 )
 
 // IsCLClient returns true if the client is a consensus client.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
 )
 
@@ -56,10 +57,36 @@ func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
 	}, nil
 }
 
-// SendResults sends the results to Discord.
-func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result) error {
-	// First pass: check if we have any failures.
-	var hasFailures bool
+// SendResults sends the analysis results to Discord.
+func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result, analysis *analyzer.AnalysisResult) error {
+	var (
+		hasFailures          bool
+		isRootCause          bool
+		hasUnexplainedIssues bool
+	)
+
+	// Check if this client is a root cause.
+	for _, rootCause := range analysis.RootCause {
+		if rootCause == targetClient {
+			isRootCause = true
+
+			break
+		}
+	}
+
+	// Check for unexplained issues specific to this client.
+	for _, issue := range analysis.UnexplainedIssues {
+		if strings.Contains(issue, targetClient) {
+			hasUnexplainedIssues = true
+
+			break
+		}
+	}
+
+	// If they are neither, we're done.
+	if !hasUnexplainedIssues && !isRootCause {
+		return nil
+	}
 
 	for _, result := range results {
 		if result.Status == checks.StatusFail {
@@ -69,7 +96,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		}
 	}
 
-	// If no failures, don't send any notification.
+	// Sanity check they're failures.
 	if !hasFailures {
 		return nil
 	}
@@ -82,16 +109,13 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	// Create and populate the main embed.
 	embed := &discordgo.MessageEmbed{
 		Title:     title,
-		Color:     0xff0000, // Always red since we only show failures.
+		Color:     0xff0000,
 		Timestamp: time.Now().Format(time.RFC3339),
 		Fields:    make([]*discordgo.MessageEmbedField, 0),
 	}
 
 	// Group results by category and collect all issues.
-	var (
-		categories = make(map[checks.Category]*categoryResults)
-		allIssues  = make([]string, 0)
-	)
+	categories := make(map[checks.Category]*categoryResults)
 
 	// Process only failed results.
 	for _, result := range results {
@@ -108,63 +132,17 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		cat := categories[result.Category]
 		cat.failedChecks = append(cat.failedChecks, result)
 		cat.hasFailed = true
-
-		// Collect issue for AI summary
-		allIssues = append(allIssues, fmt.Sprintf("Category: %s", result.Category.String()))
-		issue := fmt.Sprintf("[FAIL] %s: %s", result.Name, result.Description)
-
-		if details := formatDetails(result.Details); details != "" {
-			issue += " " + strings.ReplaceAll(details, "```", "")
-		}
-
-		allIssues = append(allIssues, issue)
 	}
 
-	// Add summary fields for each category
-	for _, category := range orderedCategories {
-		cat, exists := categories[category]
-		if !exists || len(cat.failedChecks) == 0 {
-			continue
-		}
+	// Create + send the main message.
+	mainMsg := n.createMainMessage(embed, network, results, targetClient)
 
-		var plural string
-		if len(cat.failedChecks) > 1 {
-			plural = "s"
-		}
-
-		summary := fmt.Sprintf("%d %s issue%s detected", len(uniqueChecks(cat.failedChecks)), strings.ToLower(category.String()), plural)
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Value:  summary,
-			Inline: false,
-		})
-	}
-
-	// Get AI summary if available
-	if len(allIssues) > 0 && n.openRouterKey != "" {
-		aiSummary, err := n.getAISummary(allIssues, targetClient)
-		if err == nil && aiSummary != "" {
-			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-				Name:   "🤖 AI Analysis",
-				Value:  aiSummary,
-				Inline: false,
-			})
-		}
-	}
-
-	embed.Footer = &discordgo.MessageEmbedFooter{
-		Text: "With ❤️ from ethPandaOps",
-	}
-
-	// Create the main message.
-	mainMsg := n.createMainMessage(embed, network)
-
-	// Send the main message.
 	msg, err := n.session.ChannelMessageSendComplex(channelID, mainMsg)
 	if err != nil {
 		return fmt.Errorf("failed to send Discord message: %w", err)
 	}
 
-	// Create a thread for the issues
+	// Create a thread for us to dump the issue breakdown into.
 	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
 	if targetClient != "" {
 		threadName = fmt.Sprintf("%s Issues - %s", targetClient, time.Now().Format("2006-01-02"))
@@ -179,7 +157,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return fmt.Errorf("failed to create thread: %w", err)
 	}
 
-	// Process each category's issues
+	// Process each category's issues.
 	for _, category := range orderedCategories {
 		cat, exists := categories[category]
 		if !exists || !cat.hasFailed {
@@ -195,7 +173,47 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 }
 
 // createMainMessage creates the main message with embed and buttons.
-func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network string) *discordgo.MessageSend {
+func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network string, results []*checks.Result, targetClient string) *discordgo.MessageSend {
+	// Count failed checks.
+	failedCount := 0
+
+	for _, result := range results {
+		if result.Status == checks.StatusFail {
+			failedCount++
+		}
+	}
+
+	// Add issue count field.
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Name:   fmt.Sprintf("%d issues found", failedCount),
+		Inline: false,
+	})
+
+	// Add AI summary if we have an OpenRouter key.
+	if n.openRouterKey != "" {
+		// Collect all issues for the summary.
+		var issues []string
+
+		for _, result := range results {
+			if result.Status == checks.StatusFail {
+				issues = append(issues, fmt.Sprintf("%s: %s", result.Name, result.Description))
+				if len(result.AffectedNodes) > 0 {
+					issues = append(issues, fmt.Sprintf("Affected nodes: %s", strings.Join(result.AffectedNodes, ", ")))
+				}
+			}
+		}
+
+		if len(issues) > 0 {
+			if summary, err := n.getAISummary(issues, targetClient); err == nil && summary != "" {
+				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+					Name:   "🤖 AI Summary",
+					Value:  summary,
+					Inline: false,
+				})
+			}
+		}
+	}
+
 	return &discordgo.MessageSend{
 		Embed: embed,
 		Components: []discordgo.MessageComponent{
@@ -350,11 +368,13 @@ func (n *Notifier) getAISummary(issues []string, targetClient string) (string, e
 	}
 
 	prompt := fmt.Sprintf(
-		`You are an impartial Ethereum network monitoring assistant. %sProvide a brief, 
+		`You are an impartial Ethereum network monitoring assistant. %s. Provide a brief, 
 	concise technical summary of these issues, avoid providing any recommendations and listing out 
-	instance names. Return only the formatted summary (dont use markdown headers), do not include 
+	instance names. Please don't just regugutate the issues, provide a summary of the issues targeting 
+	the %s client. Return only the formatted summary (dont use markdown headers), do not include 
 	any unnecessary verbs, text or reply prompts: \n\n%s`,
 		clientContext,
+		targetClient,
 		strings.Join(issues, "\n"),
 	)
 
@@ -406,47 +426,6 @@ func (n *Notifier) getAISummary(issues []string, targetClient string) (string, e
 	}
 
 	return aiResp.Choices[0].Message.Content, nil
-}
-
-func formatDetails(details map[string]interface{}) string {
-	if len(details) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0)
-
-	for k, v := range details {
-		// Skip the query field as it's internal.
-		if k == "query" {
-			continue
-		}
-
-		parts = append(parts, fmt.Sprintf("%v", v))
-	}
-
-	if len(parts) == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("```\n%s\n```", strings.Join(parts, "\n"))
-}
-
-func uniqueChecks(results []*checks.Result) []*checks.Result {
-	var (
-		seen   = make(map[string]bool)
-		unique = make([]*checks.Result, 0)
-	)
-
-	// Iterate over the results and add unique checks to the list.
-	for _, check := range results {
-		if !seen[check.Name] {
-			seen[check.Name] = true
-
-			unique = append(unique, check)
-		}
-	}
-
-	return unique
 }
 
 // getCategoryEmoji returns the emoji for a given category.
