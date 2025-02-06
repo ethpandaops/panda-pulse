@@ -38,8 +38,8 @@ func (cp ClientPair) String() string {
 	return fmt.Sprintf("%s-%s", cp.CLClient, cp.ELClient)
 }
 
-// ParseClientPair parses a node name into CL and EL clients.
-func ParseClientPair(nodeName string) ClientPair {
+// parseClientPair parses a node name into CL and EL clients.
+func parseClientPair(nodeName string) ClientPair {
 	// Remove any network prefix if it exists
 	parts := strings.Split(nodeName, "-")
 	if len(parts) < 2 {

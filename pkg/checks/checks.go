@@ -146,7 +146,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 			}
 
 			// Only include result if it has affected nodes for our target client. We don't want
-			// to be including noisy about other clients in the notification.
+			// to be including noise about other clients in the notification.
 			if len(filteredResult.AffectedNodes) > 0 {
 				// Copy and filter details.
 				for k, v := range result.Details {
