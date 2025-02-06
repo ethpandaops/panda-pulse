@@ -51,19 +51,25 @@ func main() {
 				return fmt.Errorf("DISCORD_BOT_TOKEN environment variable is required")
 			}
 
-			// Check for mutually exclusive flags.
-			if cmd.Flags().Changed("ethereum-cl") && cmd.Flags().Changed("ethereum-el") {
+			// We enforce that one of --ethereum-cl or --ethereum-el is specified.
+			clSpecified := cmd.Flags().Changed("ethereum-cl")
+			elSpecified := cmd.Flags().Changed("ethereum-el")
+
+			if !clSpecified && !elSpecified {
+				return fmt.Errorf("must specify either --ethereum-cl or --ethereum-el")
+			}
+
+			if clSpecified && elSpecified {
 				return fmt.Errorf("cannot specify both --ethereum-cl and --ethereum-el flags")
 			}
 
-			// Validate client flags.
-			if cmd.Flags().Changed("ethereum-cl") {
+			if clSpecified {
 				if err := validateClient(cfg.ConsensusNode, true); err != nil {
 					return err
 				}
 			}
 
-			if cmd.Flags().Changed("ethereum-el") {
+			if elSpecified {
 				if err := validateClient(cfg.ExecutionNode, false); err != nil {
 					return err
 				}
