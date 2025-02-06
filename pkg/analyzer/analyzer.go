@@ -1,6 +1,6 @@
 /*
-Package analyzer provides functionality for analyzing the health relationships between Ethereum consensus layer (CL)
-and execution layer (EL) clients. It helps identify root causes of client failures by detecting patterns where:
+Package analyzer provides functionality for analyzing the health relationships between CL and EL clients.
+It helps identify root causes of client failures by detecting patterns where:
 
 1. For CL clients: If an EL client is failing with multiple CL clients, it's likely the root cause
 2. For EL clients: If the target EL client is failing with multiple CL clients, it's likely the root cause

@@ -102,7 +102,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 	cfg.ConsensusNode = ClientTypeAll.String()
 	cfg.ExecutionNode = ClientTypeAll.String()
 
-	// First pass: gather all data for analysis.
+	// As a first pass, gather all data for analysis.
 	allResults := make([]*Result, 0)
 
 	for _, check := range r.checks {
@@ -124,7 +124,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 	// Run analysis with complete data.
 	analysisResult := a.Analyze()
 
-	// Second pass: filter results to only include target client data.
+	// As a second pass, filter results to only include target client data.
 	for _, result := range allResults {
 		if result.Status == StatusFail {
 			// Create a filtered copy of the result.
@@ -177,60 +177,67 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 		}
 	}
 
-	// Log analysis summary.
-	log.Printf("\n=== Analysis summary")
-
-	if len(analysisResult.RootCause) > 0 {
-		for _, rc := range analysisResult.RootCause {
-			log.Printf("  - %s identified as root cause", rc)
-		}
-	}
-
-	if len(analysisResult.UnexplainedIssues) > 0 {
-		for _, issue := range analysisResult.UnexplainedIssues {
-			log.Printf("  - %s (unexplained issue)", issue)
-		}
-	}
-
-	if len(analysisResult.RootCause) == 0 && len(analysisResult.UnexplainedIssues) == 0 {
-		log.Printf("  - No issues detected")
-	}
-
-	// Log our notification decision.
-	var (
-		hasUnexplainedIssues bool
-		isRootCause          bool
-	)
-
-	for _, rc := range analysisResult.RootCause {
-		if rc == client {
-			isRootCause = true
-
-			break
-		}
-	}
-
-	for _, issue := range analysisResult.UnexplainedIssues {
-		if strings.Contains(issue, client) {
-			hasUnexplainedIssues = true
-
-			break
-		}
-	}
-
-	log.Print("\n=== Notification decision")
-
-	if isRootCause {
-		log.Printf("  - NOTIFY: Client identified as root cause")
-	} else if hasUnexplainedIssues {
-		log.Printf("  - NOTIFY: Client has unexplained issues")
-	} else {
-		log.Printf("  - NO NOTIFICATION: No root cause or unexplained issues")
-	}
+	// Dump out some info so we know what's going on.
+	logAnalysisSummary(analysisResult)
+	logNotificationDecision(client, analysisResult)
 
 	// Restore original config.
 	cfg.ConsensusNode = origConsensusNode
 	cfg.ExecutionNode = origExecutionNode
 
 	return results, analysisResult, nil
+}
+
+// logAnalysisSummary logs a summary of the analysis results.
+func logAnalysisSummary(analysisResult *analyzer.AnalysisResult) {
+	log.Printf("\n=== Analysis summary")
+
+	switch {
+	case len(analysisResult.RootCause) > 0 || len(analysisResult.UnexplainedIssues) > 0:
+		for _, rc := range analysisResult.RootCause {
+			log.Printf("  - %s identified as root cause", rc)
+		}
+
+		for _, issue := range analysisResult.UnexplainedIssues {
+			log.Printf("  - %s (unexplained issue)", issue)
+		}
+	default:
+		log.Printf("  - No issues detected")
+	}
+}
+
+// logNotificationDecision logs whether we should notify about the client's issues and why.
+func logNotificationDecision(client string, analysisResult *analyzer.AnalysisResult) {
+	log.Print("\n=== Notification decision")
+
+	switch {
+	case contains(analysisResult.RootCause, client):
+		log.Printf("  - NOTIFY: Client identified as root cause")
+	case hasClientIssue(client, analysisResult.UnexplainedIssues):
+		log.Printf("  - NOTIFY: Client has unexplained issues")
+	default:
+		log.Printf("  - NO NOTIFICATION: No root cause or unexplained issues")
+	}
+}
+
+// hasClientIssue checks if any of the issues are related to the given client.
+func hasClientIssue(client string, issues []string) bool {
+	for _, issue := range issues {
+		if strings.Contains(issue, client) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string slice contains a value.
+func contains(slice []string, str string) bool {
+	for _, v := range slice {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }
