@@ -214,6 +214,17 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		}
 	}
 
+	executionClient := "All"
+	consensusClient := "All"
+
+	if checks.IsELClient(targetClient) {
+		executionClient = targetClient
+	}
+
+	if checks.IsCLClient(targetClient) {
+		consensusClient = targetClient
+	}
+
 	return &discordgo.MessageSend{
 		Embed: embed,
 		Components: []discordgo.MessageComponent{
@@ -222,7 +233,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 					discordgo.Button{
 						Label: "📊 Grafana",
 						Style: discordgo.LinkButton,
-						URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/cebekx08rl9tsc/panda-pulse?orgId=1&var-consensus_client=All&var-execution_client=All&var-network=%s&var-filter=ingress_user%%7C%%21~%%7Csynctest.%%2A", network),
+						URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/cebekx08rl9tsc/panda-pulse?orgId=1&var-consensus_client=%s&var-execution_client=%s&var-network=%s&var-filter=ingress_user%%7C%%21~%%7Csynctest.%%2A", consensusClient, executionClient, network),
 					},
 					discordgo.Button{
 						Label: "📝 Logs",
