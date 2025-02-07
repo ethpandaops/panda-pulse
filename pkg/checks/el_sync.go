@@ -61,7 +61,7 @@ func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					nodeName := strings.Replace(labels["instance"], labels["network"]+"-", "", -1)
+					nodeName := strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1)
 					notSyncedNodes = append(notSyncedNodes, nodeName)
 					log.Printf("  - Unsynced node: %s", nodeName)
 				}
