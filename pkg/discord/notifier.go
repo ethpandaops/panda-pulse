@@ -174,18 +174,18 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 
 // createMainMessage creates the main message with embed and buttons.
 func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network string, results []*checks.Result, targetClient string) *discordgo.MessageSend {
-	// Count failed checks.
-	failedCount := 0
+	// Count unique failed checks.
+	uniqueFailedChecks := make(map[string]bool)
 
 	for _, result := range results {
 		if result.Status == checks.StatusFail {
-			failedCount++
+			uniqueFailedChecks[result.Name] = true
 		}
 	}
 
 	// Add issue count field.
 	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-		Name:   fmt.Sprintf("%d issues found", failedCount),
+		Name:   fmt.Sprintf("%d issues found", len(uniqueFailedChecks)),
 		Inline: false,
 	})
 
