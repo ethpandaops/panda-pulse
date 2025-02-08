@@ -16,17 +16,35 @@ type ClientFailure struct {
 	FailedWith []string
 }
 
+type ClientPairWithNodes struct {
+	Pair  ClientPair
+	Nodes []string
+}
+
 type AnalysisState struct {
 	CLFailures       map[string]*ClientFailure
 	ELFailures       map[string]*ClientFailure
 	RootCauses       map[string]string // key: client name, value: evidence
-	UnexplainedPairs []ClientPair
+	UnexplainedPairs []ClientPairWithNodes
 }
 
 type Analyzer struct {
 	nodeStatusMap NodeStatusMap
 	targetClient  string
 	clientType    ClientType
+}
+
+type Config struct {
+	Network          string
+	ConsensusNode    string
+	ExecutionNode    string
+	DiscordChannel   string
+	GrafanaToken     string
+	DiscordToken     string
+	OpenRouterKey    string
+	GrafanaBaseURL   string
+	PromDatasourceID string
+	AlertUnexplained bool
 }
 
 func NewAnalyzer(targetClient string, clientType ClientType) *Analyzer {
@@ -38,7 +56,7 @@ func NewAnalyzer(targetClient string, clientType ClientType) *Analyzer {
 }
 
 func (a *Analyzer) Analyze() *AnalysisResult {
-	log.Print("=== Analyzing check results")
+	log.Print("\n=== Analyzing check results")
 
 	state := &AnalysisState{
 		CLFailures: make(map[string]*ClientFailure),
@@ -75,14 +93,8 @@ func (a *Analyzer) Analyze() *AnalysisResult {
 	}
 
 	// Add unexplained issues to result.
-	for _, pair := range state.UnexplainedPairs {
-		nodeName := fmt.Sprintf("%s-%s-1", a.targetClient, pair.ELClient)
-
-		if a.clientType == ClientTypeEL {
-			nodeName = fmt.Sprintf("%s-%s-1", pair.CLClient, a.targetClient)
-		}
-
-		result.UnexplainedIssues = append(result.UnexplainedIssues, nodeName)
+	for _, pairWithNodes := range state.UnexplainedPairs {
+		result.UnexplainedIssues = append(result.UnexplainedIssues, pairWithNodes.Nodes...)
 	}
 
 	a.logAnalysisResults(result)
@@ -327,24 +339,27 @@ func (a *Analyzer) findUnexplainedIssues(state *AnalysisState) {
 			continue
 		}
 
-		hasFailure := false
+		// Find failing nodes.
+		failingNodes := make([]string, 0)
 
 		for _, s := range statuses {
 			if !s.IsHealthy {
-				hasFailure = true
-
-				break
+				failingNodes = append(failingNodes, s.Name)
 			}
 		}
 
-		if !hasFailure {
+		if len(failingNodes) == 0 {
 			continue
 		}
 
 		// If neither client is a root cause, this is unexplained.
 		if _, clIsRoot := state.RootCauses[pair.CLClient]; !clIsRoot {
 			if _, elIsRoot := state.RootCauses[pair.ELClient]; !elIsRoot {
-				state.UnexplainedPairs = append(state.UnexplainedPairs, pair)
+				state.UnexplainedPairs = append(state.UnexplainedPairs, ClientPairWithNodes{
+					Pair:  pair,
+					Nodes: failingNodes,
+				})
+
 				log.Printf("  - Unexplained issue: %s-%s", pair.CLClient, pair.ELClient)
 			}
 		}

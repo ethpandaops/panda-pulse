@@ -31,6 +31,7 @@ type Config struct {
 	OpenRouterKey    string
 	GrafanaBaseURL   string
 	PromDatasourceID string
+	AlertUnexplained bool
 }
 
 func main() {
@@ -85,6 +86,7 @@ func main() {
 	rootCmd.Flags().StringVar(&cfg.ExecutionNode, "ethereum-el", checks.ClientTypeAll.String(), "execution client to monitor")
 	rootCmd.Flags().StringVar(&cfg.GrafanaBaseURL, "grafana-base-url", defaultGrafanaBaseURL, "grafana base URL")
 	rootCmd.Flags().StringVar(&cfg.PromDatasourceID, "prometheus-datasource-id", defaultPromDatasourceID, "prometheus datasource ID")
+	rootCmd.Flags().BoolVar(&cfg.AlertUnexplained, "alert-unexplained", false, "whether to alert on unexplained issues")
 
 	if err := rootCmd.MarkFlagRequired("network"); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -152,7 +154,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	}
 
 	// Send results to Discord.
-	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results, analysis); err != nil {
+	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results, analysis, cfg.AlertUnexplained); err != nil {
 		return fmt.Errorf("failed to send discord notification: %w", err)
 	}
 
