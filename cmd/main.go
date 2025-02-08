@@ -86,7 +86,7 @@ func main() {
 	rootCmd.Flags().StringVar(&cfg.ExecutionNode, "ethereum-el", checks.ClientTypeAll.String(), "execution client to monitor")
 	rootCmd.Flags().StringVar(&cfg.GrafanaBaseURL, "grafana-base-url", defaultGrafanaBaseURL, "grafana base URL")
 	rootCmd.Flags().StringVar(&cfg.PromDatasourceID, "prometheus-datasource-id", defaultPromDatasourceID, "prometheus datasource ID")
-	rootCmd.Flags().BoolVar(&cfg.AlertUnexplained, "alert-unexplained", false, "whether to alert on unexplained issues")
+	rootCmd.Flags().BoolVar(&cfg.AlertUnexplained, "alert-unexplained", true, "whether to alert on unexplained issues")
 
 	if err := rootCmd.MarkFlagRequired("network"); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
