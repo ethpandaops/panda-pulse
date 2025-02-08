@@ -62,7 +62,7 @@ func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
 }
 
 // SendResults sends the analysis results to Discord.
-func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result, analysis *analyzer.AnalysisResult) error {
+func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result, analysis *analyzer.AnalysisResult, alertUnexplained bool) error {
 	var (
 		hasFailures          bool
 		isRootCause          bool
@@ -87,8 +87,8 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		}
 	}
 
-	// If they are neither, we're done.
-	if !hasUnexplainedIssues && !isRootCause {
+	// If they are neither, or if unexplained alerts are disabled, we're done.
+	if !isRootCause && (!hasUnexplainedIssues || !alertUnexplained) {
 		return nil
 	}
 
@@ -295,7 +295,7 @@ func (n *Notifier) sendCategoryIssues(
 	}
 
 	// Extract instances from this category's checks.
-	instances := n.extractInstances(cat.failedChecks)
+	instances := n.extractInstances(cat.failedChecks, targetClient)
 	if len(instances) == 0 {
 		return nil
 	}
@@ -316,7 +316,7 @@ func (n *Notifier) sendCategoryIssues(
 }
 
 // extractInstances extracts instance names from check results.
-func (n *Notifier) extractInstances(checks []*checks.Result) map[string]bool {
+func (n *Notifier) extractInstances(checks []*checks.Result, targetClient string) map[string]bool {
 	instances := make(map[string]bool)
 
 	for _, check := range checks {
@@ -333,7 +333,18 @@ func (n *Notifier) extractInstances(checks []*checks.Result) map[string]bool {
 								}
 
 								instance = strings.Split(instance, " (")[0]
-								instances[instance] = true
+
+								// Split the instance name into parts
+								nodeParts := strings.Split(instance, "-")
+								if len(nodeParts) < 2 {
+									continue
+								}
+
+								// Match exactly the CL or EL client name
+								if nodeParts[0] == targetClient || // CL client
+									(len(nodeParts) > 1 && nodeParts[1] == targetClient) { // EL client
+									instances[instance] = true
+								}
 							}
 						}
 					}
