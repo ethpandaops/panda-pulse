@@ -15,6 +15,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // Notifier is a Discord notifier.
@@ -103,9 +105,9 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return nil
 	}
 
-	title := fmt.Sprintf("🐼 Pulse Check (%s)", network)
+	title := fmt.Sprintf("🐼 %s", network)
 	if targetClient != "" {
-		title = fmt.Sprintf("🐼 Pulse Check (%s - %s)", network, targetClient)
+		title = fmt.Sprintf("🐼 %s (%s)", cases.Title(language.English, cases.Compact).String(targetClient), network)
 	}
 
 	// Create and populate the main embed.
