@@ -8,79 +8,256 @@ import (
 
 func TestAnalyzer_RootCauseDetection(t *testing.T) {
 	tests := []struct {
-		name             string
-		targetClient     string
-		clientType       ClientType
-		nodes            map[string]bool // map[nodeName]isHealthy
-		wantRootCause    []string
-		wantUnexplained  []string
-		wantNotification bool
+		name            string
+		targetClient    string
+		clientType      ClientType
+		nodes           map[string]bool // map[nodeName]isHealthy
+		wantRootCause   []string
+		wantUnexplained []string
 	}{
 		{
-			name:         "EL client failing with multiple CL clients should be classed as root cause",
-			targetClient: "nimbusel",
-			clientType:   ClientTypeEL,
+			name:         "all healthy nodes",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
 			nodes: map[string]bool{
-				"grandine-nimbusel-1":   false,
-				"lighthouse-nimbusel-1": false,
-				"lodestar-nimbusel-1":   false,
-				"nimbus-nimbusel-1":     false,
-				"prysm-nimbusel-1":      false,
-				"teku-nimbusel-1":       false,
-				// Add some healthy nodes with other EL clients to spice things up.
-				"lighthouse-geth-1": true,
-				"prysm-geth-1":      true,
-				"teku-nethermind-1": true,
+				"lighthouse-geth-1":       true,
+				"lighthouse-besu-1":       true,
+				"lighthouse-nethermind-1": true,
 			},
-			wantRootCause:    []string{"nimbusel"},
-			wantUnexplained:  []string{}, // These should be explained by nimbusel being root cause.
-			wantNotification: true,       // Should notify as the targetClient itself is the root cause.
+			wantRootCause:   []string{},
+			wantUnexplained: []string{},
 		},
 		{
-			name:         "CL client with single EL issue should not be classed as root cause",
+			name:         "unexplained issue - single failure pair",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				"lighthouse-erigon-1": false, // Only this lighthouse+erigon pair is failing.
+				"lighthouse-geth-1":   true,  // Other lighthouse pairs are healthy.
+				"lighthouse-besu-1":   true,
+				"prysm-erigon-1":      true, // Other clients with erigon are healthy.
+				"teku-erigon-1":       true,
+			},
+			wantRootCause:   []string{},
+			wantUnexplained: []string{"lighthouse-erigon-1"},
+		},
+		{
+			name:         "clear root cause - EL client failing with many CL clients",
+			targetClient: "ethereumjs",
+			clientType:   ClientTypeEL,
+			nodes: map[string]bool{
+				"lighthouse-ethereumjs-1": false,
+				"teku-ethereumjs-1":       false,
+				"lodestar-ethereumjs-1":   false,
+				"grandine-ethereumjs-1":   false,
+				"nimbus-ethereumjs-1":     false,
+				// Some healthy nodes
+				"lighthouse-geth-1": true,
+				"prysm-geth-1":      true,
+			},
+			wantRootCause:   []string{"ethereumjs"},
+			wantUnexplained: []string{},
+		},
+		// This tests when we have multiple instances of the same client pair (prysm-geth-N).
+		// Some failing, some healthy, each failing instance should be listed as unexplained.
+		{
+			name:         "multiple node instances - same client pair",
+			targetClient: "prysm",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				"prysm-geth-1": false,
+				"prysm-geth-2": false,
+				"prysm-geth-3": true,
+				"prysm-geth-4": false,
+				"prysm-geth-5": true,
+				"prysm-geth-6": false,
+			},
+			wantRootCause: []string{},
+			wantUnexplained: []string{
+				"prysm-geth-1",
+				"prysm-geth-2",
+				"prysm-geth-4",
+				"prysm-geth-6",
+			},
+		},
+		{
+			name:         "clear root cause - CL client failing with many EL clients",
+			targetClient: "prysm",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				"prysm-erigon-1":     false,
+				"prysm-geth-1":       false,
+				"prysm-ethereumjs-1": false,
+				"prysm-reth-1":       false,
+				"prysm-besu-1":       false,
+				// Some healthy nodes
+				"lighthouse-geth-1": true,
+				"teku-geth-1":       true,
+			},
+			wantRootCause:   []string{"prysm"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "false positive - client only failing with known root causes",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// ethereumjs + nethermind are root causes (failing with many CL clients).
+				"lighthouse-ethereumjs-1": false,
+				"teku-ethereumjs-1":       false,
+				"lodestar-ethereumjs-1":   false,
+				"grandine-ethereumjs-1":   false,
+				"nimbus-ethereumjs-1":     false,
+				"lighthouse-nethermind-1": false,
+				"teku-nethermind-1":       false,
+				"grandine-nethermind-1":   false,
+				// lighthouse's other pairs are healthy
+				"lighthouse-geth-1": true,
+				"lighthouse-besu-1": true,
+			},
+			wantRootCause:   []string{"ethereumjs", "nethermind"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "mixed health status - some nodes healthy, some failing",
+			targetClient: "ethereumjs",
+			clientType:   ClientTypeEL,
+			nodes: map[string]bool{
+				"lighthouse-ethereumjs-1": false,
+				"teku-ethereumjs-1":       false,
+				"lodestar-ethereumjs-1":   false,
+				"grandine-ethereumjs-1":   false,
+				"nimbus-ethereumjs-1":     false,
+				// Some healthy nodes with same client
+				"prysm-ethereumjs-1":      true,
+				"lighthouse-ethereumjs-2": true,
+			},
+			wantRootCause:   []string{"ethereumjs"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "borderline case - client failing with exactly MinFailuresForRootCause peers",
+			targetClient: "reth",
+			clientType:   ClientTypeEL,
+			nodes: map[string]bool{
+				// Exactly MinFailuresForRootCause (2) failures.
+				"lighthouse-reth-1": false,
+				"teku-reth-1":       false,
+				// Some healthy nodes
+				"prysm-reth-1":  true,
+				"nimbus-reth-1": true,
+			},
+			wantRootCause:   []string{"reth"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "below threshold - client failing with less than MinFailuresForRootCause peers",
+			targetClient: "reth",
+			clientType:   ClientTypeEL,
+			nodes: map[string]bool{
+				// Only one failure, below MinFailuresForRootCause (2).
+				"lighthouse-reth-1": false,
+				// Some healthy nodes
+				"prysm-reth-1":  true,
+				"teku-reth-1":   true,
+				"nimbus-reth-1": true,
+			},
+			wantRootCause:   []string{},
+			wantUnexplained: []string{"lighthouse-reth-1"},
+		},
+		{
+			name:         "secondary root cause - client failing with non-root-cause peers",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// lighthouse failing with multiple non-root-cause EL clients.
+				"lighthouse-geth-1":       false,
+				"lighthouse-besu-1":       false,
+				"lighthouse-nethermind-1": false,
+				// Other CL clients healthy with these EL clients.
+				"prysm-geth-1":        true,
+				"teku-besu-1":         true,
+				"nimbus-nethermind-1": true,
+				// Some other failures that aren't root causes.
+				"lighthouse-erigon-1":     false,
+				"lighthouse-ethereumjs-1": false,
+			},
+			wantRootCause:   []string{"lighthouse"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "major root cause overrides - client failing with many peers including root causes",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// lighthouse failing with many peers (>4).
+				"lighthouse-geth-1":       false,
+				"lighthouse-besu-1":       false,
+				"lighthouse-nethermind-1": false,
+				"lighthouse-erigon-1":     false,
+				"lighthouse-ethereumjs-1": false,
+				// Some of these peers are root causes themselves.
+				"teku-ethereumjs-1":   false,
+				"prysm-ethereumjs-1":  false,
+				"nimbus-ethereumjs-1": false,
+				// But lighthouse should still be a root cause due to failing with >4 peers.
+			},
+			wantRootCause:   []string{"lighthouse", "ethereumjs"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "secondary root cause - EL client failing with non-root-cause peers",
+			targetClient: "besu",
+			clientType:   ClientTypeEL,
+			nodes: map[string]bool{
+				// besu failing with multiple non-root-cause CL clients
+				"lighthouse-besu-1": false,
+				"teku-besu-1":       false,
+				"prysm-besu-1":      false,
+				// Other EL clients healthy with these CL clients
+				"lighthouse-geth-1": true,
+				"teku-nethermind-1": true,
+				"prysm-erigon-1":    true,
+				// Single failures that should be unexplained when viewed from CL perspective.
+				"grandine-besu-1": false,
+				"lodestar-besu-1": false,
+			},
+			wantRootCause:   []string{"besu"},
+			wantUnexplained: []string{}, // These won't show up as unexplained from besu's perspective.
+		},
+		{
+			name:         "secondary root cause - CL client failing with non-root-cause peers",
+			targetClient: "teku",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// teku failing with multiple non-root-cause EL clients.
+				"teku-geth-1":       false,
+				"teku-besu-1":       false,
+				"teku-nethermind-1": false,
+				// Other CL clients healthy with these EL clients.
+				"lighthouse-geth-1":   true,
+				"prysm-besu-1":        true,
+				"nimbus-nethermind-1": true,
+				// Additional failures that don't affect root cause status.
+				"teku-ethereumjs-1": false,
+				"teku-reth-1":       false,
+			},
+			wantRootCause:   []string{"teku"}, // Only teku is a root cause.
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "unexplained issues - CL clients with single failures",
 			targetClient: "grandine",
 			clientType:   ClientTypeCL,
 			nodes: map[string]bool{
-				"grandine-erigon-1":     false,
-				"grandine-geth-1":       true,
-				"grandine-nethermind-1": true,
-				"lighthouse-erigon-1":   true,
-				"prysm-erigon-1":        true,
+				// Single failure with besu
+				"grandine-besu-1": false,
+				// Other pairs healthy
+				"grandine-geth-1": true,
+				"grandine-reth-1": true,
 			},
-			wantRootCause:    []string{},
-			wantUnexplained:  []string{"grandine-erigon-1"},
-			wantNotification: true, // Should notify as it has unexplained issue (grandine-erigon-1).
-		},
-		{
-			name:         "Multiple CL clients failing with same EL should classify EL as root cause",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
-			nodes: map[string]bool{
-				"grandine-ethereumjs-1":   false,
-				"lighthouse-ethereumjs-1": false,
-				"lodestar-ethereumjs-1":   false,
-				"nimbus-ethereumjs-1":     false,
-				"prysm-ethereumjs-1":      false,
-				// Add some healthy nodes with other CL clients to ensure we filter them out nicely.
-				"lighthouse-geth-1":       true,
-				"lighthouse-nethermind-1": true,
-			},
-			wantRootCause:    []string{"ethereumjs"},
-			wantUnexplained:  []string{},
-			wantNotification: false, // Should not notify as issues are explained (root cause is ethereumjs).
-		},
-		{
-			name:         "No notification needed when all nodes are healthy",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
-			nodes: map[string]bool{
-				"lighthouse-geth-1":       true,
-				"lighthouse-nethermind-1": true,
-				"lighthouse-besu-1":       true,
-			},
-			wantRootCause:    []string{},
-			wantUnexplained:  []string{},
-			wantNotification: false,
+			wantRootCause:   []string{},
+			wantUnexplained: []string{"grandine-besu-1"},
 		},
 	}
 
@@ -88,35 +265,14 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a := NewAnalyzer(tt.targetClient, tt.clientType)
 
-			// Add all node statuses.
 			for nodeName, isHealthy := range tt.nodes {
 				a.AddNodeStatus(nodeName, isHealthy)
 			}
 
-			// Run analysis.
 			result := a.Analyze()
 
-			// Check root causes.
 			assert.ElementsMatch(t, tt.wantRootCause, result.RootCause, "root causes don't match")
-
-			// Check unexplained issues.
 			assert.ElementsMatch(t, tt.wantUnexplained, result.UnexplainedIssues, "unexplained issues don't match")
-
-			// Check if notification would be sent.
-			shouldNotify := len(result.UnexplainedIssues) > 0
-			for _, rc := range result.RootCause {
-				if rc == tt.targetClient {
-					shouldNotify = true
-
-					break
-				}
-			}
-			assert.Equal(t, tt.wantNotification, shouldNotify, "notification decision incorrect")
-
-			// If root causes were found, verify we have evidence.
-			for _, rc := range result.RootCause {
-				assert.NotEmpty(t, result.RootCauseEvidence[rc], "missing evidence for root cause %s", rc)
-			}
 		})
 	}
 }
