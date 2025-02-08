@@ -1,5 +1,7 @@
 package checks
 
+import "strings"
+
 // ClientType represents the type of client.
 type ClientType string
 
@@ -65,4 +67,40 @@ func IsELClient(client string) bool {
 	}
 
 	return false
+}
+
+// GetClientLogo returns the Twitter profile image URL for a given client.
+func GetClientLogo(client string) string {
+	switch strings.ToLower(client) {
+	// Consensus Layer Clients
+	case CLLighthouse:
+		return "https://pbs.twimg.com/profile_images/1106229297151303681/EuqfU4v4_400x400.png"
+	case CLPrysm:
+		return "https://pbs.twimg.com/profile_images/1805984255861755905/PaPSwIzL_400x400.jpg"
+	case CLLodestar:
+		return "https://pbs.twimg.com/profile_images/1533709115712753665/O5PDykiV_400x400.jpg"
+	case CLNimbus:
+		return "https://pbs.twimg.com/profile_images/1721659785739960320/3XPpm8Or_400x400.jpg"
+	case CLTeku:
+		return "https://pbs.twimg.com/profile_images/1673661934036500480/Ee6NYB_K_400x400.jpg"
+	case CLGrandine:
+		return "https://pbs.twimg.com/profile_images/1409832041739345923/-ldZic7y_400x400.jpg"
+	// Execution Layer Clients
+	case ELNethermind:
+		return "https://pbs.twimg.com/profile_images/1806762018747072512/8XWySkUI_400x400.png"
+	case ELNimbusel:
+		return "https://pbs.twimg.com/profile_images/1721659785739960320/3XPpm8Or_400x400.jpg"
+	case ELBesu:
+		return "https://pbs.twimg.com/profile_images/1418537229123735552/XoFWio0T_400x400.jpg"
+	case ELGeth:
+		return "https://pbs.twimg.com/profile_images/1605238709451898881/Kl-bliNn_400x400.jpg"
+	case ELReth:
+		return "https://raw.githubusercontent.com/paradigmxyz/reth/refs/heads/main/assets/reth-docs.png"
+	case ELErigon:
+		return "https://pbs.twimg.com/profile_images/1420080204148576274/-4OFIs2x_400x400.jpg"
+	case ELEthereumJS:
+		return "https://pbs.twimg.com/profile_images/1330796558330322946/Y2YReI9m_400x400.png"
+	default:
+		return ""
+	}
 }

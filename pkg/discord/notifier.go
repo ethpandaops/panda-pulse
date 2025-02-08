@@ -2,9 +2,11 @@ package discord
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,6 +15,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // Notifier is a Discord notifier.
@@ -101,15 +105,15 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return nil
 	}
 
-	title := fmt.Sprintf("🐼 Pulse Check (%s)", network)
+	title := network
 	if targetClient != "" {
-		title = fmt.Sprintf("🐼 Pulse Check (%s - %s)", network, targetClient)
+		title = cases.Title(language.English, cases.Compact).String(targetClient) // 🐼
 	}
 
 	// Create and populate the main embed.
 	embed := &discordgo.MessageEmbed{
 		Title:     title,
-		Color:     0xff0000,
+		Color:     hashToColor(network),
 		Timestamp: time.Now().Format(time.RFC3339),
 		Fields:    make([]*discordgo.MessageEmbedField, 0),
 	}
@@ -145,7 +149,11 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	// Create a thread for us to dump the issue breakdown into.
 	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
 	if targetClient != "" {
-		threadName = fmt.Sprintf("%s Issues - %s", targetClient, time.Now().Format("2006-01-02"))
+		threadName = fmt.Sprintf(
+			"%s Issues - %s",
+			cases.Title(language.English, cases.Compact).String(targetClient),
+			time.Now().Format("2006-01-02"),
+		)
 	}
 
 	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
@@ -183,15 +191,29 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		}
 	}
 
-	// Add issue count field.
+	if logo := checks.GetClientLogo(targetClient); logo != "" {
+		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
+			URL: logo,
+		}
+	}
+
 	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-		Name:   fmt.Sprintf("%d issues found", len(uniqueFailedChecks)),
+		Name:   fmt.Sprintf("%s %d Active Issues", "⚠️", len(uniqueFailedChecks)),
+		Inline: true,
+	})
+
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Name:   fmt.Sprintf("🌐 %s", network),
+		Inline: true,
+	})
+
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Value:  "Check the thread below for a breakdown",
 		Inline: false,
 	})
 
 	// Add AI summary if we have an OpenRouter key.
 	if n.openRouterKey != "" {
-		// Collect all issues for the summary.
 		var issues []string
 
 		for _, result := range results {
@@ -206,7 +228,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		if len(issues) > 0 {
 			if summary, err := n.getAISummary(issues, targetClient); err == nil && summary != "" {
 				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-					Name:   "🤖 AI Summary",
+					Name:   "🤖 AI Analysis",
 					Value:  summary,
 					Inline: false,
 				})
@@ -449,4 +471,79 @@ func getCategoryEmoji(category checks.Category) string {
 	default:
 		return "📋"
 	}
+}
+
+// hashToColor generates a visually distinct, deterministic color int from a string.
+func hashToColor(s string) int {
+	hash := sha256.Sum256([]byte(s))
+
+	// Map hue to avoid green (90°-180°)
+	hue := remapHue(float64(hash[0]) / 255.0)
+	saturation := 0.75                                     // Fixed for vibrancy
+	lightness := 0.55 + (float64(hash[10]) / 255.0 * 0.15) // Ensures spread-out lightness
+
+	// Convert HSL to RGB
+	r, g, b := hslToRGB(hue, lightness, saturation)
+
+	// Convert to int in 0xRRGGBB format.
+	return (r << 16) | (g << 8) | b
+}
+
+// hslToRGB converts HSL to RGB (0-255 range for each color).
+func hslToRGB(h, l, s float64) (int, int, int) {
+	var r, g, b float64
+
+	if s == 0 {
+		r, g, b = l, l, l // Achromatic.
+	} else {
+		q := l * (1 + s)
+		if l >= 0.5 {
+			q = l + s - (l * s)
+		}
+
+		p := 2*l - q
+
+		r = hueToRGB(p, q, h+1.0/3.0)
+		g = hueToRGB(p, q, h)
+		b = hueToRGB(p, q, h-1.0/3.0)
+	}
+
+	return int(math.Round(r * 255)), int(math.Round(g * 255)), int(math.Round(b * 255))
+}
+
+// hueToRGB is a helper function for HSL to RGB conversion.
+func hueToRGB(p, q, t float64) float64 {
+	if t < 0 {
+		t += 1
+	}
+
+	if t > 1 {
+		t -= 1
+	}
+
+	if t < 1.0/6.0 {
+		return p + (q-p)*6*t
+	}
+
+	if t < 1.0/2.0 {
+		return q
+	}
+
+	if t < 2.0/3.0 {
+		return p + (q-p)*(2.0/3.0-t)*6
+	}
+
+	return p
+}
+
+// remapHue ensures the hue avoids green (90°-180°).
+func remapHue(h float64) float64 {
+	hueDegrees := h * 360.0
+
+	// If in green range (90-180°), shift to a non-green area.
+	if hueDegrees >= 90.0 && hueDegrees <= 180.0 {
+		hueDegrees = 180.0 + (hueDegrees - 90.0) // Shift it to the blue/purple spectrum.
+	}
+
+	return hueDegrees / 360.0 // Normalize back to 0-1 range.
 }
