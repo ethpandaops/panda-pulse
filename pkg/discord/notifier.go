@@ -105,9 +105,9 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		return nil
 	}
 
-	title := fmt.Sprintf("🐼 %s", network)
+	title := network
 	if targetClient != "" {
-		title = fmt.Sprintf("🐼 %s (%s)", cases.Title(language.English, cases.Compact).String(targetClient), network)
+		title = cases.Title(language.English, cases.Compact).String(targetClient) // 🐼
 	}
 
 	// Create and populate the main embed.
@@ -149,7 +149,11 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	// Create a thread for us to dump the issue breakdown into.
 	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
 	if targetClient != "" {
-		threadName = fmt.Sprintf("%s Issues - %s", targetClient, time.Now().Format("2006-01-02"))
+		threadName = fmt.Sprintf(
+			"%s Issues - %s",
+			cases.Title(language.English, cases.Compact).String(targetClient),
+			time.Now().Format("2006-01-02"),
+		)
 	}
 
 	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
@@ -187,15 +191,29 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		}
 	}
 
-	// Add issue count field.
+	if logo := checks.GetClientLogo(targetClient); logo != "" {
+		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
+			URL: logo,
+		}
+	}
+
 	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-		Name:   fmt.Sprintf("%d issues found", len(uniqueFailedChecks)),
+		Name:   fmt.Sprintf("%s %d Active Issues", "⚠️", len(uniqueFailedChecks)),
+		Inline: true,
+	})
+
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Name:   fmt.Sprintf("🌐 %s", network),
+		Inline: true,
+	})
+
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Value:  "Check the thread below for a breakdown",
 		Inline: false,
 	})
 
 	// Add AI summary if we have an OpenRouter key.
 	if n.openRouterKey != "" {
-		// Collect all issues for the summary.
 		var issues []string
 
 		for _, result := range results {
@@ -210,7 +228,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		if len(issues) > 0 {
 			if summary, err := n.getAISummary(issues, targetClient); err == nil && summary != "" {
 				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-					Name:   "🤖 AI Summary",
+					Name:   "🤖 AI Analysis",
 					Value:  summary,
 					Inline: false,
 				})
