@@ -129,9 +129,7 @@ func runChecks(cmd *cobra.Command, cfg Config) error {
 	runner.RegisterCheck(checks.NewCLSyncCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewCLPeerCountCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELPeerCountCheck(grafanaClient))
 	runner.RegisterCheck(checks.NewELBlockHeightCheck(grafanaClient))
 
 	// Determine if we're running checks for a specific client.
