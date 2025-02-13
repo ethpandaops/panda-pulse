@@ -1,9 +1,10 @@
 name: check-typos
 
 on:
-  pull_request:
-    branches:
-      - master
+    push:
+      branches:
+        - master
+    pull_request:
 
 jobs:
   check-typos:
