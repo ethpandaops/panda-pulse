@@ -2,10 +2,12 @@ package discord
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -19,10 +21,11 @@ import (
 	"golang.org/x/text/language"
 )
 
-// Notifier is a Discord notifier.
-type Notifier struct {
+// Client is a Discord client that handles bot commands and notifications.
+type Client struct {
 	session       *discordgo.Session
 	openRouterKey string
+	grafanaToken  string
 	httpClient    *http.Client
 }
 
@@ -47,61 +50,172 @@ var orderedCategories = []checks.Category{
 	checks.CategorySync,
 }
 
-// NewNotifier creates a new Notifier.
-func NewNotifier(token string, openRouterKey string) (*Notifier, error) {
+// NewClient creates a new Discord client.
+func NewClient(token string, openRouterKey string, grafanaToken string) (*Client, error) {
 	session, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Discord session: %w", err)
 	}
 
-	return &Notifier{
+	// Add required intents - we need GuildMessages and MessageContent to read commands
+	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
+
+	return &Client{
 		session:       session,
 		openRouterKey: openRouterKey,
+		grafanaToken:  grafanaToken,
 		httpClient:    &http.Client{},
 	}, nil
 }
 
-// SendResults sends the analysis results to Discord.
-func (n *Notifier) SendResults(channelID string, network string, targetClient string, results []*checks.Result, analysis *analyzer.AnalysisResult, alertUnexplained bool) error {
-	var (
-		hasFailures          bool
-		isRootCause          bool
-		hasUnexplainedIssues bool
-	)
-
-	// Check if this client is a root cause.
-	for _, rootCause := range analysis.RootCause {
-		if rootCause == targetClient {
-			isRootCause = true
-
-			break
+// StartBot starts the Discord bot and listens for commands
+func (c *Client) StartBot(runner checks.Runner) error {
+	// Add message handler
+	c.session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		// Ignore messages from the bot itself
+		if m.Author.ID == s.State.User.ID {
+			return
 		}
-	}
 
-	// Check for unexplained issues specific to this client.
-	for _, issue := range analysis.UnexplainedIssues {
-		if strings.Contains(issue, targetClient) {
-			hasUnexplainedIssues = true
+		// Check if message starts with !check
+		if strings.HasPrefix(m.Content, "!check") {
+			args := strings.Fields(m.Content)
+			if len(args) < 3 {
+				s.ChannelMessageSend(m.ChannelID, "Usage: `!check <network> <client>`\nExample: `!check mainnet lighthouse`")
+				return
+			}
 
-			break
+			network := args[1]
+			client := args[2]
+
+			// Get the username or nickname of who ran the command.
+			var username string
+			if m.Member != nil && m.Member.Nick != "" {
+				username = m.Member.Nick
+			} else {
+				username = m.Author.Username
+			}
+
+			// Create a thread for this check
+			threadName := fmt.Sprintf("%s Issues - Requested by %s",
+				cases.Title(language.English, cases.Compact).String(client),
+				username,
+			)
+
+			thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
+				Name:                threadName,
+				AutoArchiveDuration: 60,
+				Invitable:           false,
+			})
+			if err != nil {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("❌ Error creating thread: %s", err))
+				return
+			}
+
+			// Send initial response in thread
+			loadingMsg, err := s.ChannelMessageSend(thread.ID, "🔍 Running checks...")
+			if err != nil {
+				return // If we can't send the loading message, just continue silently
+			}
+
+			// Validate client
+			if !checks.IsCLClient(client) && !checks.IsELClient(client) {
+				s.ChannelMessageDelete(thread.ID, loadingMsg.ID) // Clean up loading message
+				s.ChannelMessageSend(thread.ID, fmt.Sprintf("❌ Invalid client '%s'.\n**Available clients:**\n🔹 CL: `%s`\n🔹 EL: `%s`",
+					client,
+					strings.Join(checks.CLClients, "`, `"),
+					strings.Join(checks.ELClients, "`, `")))
+				return
+			}
+
+			// Create config for check
+			cfg := checks.Config{
+				Network:      network,
+				GrafanaToken: c.grafanaToken,
+			}
+
+			if checks.IsCLClient(client) {
+				cfg.ConsensusNode = client
+				cfg.ExecutionNode = checks.ClientTypeAll.String()
+			} else {
+				cfg.ExecutionNode = client
+				cfg.ConsensusNode = checks.ClientTypeAll.String()
+			}
+
+			// Run checks
+			results, analysis, err := runner.RunChecks(context.Background(), cfg)
+			if err != nil {
+				s.ChannelMessageDelete(thread.ID, loadingMsg.ID) // Clean up loading message
+				s.ChannelMessageSend(thread.ID, fmt.Sprintf("❌ Error running checks: %s", err))
+				return
+			}
+
+			// Clean up loading message before sending results
+			s.ChannelMessageDelete(thread.ID, loadingMsg.ID)
+
+			if !shouldNotify(results, analysis, client, false) {
+				s.ChannelMessageSend(thread.ID, fmt.Sprintf("🎉 No issues detected for %s", client))
+				return
+			}
+
+			// Group results by category and collect all issues.
+			categories, err := categoriseAndProcessResults(results)
+			if err != nil {
+				s.ChannelMessageSend(thread.ID, fmt.Sprintf("❌ Error categorising results: %s", err))
+				return
+			}
+
+			// Process each category's issues.
+			for _, category := range orderedCategories {
+				cat, exists := categories[category]
+				if !exists || !cat.hasFailed {
+					continue
+				}
+
+				if err := c.sendCategoryIssues(network, thread.ID, category, cat, client); err != nil {
+					s.ChannelMessageSend(thread.ID, fmt.Sprintf("❌ Error sending category issues: %s", err))
+					return
+				}
+			}
 		}
+	})
+
+	// Open websocket connection
+	if err := c.session.Open(); err != nil {
+		return fmt.Errorf("error opening connection: %w", err)
 	}
 
-	// If they are neither, or if unexplained alerts are disabled, we're done.
-	if !isRootCause && (!hasUnexplainedIssues || !alertUnexplained) {
-		return nil
-	}
+	log.Printf("🤖 Bot is now running. Press CTRL-C to exit.")
+
+	// Keep the bot running
+	select {}
+}
+
+func categoriseAndProcessResults(results []*checks.Result) (map[checks.Category]*categoryResults, error) {
+	categories := make(map[checks.Category]*categoryResults)
 
 	for _, result := range results {
-		if result.Status == checks.StatusFail {
-			hasFailures = true
-
-			break
+		if result.Status != checks.StatusFail {
+			continue
 		}
+
+		if _, exists := categories[result.Category]; !exists {
+			categories[result.Category] = &categoryResults{
+				failedChecks: make([]*checks.Result, 0),
+			}
+		}
+
+		cat := categories[result.Category]
+		cat.failedChecks = append(cat.failedChecks, result)
+		cat.hasFailed = true
 	}
 
-	// Sanity check they're failures.
-	if !hasFailures {
+	return categories, nil
+}
+
+// SendResults sends the analysis results to Discord.
+func (c *Client) SendResults(channelID string, network string, targetClient string, results []*checks.Result, analysis *analyzer.AnalysisResult, alertUnexplained bool) error {
+	if !shouldNotify(results, analysis, targetClient, alertUnexplained) {
 		return nil
 	}
 
@@ -119,29 +233,15 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 	}
 
 	// Group results by category and collect all issues.
-	categories := make(map[checks.Category]*categoryResults)
-
-	// Process only failed results.
-	for _, result := range results {
-		if result.Status != checks.StatusFail {
-			continue
-		}
-
-		if _, exists := categories[result.Category]; !exists {
-			categories[result.Category] = &categoryResults{
-				failedChecks: make([]*checks.Result, 0),
-			}
-		}
-
-		cat := categories[result.Category]
-		cat.failedChecks = append(cat.failedChecks, result)
-		cat.hasFailed = true
+	categories, err := categoriseAndProcessResults(results)
+	if err != nil {
+		return fmt.Errorf("failed to categorise results: %w", err)
 	}
 
 	// Create + send the main message.
-	mainMsg := n.createMainMessage(embed, network, results, targetClient)
+	mainMsg := c.createMainMessage(embed, network, results, targetClient)
 
-	msg, err := n.session.ChannelMessageSendComplex(channelID, mainMsg)
+	msg, err := c.session.ChannelMessageSendComplex(channelID, mainMsg)
 	if err != nil {
 		return fmt.Errorf("failed to send Discord message: %w", err)
 	}
@@ -156,7 +256,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 		)
 	}
 
-	thread, err := n.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
+	thread, err := c.session.MessageThreadStartComplex(channelID, msg.ID, &discordgo.ThreadStart{
 		Name:                threadName,
 		AutoArchiveDuration: 60,
 		Invitable:           false,
@@ -172,7 +272,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 			continue
 		}
 
-		if err := n.sendCategoryIssues(network, thread.ID, category, cat, targetClient); err != nil {
+		if err := c.sendCategoryIssues(network, thread.ID, category, cat, targetClient); err != nil {
 			return err
 		}
 	}
@@ -181,7 +281,7 @@ func (n *Notifier) SendResults(channelID string, network string, targetClient st
 }
 
 // createMainMessage creates the main message with embed and buttons.
-func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network string, results []*checks.Result, targetClient string) *discordgo.MessageSend {
+func (c *Client) createMainMessage(embed *discordgo.MessageEmbed, network string, results []*checks.Result, targetClient string) *discordgo.MessageSend {
 	// Count unique failed checks.
 	uniqueFailedChecks := make(map[string]bool)
 
@@ -213,7 +313,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 	})
 
 	// Add AI summary if we have an OpenRouter key.
-	if n.openRouterKey != "" {
+	if c.openRouterKey != "" {
 		var issues []string
 
 		for _, result := range results {
@@ -226,7 +326,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 		}
 
 		if len(issues) > 0 {
-			if summary, err := n.getAISummary(issues, targetClient); err == nil && summary != "" {
+			if summary, err := c.getAISummary(issues, targetClient); err == nil && summary != "" {
 				embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 					Name:   "🤖 AI Analysis",
 					Value:  summary,
@@ -269,7 +369,7 @@ func (n *Notifier) createMainMessage(embed *discordgo.MessageEmbed, network stri
 }
 
 // sendCategoryIssues sends category-specific issues to the thread.
-func (n *Notifier) sendCategoryIssues(
+func (c *Client) sendCategoryIssues(
 	network string,
 	threadID string,
 	category checks.Category,
@@ -290,24 +390,24 @@ func (n *Notifier) sendCategoryIssues(
 		msg += fmt.Sprintf("- %s\n", name)
 	}
 
-	if _, err := n.session.ChannelMessageSend(threadID, msg); err != nil {
+	if _, err := c.session.ChannelMessageSend(threadID, msg); err != nil {
 		return fmt.Errorf("failed to send category message: %w", err)
 	}
 
 	// Extract instances from this category's checks.
-	instances := n.extractInstances(cat.failedChecks, targetClient)
+	instances := c.extractInstances(cat.failedChecks, targetClient)
 	if len(instances) == 0 {
 		return nil
 	}
 
 	// Send affected instances.
-	if err := n.sendInstanceList(threadID, instances); err != nil {
+	if err := c.sendInstanceList(threadID, instances); err != nil {
 		return err
 	}
 
 	// Only send SSH commands if a specific client is targeted.
 	if targetClient != "" {
-		if err := n.sendSSHCommands(threadID, instances, network); err != nil {
+		if err := c.sendSSHCommands(threadID, instances, network); err != nil {
 			return err
 		}
 	}
@@ -316,7 +416,7 @@ func (n *Notifier) sendCategoryIssues(
 }
 
 // extractInstances extracts instance names from check results.
-func (n *Notifier) extractInstances(checks []*checks.Result, targetClient string) map[string]bool {
+func (c *Client) extractInstances(checks []*checks.Result, targetClient string) map[string]bool {
 	instances := make(map[string]bool)
 
 	for _, check := range checks {
@@ -357,7 +457,7 @@ func (n *Notifier) extractInstances(checks []*checks.Result, targetClient string
 }
 
 // sendInstanceList sends the list of affected instances.
-func (n *Notifier) sendInstanceList(threadID string, instances map[string]bool) error {
+func (c *Client) sendInstanceList(threadID string, instances map[string]bool) error {
 	msg := "\n**Affected instances**\n```bash\n"
 
 	// Convert map keys to slice for sorting
@@ -375,13 +475,13 @@ func (n *Notifier) sendInstanceList(threadID string, instances map[string]bool) 
 
 	msg += "```"
 
-	_, err := n.session.ChannelMessageSend(threadID, msg)
+	_, err := c.session.ChannelMessageSend(threadID, msg)
 
 	return err
 }
 
 // sendSSHCommands sends SSH commands for the affected instances.
-func (n *Notifier) sendSSHCommands(threadID string, instances map[string]bool, network string) error {
+func (c *Client) sendSSHCommands(threadID string, instances map[string]bool, network string) error {
 	msg := "\n**SSH commands**\n```bash\n"
 
 	// Convert map keys to slice for sorting
@@ -399,13 +499,13 @@ func (n *Notifier) sendSSHCommands(threadID string, instances map[string]bool, n
 
 	msg += "```"
 
-	_, err := n.session.ChannelMessageSend(threadID, msg)
+	_, err := c.session.ChannelMessageSend(threadID, msg)
 
 	return err
 }
 
 // getAISummary fetches an AI summary of the issues provided, optionally scoped to a specific client.
-func (n *Notifier) getAISummary(issues []string, targetClient string) (string, error) {
+func (c *Client) getAISummary(issues []string, targetClient string) (string, error) {
 	var clientContext string
 	if targetClient != "" {
 		clientContext = fmt.Sprintf("Note: This analysis is specifically for the %s client. ", targetClient)
@@ -442,10 +542,10 @@ func (n *Notifier) getAISummary(issues []string, targetClient string) (string, e
 		return "", fmt.Errorf("failed to create OpenRouter request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+n.openRouterKey)
+	req.Header.Set("Authorization", "Bearer "+c.openRouterKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := n.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute OpenRouter request: %w", err)
 	}
@@ -557,4 +657,45 @@ func remapHue(h float64) float64 {
 	}
 
 	return hueDegrees / 360.0 // Normalize back to 0-1 range.
+}
+
+func shouldNotify(results []*checks.Result, analysis *analyzer.AnalysisResult, targetClient string, alertUnexplained bool) bool {
+	var (
+		hasFailures          bool
+		isRootCause          bool
+		hasUnexplainedIssues bool
+	)
+
+	// Check if this client is a root cause.
+	for _, rootCause := range analysis.RootCause {
+		if rootCause == targetClient {
+			isRootCause = true
+
+			break
+		}
+	}
+
+	// Check for unexplained issues specific to this client.
+	for _, issue := range analysis.UnexplainedIssues {
+		if strings.Contains(issue, targetClient) {
+			hasUnexplainedIssues = true
+
+			break
+		}
+	}
+
+	// If they are neither, or if unexplained alerts are disabled, we're done.
+	if !isRootCause && (!hasUnexplainedIssues || !alertUnexplained) {
+		return false
+	}
+
+	for _, result := range results {
+		if result.Status == checks.StatusFail {
+			hasFailures = true
+
+			break
+		}
+	}
+
+	return hasFailures
 }
