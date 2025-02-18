@@ -81,7 +81,7 @@ func TestELBlockHeightCheck_Run(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockClient := mock.NewMockGrafanaClient(ctrl)
+			mockClient := mock.NewMockClient(ctrl)
 			mockClient.EXPECT().Query(gomock.Any(), gomock.Any()).Return(tt.mockResponse, tt.mockError)
 
 			check := NewELBlockHeightCheck(mockClient)

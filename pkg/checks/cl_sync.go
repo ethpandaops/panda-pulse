@@ -18,11 +18,11 @@ const queryCLSync = `
 
 // CLSyncCheck is a check that verifies if the CL nodes are syncing.
 type CLSyncCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewCLSyncCheck creates a new CLSyncCheck.
-func NewCLSyncCheck(grafanaClient grafana.GrafanaClient) *CLSyncCheck {
+func NewCLSyncCheck(grafanaClient grafana.Client) *CLSyncCheck {
 	return &CLSyncCheck{
 		grafanaClient: grafanaClient,
 	}

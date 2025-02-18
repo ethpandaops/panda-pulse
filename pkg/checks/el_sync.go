@@ -18,11 +18,11 @@ const queryELSync = `
 
 // ELSyncCheck is a check that verifies if the EL nodes are syncing.
 type ELSyncCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewELSyncCheck creates a new ELSyncCheck.
-func NewELSyncCheck(grafanaClient grafana.GrafanaClient) *ELSyncCheck {
+func NewELSyncCheck(grafanaClient grafana.Client) *ELSyncCheck {
 	return &ELSyncCheck{
 		grafanaClient: grafanaClient,
 	}
