@@ -3,121 +3,178 @@ package discord
 import (
 	"context"
 	"fmt"
-	"log"
-	"net/http"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/checks"
+	corechecks "github.com/ethpandaops/panda-pulse/pkg/checks"
+	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
+// Bot represents the Discord bot.
 type Bot struct {
+	log          *logrus.Logger
 	config       *Config
 	session      *discordgo.Session
 	scheduler    *scheduler.Scheduler
 	monitorRepo  *store.MonitorRepo
-	checksRunner checks.Runner
+	checksRunner corechecks.Runner
 	grafana      grafana.Client
-	httpClient   *http.Client
-	commands     map[string]Command
+	commands     []common.Command
 }
 
-// categoryResults is a struct that holds the results of a category.
-type categoryResults struct {
-	failedChecks []*checks.Result
-	hasFailed    bool
-}
-
-// Order categories as we want them to be displayed.
-var orderedCategories = []checks.Category{
-	checks.CategoryGeneral,
-	checks.CategorySync,
-}
-
+// NewBot creates a new Discord bot.
 func NewBot(
+	log *logrus.Logger,
 	cfg *Config,
 	scheduler *scheduler.Scheduler,
 	monitorRepo *store.MonitorRepo,
-	checksRunner checks.Runner,
+	checksRunner corechecks.Runner,
 	grafana grafana.Client,
 ) (*Bot, error) {
+	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
 	bot := &Bot{
+		log:          log,
 		config:       cfg,
 		session:      session,
 		scheduler:    scheduler,
 		monitorRepo:  monitorRepo,
 		checksRunner: checksRunner,
 		grafana:      grafana,
-		httpClient:   &http.Client{},
-		commands:     make(map[string]Command),
+		commands:     make([]common.Command, 0),
 	}
 
-	// Register command handlers
-	checksCmd := NewChecksCommand(bot)
-	bot.commands[checksCmd.Name()] = checksCmd
+	// Register command handlers.
+	bot.commands = append(bot.commands, cmdchecks.NewChecksCommand(log, bot))
 
-	session.AddHandler(bot.handleCommandInteraction)
+	// Register event handlers.
+	session.AddHandler(bot.handleInteraction)
 
 	return bot, nil
 }
 
+// Start starts the bot.
 func (b *Bot) Start() error {
-	log.Printf("Opening Discord connection...")
+	// Open connection with Discord.
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open discord connection: %w", err)
 	}
 
-	log.Printf("Registering slash commands for bot ID: %s", b.session.State.User.ID)
-
+	// Register application commands.
 	for _, cmd := range b.commands {
-		log.Printf("Registering command: /%s", cmd.Name())
 		if err := cmd.Register(b.session); err != nil {
-			return fmt.Errorf("failed to register command %s: %w", cmd.Name(), err)
+			return fmt.Errorf("failed to register command: %w", err)
 		}
 	}
 
-	log.Printf("Successfully registered slash commands")
-
-	log.Printf("Loading existing alerts...")
-	alerts, err := b.monitorRepo.ListMonitorAlerts(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to list alerts: %w", err)
-	}
-	log.Printf("Found %d existing alerts", len(alerts))
-
-	cmd, ok := b.commands["checks"].(*ChecksCommand)
-	if !ok {
-		return fmt.Errorf("failed to get checks command")
-	}
-
-	for _, alert := range alerts {
-		if err := cmd.ScheduleAlert(alert); err != nil {
-			return fmt.Errorf("failed to schedule existing alert for %s: %w", alert.Network, err)
-		}
+	// If we have any existing monitor alerts configured, schedule them.
+	if err := b.scheduleExistingAlerts(); err != nil {
+		return fmt.Errorf("failed to schedule existing alerts: %w", err)
 	}
 
 	return nil
 }
 
+// Stop stops the bot.
 func (b *Bot) Stop() error {
 	return b.session.Close()
 }
 
-// handleCommandInteraction routes incoming Discord interactions to the appropriate command handler.
-func (b *Bot) handleCommandInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+// GetSession returns the Discord session.
+func (b *Bot) GetSession() *discordgo.Session {
+	return b.session
+}
+
+// GetScheduler returns the scheduler.
+func (b *Bot) GetScheduler() *scheduler.Scheduler {
+	return b.scheduler
+}
+
+// GetMonitorRepo returns the monitor repository.
+func (b *Bot) GetMonitorRepo() *store.MonitorRepo {
+	return b.monitorRepo
+}
+
+// GetChecksRunner returns the checks runner.
+func (b *Bot) GetChecksRunner() corechecks.Runner {
+	return b.checksRunner
+}
+
+// GetGrafana returns the Grafana client.
+
+func (b *Bot) GetGrafana() grafana.Client {
+	return b.grafana
+}
+
+// handleInteraction handles interactions from the Discord client.
+func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
 
 	data := i.ApplicationCommandData()
-	if cmd, ok := b.commands[data.Name]; ok {
-		cmd.Handle(s, i)
+	for _, cmd := range b.commands {
+		if cmd.Name() == data.Name {
+			cmd.Handle(s, i)
+			return
+		}
 	}
+}
+
+// scheduleExistingAlerts schedules existing monitor alerts.
+func (b *Bot) scheduleExistingAlerts() error {
+	alerts, err := b.monitorRepo.ListMonitorAlerts(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to list alerts: %w", err)
+	}
+
+	b.log.Infof("Found %d existing monitor alerts to schedule", len(alerts))
+
+	if len(alerts) == 0 {
+		return nil
+	}
+
+	checksCmd := b.getChecksCmd()
+	if checksCmd == nil {
+		return fmt.Errorf("checks command not found")
+	}
+
+	for _, alert := range alerts {
+		schedule := "*/1 * * * *"
+		jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", alert.Network, alert.ClientType, alert.Client)
+
+		// Create a copy of the alert for the closure.
+		alertCopy := alert
+
+		// Add it to the scheduler.
+		if err := b.scheduler.AddJob(jobName, schedule, func(ctx context.Context) error {
+			_, err := checksCmd.RunChecks(ctx, alertCopy)
+			return err
+		}); err != nil {
+			return fmt.Errorf("failed to schedule alert for %s: %w", alert.Network, err)
+		}
+
+		b.log.Infof("Scheduled alert for %s: %s", alert.Network, jobName)
+	}
+
+	return nil
+}
+
+// getChecksCmd returns the checks command.
+func (b *Bot) getChecksCmd() *cmdchecks.ChecksCommand {
+	for _, cmd := range b.commands {
+		if c, ok := cmd.(*cmdchecks.ChecksCommand); ok {
+			return c
+		}
+	}
+
+	return nil
 }

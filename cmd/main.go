@@ -1,18 +1,31 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/service"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 func main() {
 	var cfg service.Config
+
+	// Initialize logger.
+	log := logrus.New()
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
+	// Create root context.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	rootCmd := &cobra.Command{
 		Use:          "panda-pulse",
@@ -23,19 +36,31 @@ func main() {
 				return fmt.Errorf("invalid configuration: %w", err)
 			}
 
-			svc, err := service.NewService(&cfg)
+			svc, err := service.NewService(ctx, log, &cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create service: %w", err)
 			}
 
-			if err := svc.Start(); err != nil {
+			if err := svc.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start service: %w", err)
 			}
 
 			sig := make(chan os.Signal, 1)
 			signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-			<-sig
-			svc.Stop()
+
+			select {
+			case <-sig:
+				log.Info("Received shutdown signal...")
+			case <-ctx.Done():
+				log.Info("Context cancelled...")
+			}
+
+			// Create a new context with timeout for shutdown.
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer shutdownCancel()
+
+			log.Info("Shutting down...")
+			svc.Stop(shutdownCtx)
 
 			return nil
 		},

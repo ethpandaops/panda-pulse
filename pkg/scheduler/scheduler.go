@@ -3,10 +3,10 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/robfig/cron/v3"
+	"github.com/sirupsen/logrus"
 )
 
 type Job struct {
@@ -16,13 +16,15 @@ type Job struct {
 }
 
 type Scheduler struct {
+	log  *logrus.Logger
 	cron *cron.Cron
 	jobs map[string]cron.EntryID // Track jobs by name
 	mu   sync.Mutex
 }
 
-func NewScheduler() *Scheduler {
+func NewScheduler(log *logrus.Logger) *Scheduler {
 	return &Scheduler{
+		log:  log,
 		cron: cron.New(),
 		jobs: make(map[string]cron.EntryID),
 	}
@@ -32,7 +34,7 @@ func (s *Scheduler) AddJob(name, schedule string, run func(context.Context) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// If job already exists, remove it first
+	// If job already exists, remove it first.
 	if id, exists := s.jobs[name]; exists {
 		s.cron.Remove(id)
 	}
@@ -40,7 +42,7 @@ func (s *Scheduler) AddJob(name, schedule string, run func(context.Context) erro
 	id, err := s.cron.AddFunc(schedule, func() {
 		ctx := context.Background()
 		if err := run(ctx); err != nil {
-			log.Printf("job %s failed: %v", name, err)
+			s.log.Errorf("job %s failed: %v", name, err)
 		}
 	})
 	if err != nil {
@@ -48,6 +50,7 @@ func (s *Scheduler) AddJob(name, schedule string, run func(context.Context) erro
 	}
 
 	s.jobs[name] = id
+
 	return nil
 }
 

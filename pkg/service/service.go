@@ -1,8 +1,8 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -11,18 +11,18 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 type Service struct {
 	config      *Config
+	log         *logrus.Logger
 	scheduler   *scheduler.Scheduler
 	bot         *discord.Bot
-	grafana     grafana.Client
-	checks      checks.Runner
 	monitorRepo *store.MonitorRepo
 }
 
-func NewService(cfg *Config) (*Service, error) {
+func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service, error) {
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	// Grafana, the source of truth for our data.
@@ -34,16 +34,16 @@ func NewService(cfg *Config) (*Service, error) {
 	)
 
 	// Repository for managing monitor alerts.
-	monitorRepo, err := store.NewMonitorRepo(cfg.AsS3Config())
+	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 store: %w", err)
 	}
 
 	// Scheduler for managing the monitor alerts.
-	scheduler := scheduler.NewScheduler()
+	scheduler := scheduler.NewScheduler(log)
 
 	// Checks to execute on for each monitor alert.
-	checksRunner := checks.NewDefaultRunner()
+	checksRunner := checks.NewDefaultRunner(log)
 	checksRunner.RegisterCheck(checks.NewCLSyncCheck(grafanaClient))
 	checksRunner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
 	checksRunner.RegisterCheck(checks.NewCLFinalizedEpochCheck(grafanaClient))
@@ -52,6 +52,7 @@ func NewService(cfg *Config) (*Service, error) {
 
 	// And finally, our bot.
 	bot, err := discord.NewBot(
+		log,
 		cfg.AsDiscordConfig(),
 		scheduler,
 		monitorRepo,
@@ -64,30 +65,32 @@ func NewService(cfg *Config) (*Service, error) {
 
 	return &Service{
 		config:      cfg,
+		log:         log,
 		bot:         bot,
 		scheduler:   scheduler,
 		monitorRepo: monitorRepo,
 	}, nil
 }
 
-func (s *Service) Start() error {
-	log.Printf("Starting Discord bot...")
+func (s *Service) Start(ctx context.Context) error {
+	s.log.Info("Starting Discord bot...")
+
 	if err := s.bot.Start(); err != nil {
 		return fmt.Errorf("failed to start discord bot: %w", err)
 	}
 
-	log.Printf("Starting scheduler...")
+	s.log.Info("Starting scheduler...")
 	s.scheduler.Start()
 
-	log.Printf("Service started successfully")
+	s.log.Info("Service started successfully")
 
 	return nil
 }
 
-func (s *Service) Stop() {
-	log.Printf("Stopping service...")
+func (s *Service) Stop(ctx context.Context) {
+	s.log.Info("Stopping service...")
 	s.scheduler.Stop()
 	if err := s.bot.Stop(); err != nil {
-		log.Printf("Error stopping discord bot: %v", err)
+		s.log.Errorf("Error stopping discord bot: %v", err)
 	}
 }

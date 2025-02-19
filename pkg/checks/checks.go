@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/sirupsen/logrus"
 )
 
 // Result represents the outcome of a health check.
@@ -48,7 +49,6 @@ type Config struct {
 	Network       string
 	ConsensusNode string
 	ExecutionNode string
-	GrafanaToken  string
 }
 
 // Runner executes health checks.
@@ -61,12 +61,14 @@ type Runner interface {
 
 // defaultRunner is a default implementation of the Runner interface.
 type defaultRunner struct {
+	log    *logrus.Logger
 	checks []Check
 }
 
 // NewDefaultRunner creates a new default check runner.
-func NewDefaultRunner() Runner {
+func NewDefaultRunner(log *logrus.Logger) Runner {
 	return &defaultRunner{
+		log:    log,
 		checks: make([]Check, 0),
 	}
 }
@@ -94,7 +96,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 		client = cfg.ExecutionNode
 	}
 
-	log.Printf("=== Running checks:\n  - %s\n  - %s", client, cfg.Network)
+	r.log.Infof("=== Running checks:\n  - %s\n  - %s", client, cfg.Network)
 
 	// Run all checks against ALL clients to gather complete data for analysis. This is important to
 	// allow us to identify root causes behind some of the client issues.

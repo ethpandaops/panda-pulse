@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -14,12 +13,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/sirupsen/logrus"
 )
 
 type MonitorRepo struct {
 	store  *s3.Client
 	bucket string
 	prefix string
+	log    *logrus.Logger
 }
 
 type MonitorAlert struct {
@@ -31,8 +32,9 @@ type MonitorAlert struct {
 	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
-func NewMonitorRepo(cfg *S3Config) (*MonitorRepo, error) {
-	awsCfg, err := config.LoadDefaultConfig(context.Background(),
+func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*MonitorRepo, error) {
+	awsCfg, err := config.LoadDefaultConfig(
+		ctx,
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			cfg.AccessKeyID,
 			cfg.SecretAccessKey,
@@ -57,6 +59,7 @@ func NewMonitorRepo(cfg *S3Config) (*MonitorRepo, error) {
 		store:  s3.NewFromConfig(awsCfg),
 		bucket: cfg.Bucket,
 		prefix: cfg.Prefix,
+		log:    log,
 	}, nil
 }
 
@@ -78,11 +81,14 @@ func (s *MonitorRepo) ListMonitorAlerts(ctx context.Context) ([]*MonitorAlert, e
 			if !strings.HasSuffix(*obj.Key, ".json") || !strings.Contains(*obj.Key, "/alerts/") {
 				continue
 			}
+
 			alert, err := s.getAlert(ctx, *obj.Key)
 			if err != nil {
-				log.Printf("Failed to get alert %s: %v", *obj.Key, err)
+				s.log.Errorf("Failed to get alert %s: %v", *obj.Key, err)
+
 				continue
 			}
+
 			alerts = append(alerts, alert)
 		}
 	}
