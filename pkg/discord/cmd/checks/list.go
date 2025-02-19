@@ -130,7 +130,7 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 
 // listAlerts lists all alerts for a given network.
 func (c *ChecksCommand) listAlerts(ctx context.Context, network *string) ([]*store.MonitorAlert, error) {
-	alerts, err := c.bot.GetMonitorRepo().ListMonitorAlerts(ctx)
+	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list alerts: %w", err)
 	}

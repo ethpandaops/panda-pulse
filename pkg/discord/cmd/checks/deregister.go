@@ -66,7 +66,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 	// If client is specified, only remove that client's alert.
 	if client != nil {
 		// First try to find the alert to get its type.
-		alerts, err := c.bot.GetMonitorRepo().ListMonitorAlerts(ctx)
+		alerts, err := c.bot.GetMonitorRepo().List(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to list alerts: %w", err)
 		}
@@ -97,7 +97,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 		c.bot.GetScheduler().RemoveJob(jobName)
 
 		// Remove from S3.
-		if err := c.bot.GetMonitorRepo().DeleteMonitorAlert(ctx, network, *client); err != nil {
+		if err := c.bot.GetMonitorRepo().Purge(ctx, network, *client); err != nil {
 			return fmt.Errorf("failed to delete alert: %w", err)
 		}
 
@@ -105,7 +105,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 	}
 
 	// Otherwise, remove all clients for this network.
-	alerts, err := c.bot.GetMonitorRepo().ListMonitorAlerts(ctx)
+	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
@@ -118,7 +118,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 			jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", network, alert.ClientType, alert.Client)
 			c.bot.GetScheduler().RemoveJob(jobName)
 
-			if err := c.bot.GetMonitorRepo().DeleteMonitorAlert(ctx, network, alert.Client); err != nil {
+			if err := c.bot.GetMonitorRepo().Purge(ctx, network, alert.Client); err != nil {
 				return fmt.Errorf("failed to delete alert: %w", err)
 			}
 		}

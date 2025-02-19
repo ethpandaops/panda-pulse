@@ -64,7 +64,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 	}
 
 	// Check if this specific client is already registered.
-	alerts, err := c.bot.GetMonitorRepo().ListMonitorAlerts(ctx)
+	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
@@ -109,7 +109,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 		UpdatedAt:      time.Now(),
 	}
 
-	if err := c.bot.GetMonitorRepo().RegisterMonitorAlert(ctx, alert); err != nil {
+	if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
 		return fmt.Errorf("failed to store alert: %w", err)
 	}
 
@@ -133,7 +133,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 			UpdatedAt:      time.Now(),
 		}
 
-		if err := c.bot.GetMonitorRepo().RegisterMonitorAlert(ctx, alert); err != nil {
+		if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
 			return fmt.Errorf("failed to store CL alert: %w", err)
 		}
 
@@ -153,7 +153,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 			UpdatedAt:      time.Now(),
 		}
 
-		if err := c.bot.GetMonitorRepo().RegisterMonitorAlert(ctx, alert); err != nil {
+		if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
 			return fmt.Errorf("failed to store EL alert: %w", err)
 		}
 

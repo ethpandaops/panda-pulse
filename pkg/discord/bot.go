@@ -131,7 +131,7 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 
 // scheduleExistingAlerts schedules existing monitor alerts.
 func (b *Bot) scheduleExistingAlerts() error {
-	alerts, err := b.monitorRepo.ListMonitorAlerts(context.Background())
+	alerts, err := b.monitorRepo.List(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}

@@ -20,6 +20,8 @@ type Config struct {
 	SecretAccessKey  string
 	S3Bucket         string
 	S3BucketPrefix   string
+	S3Region         string
+	S3EndpointURL    string
 }
 
 func (c *Config) Validate() error {
@@ -52,6 +54,8 @@ func (c *Config) AsS3Config() *store.S3Config {
 		SecretAccessKey: c.SecretAccessKey,
 		Bucket:          c.S3Bucket,
 		Prefix:          c.S3BucketPrefix,
+		Region:          c.S3Region,
+		EndpointURL:     c.S3EndpointURL,
 	}
 }
 

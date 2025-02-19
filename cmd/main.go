@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/service"
+	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -82,6 +83,8 @@ func setConfig(cfg *service.Config) {
 	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	cfg.S3Bucket = os.Getenv("S3_BUCKET")
 	cfg.S3BucketPrefix = os.Getenv("S3_BUCKET_PREFIX")
+	cfg.S3Region = os.Getenv("AWS_REGION")
+	cfg.S3EndpointURL = os.Getenv("AWS_ENDPOINT_URL")
 
 	if cfg.GrafanaBaseURL == "" {
 		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL
@@ -91,7 +94,11 @@ func setConfig(cfg *service.Config) {
 		cfg.PromDatasourceID = grafana.DefaultPromDatasourceID
 	}
 
+	if cfg.S3Region == "" {
+		cfg.S3Region = store.DefaultRegion
+	}
+
 	if cfg.S3BucketPrefix == "" {
-		cfg.S3BucketPrefix = "ethrand"
+		cfg.S3BucketPrefix = store.DefaultBucketPrefix
 	}
 }

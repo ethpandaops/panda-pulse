@@ -9,20 +9,17 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/sirupsen/logrus"
 )
 
+// MonitorRepo implements Repository[*MonitorAlert].
 type MonitorRepo struct {
-	store  *s3.Client
-	bucket string
-	prefix string
-	log    *logrus.Logger
+	BaseRepo
 }
 
+// MonitorAlert represents a monitor alert.
 type MonitorAlert struct {
 	Network        string             `json:"network"`
 	DiscordChannel string             `json:"discord_channel"`
@@ -32,38 +29,20 @@ type MonitorAlert struct {
 	UpdatedAt      time.Time          `json:"updated_at"`
 }
 
+// NewMonitorRepo creates a new MonitorRepo.
 func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*MonitorRepo, error) {
-	awsCfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			cfg.AccessKeyID,
-			cfg.SecretAccessKey,
-			"",
-		)),
-		config.WithEndpointResolver(aws.EndpointResolverFunc(
-			func(service, region string) (aws.Endpoint, error) {
-				return aws.Endpoint{
-					URL:               "http://localhost:4566",
-					SigningRegion:     "us-east-1",
-					HostnameImmutable: true,
-				}, nil
-			},
-		)),
-		config.WithRegion("us-east-1"),
-	)
+	baseRepo, err := NewBaseRepo(ctx, log, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}
 
 	return &MonitorRepo{
-		store:  s3.NewFromConfig(awsCfg),
-		bucket: cfg.Bucket,
-		prefix: cfg.Prefix,
-		log:    log,
+		BaseRepo: baseRepo,
 	}, nil
 }
 
-func (s *MonitorRepo) ListMonitorAlerts(ctx context.Context) ([]*MonitorAlert, error) {
+// List implements Repository[*MonitorAlert].
+func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String(fmt.Sprintf("%s/networks/", s.prefix)),
@@ -78,7 +57,7 @@ func (s *MonitorRepo) ListMonitorAlerts(ctx context.Context) ([]*MonitorAlert, e
 		}
 
 		for _, obj := range page.Contents {
-			if !strings.HasSuffix(*obj.Key, ".json") || !strings.Contains(*obj.Key, "/alerts/") {
+			if !strings.HasSuffix(*obj.Key, ".json") || !strings.Contains(*obj.Key, "/monitor/") {
 				continue
 			}
 
@@ -96,13 +75,14 @@ func (s *MonitorRepo) ListMonitorAlerts(ctx context.Context) ([]*MonitorAlert, e
 	return alerts, nil
 }
 
-func (s *MonitorRepo) RegisterMonitorAlert(ctx context.Context, alert *MonitorAlert) error {
+// Persist implements Repository[*MonitorAlert].
+func (s *MonitorRepo) Persist(ctx context.Context, alert *MonitorAlert) error {
 	data, err := json.Marshal(alert)
 	if err != nil {
 		return fmt.Errorf("failed to marshal alert: %w", err)
 	}
 
-	fmt.Printf("Registering alert for network=%s channel=%s bucket=%s\n", alert.Network, alert.DiscordChannel, s.bucket)
+	s.log.Infof("Registering alert for network=%s channel=%s bucket=%s", alert.Network, alert.DiscordChannel, s.bucket)
 
 	key := s.alertKey(alert.Network, alert.Client)
 	_, err = s.store.PutObject(ctx, &s3.PutObjectInput{
@@ -117,9 +97,15 @@ func (s *MonitorRepo) RegisterMonitorAlert(ctx context.Context, alert *MonitorAl
 	return nil
 }
 
-func (s *MonitorRepo) DeleteMonitorAlert(ctx context.Context, network, client string) error {
-	key := s.alertKey(network, client)
+// Purge implements Repository[*MonitorAlert].
+func (s *MonitorRepo) Purge(ctx context.Context, identifiers ...string) error {
+	if len(identifiers) != 2 {
+		return fmt.Errorf("expected network and client identifiers, got %d identifiers", len(identifiers))
+	}
 
+	network, client := identifiers[0], identifiers[1]
+
+	key := s.alertKey(network, client)
 	_, err := s.store.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
@@ -132,7 +118,7 @@ func (s *MonitorRepo) DeleteMonitorAlert(ctx context.Context, network, client st
 }
 
 func (s *MonitorRepo) alertKey(network, client string) string {
-	return fmt.Sprintf("%s/networks/%s/alerts/%s.json", s.prefix, network, client)
+	return fmt.Sprintf("%s/networks/%s/monitor/%s.json", s.prefix, network, client)
 }
 
 func (s *MonitorRepo) getAlert(ctx context.Context, key string) (*MonitorAlert, error) {
