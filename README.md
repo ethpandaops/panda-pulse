@@ -26,7 +26,6 @@ docker run -e GRAFANA_SERVICE_TOKEN=your_token \
 
 - `GRAFANA_SERVICE_TOKEN` (required): Grafana service account token
 - `DISCORD_BOT_TOKEN` (required): Discord bot token for notifications
-- `OPENROUTER_API_KEY` (optional): OpenRouter API key for AI analysis
 
 #### Command Line Arguments
 

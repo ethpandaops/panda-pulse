@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 )
 
 // Result represents the outcome of a health check.
@@ -37,7 +38,7 @@ type Check interface {
 	// Category returns the category of the check.
 	Category() Category
 	// ClientType returns the client type of the check.
-	ClientType() ClientType
+	ClientType() clients.ClientType
 	// Run executes the check and returns the result.
 	Run(ctx context.Context, cfg Config) (*Result, error)
 }
@@ -85,10 +86,10 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 		client string
 	)
 
-	if cfg.ConsensusNode != ClientTypeAll.String() {
+	if cfg.ConsensusNode != clients.ClientTypeAll.String() {
 		a = analyzer.NewAnalyzer(cfg.ConsensusNode, analyzer.ClientTypeCL)
 		client = cfg.ConsensusNode
-	} else if cfg.ExecutionNode != ClientTypeAll.String() {
+	} else if cfg.ExecutionNode != clients.ClientTypeAll.String() {
 		a = analyzer.NewAnalyzer(cfg.ExecutionNode, analyzer.ClientTypeEL)
 		client = cfg.ExecutionNode
 	}
@@ -99,8 +100,8 @@ func (r *defaultRunner) RunChecks(ctx context.Context, cfg Config) ([]*Result, *
 	// allow us to identify root causes behind some of the client issues.
 	origConsensusNode := cfg.ConsensusNode
 	origExecutionNode := cfg.ExecutionNode
-	cfg.ConsensusNode = ClientTypeAll.String()
-	cfg.ExecutionNode = ClientTypeAll.String()
+	cfg.ConsensusNode = clients.ClientTypeAll.String()
+	cfg.ExecutionNode = clients.ClientTypeAll.String()
 
 	// As a first pass, gather all data for analysis.
 	allResults := make([]*Result, 0)

@@ -12,6 +12,11 @@ import (
 
 //go:generate mockgen -package mock -destination mock/client.mock.go github.com/ethpandaops/panda-pulse/pkg/grafana Client
 
+const (
+	DefaultGrafanaBaseURL   = "https://grafana.observability.ethpandaops.io"
+	DefaultPromDatasourceID = "UhcO3vy7z"
+)
+
 // Client is the interface for Grafana operations.
 type Client interface {
 	// Query executes a Grafana query.

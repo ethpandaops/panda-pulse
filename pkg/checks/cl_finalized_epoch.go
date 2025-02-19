@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 )
 
@@ -40,8 +41,8 @@ func (c *CLFinalizedEpochCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *CLFinalizedEpochCheck) ClientType() ClientType {
-	return ClientTypeCL
+func (c *CLFinalizedEpochCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeCL
 }
 
 // Run executes the check.

@@ -41,10 +41,8 @@ type Config struct {
 	DiscordChannel   string
 	GrafanaToken     string
 	DiscordToken     string
-	OpenRouterKey    string
 	GrafanaBaseURL   string
 	PromDatasourceID string
-	AlertUnexplained bool
 }
 
 func NewAnalyzer(targetClient string, clientType ClientType) *Analyzer {

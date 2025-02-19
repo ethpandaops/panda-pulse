@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 )
 
@@ -40,8 +41,8 @@ func (c *ELBlockHeightCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *ELBlockHeightCheck) ClientType() ClientType {
-	return ClientTypeEL
+func (c *ELBlockHeightCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeEL
 }
 
 // Run executes the check.

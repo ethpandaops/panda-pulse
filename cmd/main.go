@@ -6,14 +6,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/service"
-	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/spf13/cobra"
-)
-
-const (
-	defaultGrafanaBaseURL   = "https://grafana.observability.ethpandaops.io"
-	defaultPromDatasourceID = "UhcO3vy7z"
 )
 
 func main() {
@@ -21,35 +16,14 @@ func main() {
 
 	rootCmd := &cobra.Command{
 		Use:          "panda-pulse",
-		Short:        "EthPandaOps dev-net monitoring tool",
+		Short:        "ethPandaOps dev-net monitoring tool",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cfg.GrafanaToken == "" {
-				return fmt.Errorf("GRAFANA_SERVICE_TOKEN environment variable is required")
-			}
-			if cfg.DiscordToken == "" {
-				return fmt.Errorf("DISCORD_BOT_TOKEN environment variable is required")
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("invalid configuration: %w", err)
 			}
 
-			// Initialize AWS and service
-			store, err := store.NewS3Store(&store.S3Config{
-				AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
-				SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-				Bucket:          os.Getenv("S3_BUCKET"),
-				Prefix:          "bot",
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create S3 store: %w", err)
-			}
-
-			svc, err := service.NewService(&service.Config{
-				Store:            store,
-				GrafanaBaseURL:   defaultGrafanaBaseURL,
-				GrafanaToken:     cfg.GrafanaToken,
-				DiscordToken:     cfg.DiscordToken,
-				PromDatasourceID: defaultPromDatasourceID,
-				OpenRouterKey:    cfg.OpenRouterKey,
-			})
+			svc, err := service.NewService(&cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create service: %w", err)
 			}
@@ -67,13 +41,32 @@ func main() {
 		},
 	}
 
-	// Environment variables
-	cfg.GrafanaToken = os.Getenv("GRAFANA_SERVICE_TOKEN")
-	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
-	cfg.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")
-	cfg.AlertUnexplained = true
+	setConfig(&cfg)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+func setConfig(cfg *service.Config) {
+	cfg.GrafanaToken = os.Getenv("GRAFANA_SERVICE_TOKEN")
+	cfg.GrafanaBaseURL = os.Getenv("GRAFANA_BASE_URL")
+	cfg.PromDatasourceID = os.Getenv("PROMETHEUS_DATASOURCE_ID")
+	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
+	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
+	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	cfg.S3Bucket = os.Getenv("S3_BUCKET")
+	cfg.S3BucketPrefix = os.Getenv("S3_BUCKET_PREFIX")
+
+	if cfg.GrafanaBaseURL == "" {
+		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL
+	}
+
+	if cfg.PromDatasourceID == "" {
+		cfg.PromDatasourceID = grafana.DefaultPromDatasourceID
+	}
+
+	if cfg.S3BucketPrefix == "" {
+		cfg.S3BucketPrefix = "ethrand"
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 )
 
@@ -39,8 +40,8 @@ func (c *CLSyncCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *CLSyncCheck) ClientType() ClientType {
-	return ClientTypeCL
+func (c *CLSyncCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeCL
 }
 
 // Run executes the check.
