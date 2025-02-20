@@ -16,11 +16,15 @@ import (
 
 //go:generate mockgen -package mock -destination mock/bot.mock.go github.com/ethpandaops/panda-pulse/pkg/discord Bot
 
-// Bot represents the interface for the Discord bot.
-type Bot interface {
-	Start() error
-	Stop() error
+// BotCore is the core interface for the Discord bot.
+type BotCore interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 	GetSession() *discordgo.Session
+}
+
+// BotServices is the services interface for the Discord bot.
+type BotServices interface {
 	GetScheduler() *scheduler.Scheduler
 	GetMonitorRepo() *store.MonitorRepo
 	GetChecksRepo() *store.ChecksRepo
@@ -28,8 +32,14 @@ type Bot interface {
 	GetHive() hive.Hive
 }
 
-// botImpl represents the Discord bot implementation.
-type botImpl struct {
+// Bot is the interface for the Discord bot.
+type Bot interface {
+	BotCore
+	BotServices
+}
+
+// discordBot represents the Discord bot implementation.
+type discordBot struct {
 	log         *logrus.Logger
 	config      *Config
 	session     *discordgo.Session
@@ -57,7 +67,7 @@ func NewBot(
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
-	bot := &botImpl{
+	bot := &discordBot{
 		log:         log,
 		config:      cfg,
 		session:     session,
@@ -79,16 +89,20 @@ func NewBot(
 }
 
 // Start starts the bot.
-func (b *botImpl) Start() error {
+func (b *discordBot) Start(ctx context.Context) error {
 	// Open connection with Discord.
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open discord connection: %w", err)
 	}
 
-	// Register application commands.
 	for _, cmd := range b.commands {
-		if err := cmd.Register(b.session); err != nil {
-			return fmt.Errorf("failed to register command: %w", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if err := cmd.Register(b.session); err != nil {
+				return fmt.Errorf("failed to register command: %w", err)
+			}
 		}
 	}
 
@@ -101,42 +115,47 @@ func (b *botImpl) Start() error {
 }
 
 // Stop stops the bot.
-func (b *botImpl) Stop() error {
-	return b.session.Close()
+func (b *discordBot) Stop(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return b.session.Close()
+	}
 }
 
 // GetSession returns the Discord session.
-func (b *botImpl) GetSession() *discordgo.Session {
+func (b *discordBot) GetSession() *discordgo.Session {
 	return b.session
 }
 
 // GetScheduler returns the scheduler.
-func (b *botImpl) GetScheduler() *scheduler.Scheduler {
+func (b *discordBot) GetScheduler() *scheduler.Scheduler {
 	return b.scheduler
 }
 
 // GetMonitorRepo returns the monitor repository.
-func (b *botImpl) GetMonitorRepo() *store.MonitorRepo {
+func (b *discordBot) GetMonitorRepo() *store.MonitorRepo {
 	return b.monitorRepo
 }
 
 // GetChecksRepo returns the checks repository.
-func (b *botImpl) GetChecksRepo() *store.ChecksRepo {
+func (b *discordBot) GetChecksRepo() *store.ChecksRepo {
 	return b.checksRepo
 }
 
 // GetGrafana returns the Grafana client.
-func (b *botImpl) GetGrafana() grafana.Client {
+func (b *discordBot) GetGrafana() grafana.Client {
 	return b.grafana
 }
 
 // GetHive returns the Hive client.
-func (b *botImpl) GetHive() hive.Hive {
+func (b *discordBot) GetHive() hive.Hive {
 	return b.hive
 }
 
 // handleInteraction handles interactions from the Discord client.
-func (b *botImpl) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func (b *discordBot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
@@ -152,7 +171,7 @@ func (b *botImpl) handleInteraction(s *discordgo.Session, i *discordgo.Interacti
 }
 
 // scheduleExistingAlerts schedules existing monitor alerts.
-func (b *botImpl) scheduleExistingAlerts() error {
+func (b *discordBot) scheduleExistingAlerts() error {
 	alerts, err := b.monitorRepo.List(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
@@ -180,11 +199,23 @@ func (b *botImpl) scheduleExistingAlerts() error {
 
 		// Add it to the scheduler.
 		if err := b.scheduler.AddJob(jobName, schedule, func(ctx context.Context) error {
+			b.log.WithFields(logrus.Fields{
+				"network": alert.Network,
+				"client":  alert.Client,
+				"key":     jobName,
+			}).Info("Running checks")
+
 			_, err := checksCmd.RunChecks(ctx, alertCopy)
 
 			return err
 		}); err != nil {
-			return fmt.Errorf("failed to schedule alert for %s: %w", alert.Network, err)
+			// Don't return an error here, just log it and continue scheduling the rest.
+			b.log.WithError(err).WithFields(logrus.Fields{
+				"network": alert.Network,
+				"client":  alert.Client,
+			}).Error("Failed to schedule alert")
+
+			continue
 		}
 
 		b.log.WithFields(logrus.Fields{
@@ -200,7 +231,7 @@ func (b *botImpl) scheduleExistingAlerts() error {
 }
 
 // getChecksCmd returns the checks command.
-func (b *botImpl) getChecksCmd() *cmdchecks.ChecksCommand {
+func (b *discordBot) getChecksCmd() *cmdchecks.ChecksCommand {
 	for _, cmd := range b.commands {
 		if c, ok := cmd.(*cmdchecks.ChecksCommand); ok {
 			return c

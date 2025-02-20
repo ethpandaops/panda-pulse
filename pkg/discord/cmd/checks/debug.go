@@ -14,7 +14,16 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
 
-func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.InteractionCreate, opt *discordgo.ApplicationCommandInteractionDataOption) error {
+const (
+	msgNoCheckFound = "ℹ️ No check found with ID: %s"
+	debugEmbedColor = 0x7289DA
+)
+
+func (c *ChecksCommand) handleDebug(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	opt *discordgo.ApplicationCommandInteractionDataOption,
+) error {
 	// Acknowledge the interaction first.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -42,7 +51,7 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 
 	if matchingArtifact == nil {
 		if _, ierr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("ℹ️ No check found with ID: %s", checkID)),
+			Content: stringPtr(fmt.Sprintf(msgNoCheckFound, checkID)),
 		}); ierr != nil {
 			return fmt.Errorf("failed to send not found message: %w", ierr)
 		}
@@ -53,12 +62,7 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 	// Get the log content.
 	output, err := c.bot.GetChecksRepo().GetStore().GetObject(context.Background(), &s3.GetObjectInput{
 		Bucket: aws.String(c.bot.GetChecksRepo().GetBucket()),
-		Key: aws.String(fmt.Sprintf("%s/networks/%s/checks/%s/%s.log",
-			c.bot.GetChecksRepo().GetPrefix(),
-			matchingArtifact.Network,
-			matchingArtifact.Client,
-			matchingArtifact.CheckID,
-		)),
+		Key:    aws.String(c.getLogPath(matchingArtifact)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get log content: %w", err)
@@ -72,42 +76,11 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 		return fmt.Errorf("failed to read log content: %w", err)
 	}
 
-	// Create the embed.
-	embed := &discordgo.MessageEmbed{
-		Title: "Debug Log",
-		Color: 0x7289DA,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "ID",
-				Value:  fmt.Sprintf("`%s`", matchingArtifact.CheckID),
-				Inline: false,
-			},
-			{
-				Name:   "Network",
-				Value:  fmt.Sprintf("🌐 `%s`", matchingArtifact.Network),
-				Inline: true,
-			},
-			{
-				Name:   "Client",
-				Value:  fmt.Sprintf("`%s`", matchingArtifact.Client),
-				Inline: true,
-			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	// Add client logo if available.
-	if logo := clients.GetClientLogo(matchingArtifact.Client); logo != "" {
-		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
-			URL: logo,
-		}
-	}
-
 	// Send the embed first.
-	_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+	embed := buildDebugEmbed(matchingArtifact)
+	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Embeds: &[]*discordgo.MessageEmbed{embed},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to send embed: %w", err)
 	}
 
@@ -125,4 +98,49 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 	}
 
 	return nil
+}
+
+// buildDebugEmbed creates the debug log embed.
+func buildDebugEmbed(artifact *store.CheckArtifact) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title: "Debug Log",
+		Color: debugEmbedColor,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "ID",
+				Value:  fmt.Sprintf("`%s`", artifact.CheckID),
+				Inline: false,
+			},
+			{
+				Name:   "Network",
+				Value:  fmt.Sprintf("🌐 `%s`", artifact.Network),
+				Inline: true,
+			},
+			{
+				Name:   "Client",
+				Value:  fmt.Sprintf("`%s`", artifact.Client),
+				Inline: true,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	if logo := clients.GetClientLogo(artifact.Client); logo != "" {
+		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
+			URL: logo,
+		}
+	}
+
+	return embed
+}
+
+// getLogPath returns the S3 path for a check's log file.
+func (c *ChecksCommand) getLogPath(artifact *store.CheckArtifact) string {
+	return fmt.Sprintf(
+		"%s/networks/%s/checks/%s/%s.log",
+		c.bot.GetChecksRepo().GetPrefix(),
+		artifact.Network,
+		artifact.Client,
+		artifact.CheckID,
+	)
 }

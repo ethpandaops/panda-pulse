@@ -148,8 +148,8 @@ func TestService(t *testing.T) {
 		mockBot := mock.NewMockBot(ctrl)
 
 		// Set expectations
-		mockBot.EXPECT().Start().Return(nil)
-		mockBot.EXPECT().Stop().Return(nil)
+		mockBot.EXPECT().Start(ctx).Return(nil)
+		mockBot.EXPECT().Stop(ctx).Return(nil)
 		mockBot.EXPECT().GetGrafana().Return(nil).AnyTimes()
 		mockBot.EXPECT().GetMonitorRepo().Return(nil).AnyTimes()
 		mockBot.EXPECT().GetChecksRepo().Return(nil).AnyTimes()

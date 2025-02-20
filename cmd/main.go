@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const shutdownTimeout = 30 * time.Second
+
 func main() {
 	var cfg service.Config
 
@@ -57,7 +59,7 @@ func main() {
 			}
 
 			// Create a new context with timeout for shutdown.
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer shutdownCancel()
 
 			log.Info("Shutting down...")

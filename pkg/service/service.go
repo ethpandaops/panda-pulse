@@ -15,20 +15,31 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	defaultHealthPort  = ":9191"
+	defaultMetricsPort = ":9091"
+	defaultHTTPTimeout = 30 * time.Second
+	healthReadTimeout  = 10 * time.Second
+	metricsReadTimeout = 10 * time.Second
+)
+
+// Service is the main service for the panda-pulse application.
 type Service struct {
 	config      *Config
 	log         *logrus.Logger
 	scheduler   *scheduler.Scheduler
 	bot         discord.Bot
 	monitorRepo *store.MonitorRepo
+	checksRepo  *store.ChecksRepo
 	healthSrv   *http.Server
 	metricsSrv  *http.Server
 }
 
+// NewService creates a new Service.
 func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service, error) {
 	log.Info("Starting service")
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: defaultHTTPTimeout}
 
 	// Grafana, the source of truth for our data.
 	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), httpClient)
@@ -76,6 +87,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		bot:         bot,
 		scheduler:   scheduler,
 		monitorRepo: monitorRepo,
+		checksRepo:  checksRepo,
 	}, nil
 }
 
@@ -89,7 +101,7 @@ func (s *Service) Start(ctx context.Context) error {
 	// Start the discord bot.
 	s.log.Info("Starting discord bot")
 
-	if err := s.bot.Start(); err != nil {
+	if err := s.bot.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start discord bot: %w", err)
 	}
 
@@ -112,7 +124,7 @@ func (s *Service) Stop(ctx context.Context) error {
 	// Stop the discord bot.
 	s.log.Info("Stopping discord bot")
 
-	if err := s.bot.Stop(); err != nil {
+	if err := s.bot.Stop(ctx); err != nil {
 		return fmt.Errorf("error stopping discord bot: %w", err)
 	}
 
@@ -137,7 +149,7 @@ func (s *Service) Stop(ctx context.Context) error {
 
 func (s *Service) startHealthServer() *http.Server {
 	if s.config.HealthCheckAddress == "" {
-		s.config.HealthCheckAddress = ":9191"
+		s.config.HealthCheckAddress = defaultHealthPort
 	}
 
 	s.log.WithFields(logrus.Fields{
@@ -149,7 +161,7 @@ func (s *Service) startHealthServer() *http.Server {
 	srv := &http.Server{
 		Addr:              s.config.HealthCheckAddress,
 		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: healthReadTimeout,
 	}
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +183,7 @@ func (s *Service) startHealthServer() *http.Server {
 
 func (s *Service) startMetricsServer() *http.Server {
 	if s.config.MetricsAddress == "" {
-		s.config.MetricsAddress = ":9091"
+		s.config.MetricsAddress = defaultMetricsPort
 	}
 
 	s.log.WithFields(logrus.Fields{
@@ -184,7 +196,7 @@ func (s *Service) startMetricsServer() *http.Server {
 
 	srv := &http.Server{
 		Addr:              s.config.MetricsAddress,
-		ReadHeaderTimeout: 15 * time.Second,
+		ReadHeaderTimeout: metricsReadTimeout,
 		Handler:           sm,
 	}
 

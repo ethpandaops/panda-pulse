@@ -18,6 +18,11 @@ import (
 	"golang.org/x/text/language"
 )
 
+const (
+	threadAutoArchiveDuration = 60 // 1 hour.
+	threadDateFormat          = "2006-01-02"
+)
+
 // ChecksCommand handles the /checks command.
 type ChecksCommand struct {
 	log *logrus.Logger
@@ -195,15 +200,33 @@ func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCre
 
 // RunChecks runs the health checks for a given alert.
 func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert) (bool, error) {
-	// Determine client type if not set.
 	if alert.ClientType == clients.ClientTypeAll {
 		return false, fmt.Errorf("running checks for all clients is not supported")
 	}
 
-	var (
-		consensusNode string
-		executionNode string
-	)
+	runner, err := c.setupRunner(alert)
+	if err != nil {
+		return false, err
+	}
+
+	if err := runner.RunChecks(ctx); err != nil {
+		return false, fmt.Errorf("failed to run checks: %w", err)
+	}
+
+	if err := c.persistCheckResults(ctx, alert, runner); err != nil {
+		return false, err
+	}
+
+	if err := c.handleHiveResults(ctx, alert, runner); err != nil {
+		return false, err
+	}
+
+	return c.sendResults(alert, runner)
+}
+
+// setupRunner creates and configures a new checks runner.
+func (c *ChecksCommand) setupRunner(alert *store.MonitorAlert) (checks.Runner, error) {
+	var consensusNode, executionNode string
 
 	if clients.IsELClient(alert.Client) {
 		executionNode = alert.Client
@@ -211,90 +234,95 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 		consensusNode = alert.Client
 	}
 
-	var (
-		gc     = c.bot.GetGrafana()
-		runner = checks.NewDefaultRunner(checks.Config{
-			Network:       alert.Network,
-			ConsensusNode: consensusNode,
-			ExecutionNode: executionNode,
-		})
-	)
+	runner := checks.NewDefaultRunner(checks.Config{
+		Network:       alert.Network,
+		ConsensusNode: consensusNode,
+		ExecutionNode: executionNode,
+	})
 
-	// Register the checks to run.
-	runner.RegisterCheck(checks.NewCLSyncCheck(gc))
-	runner.RegisterCheck(checks.NewHeadSlotCheck(gc))
-	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(gc))
-	runner.RegisterCheck(checks.NewELSyncCheck(gc))
-	runner.RegisterCheck(checks.NewELBlockHeightCheck(gc))
+	runner.RegisterCheck(checks.NewCLSyncCheck(c.bot.GetGrafana()))
+	runner.RegisterCheck(checks.NewHeadSlotCheck(c.bot.GetGrafana()))
+	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(c.bot.GetGrafana()))
+	runner.RegisterCheck(checks.NewELSyncCheck(c.bot.GetGrafana()))
+	runner.RegisterCheck(checks.NewELBlockHeightCheck(c.bot.GetGrafana()))
 
-	// Run the checks.
-	if err := runner.RunChecks(ctx); err != nil {
-		return false, fmt.Errorf("failed to run checks: %w", err)
-	}
+	return runner, nil
+}
 
-	// Persist the check output, for debugging purposes later if needed.
-	if err := c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
+// persistCheckResults persists the check results to storage.
+func (c *ChecksCommand) persistCheckResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) error {
+	now := time.Now()
+
+	return c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
 		Network:   alert.Network,
 		Client:    alert.Client,
 		CheckID:   runner.GetID(),
 		Type:      "log",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
 		Content:   runner.GetLog().GetBuffer().Bytes(),
-	}); err != nil {
-		return false, fmt.Errorf("failed to persist check artifact: %w", err)
+	})
+}
+
+// isHiveAvailable checks if Hive is available for the given network.
+func (c *ChecksCommand) isHiveAvailable(network string) bool {
+	available, _ := c.bot.GetHive().IsAvailable(context.Background(), network)
+
+	return available
+}
+
+// handleHiveResults handles capturing and persisting Hive results.
+func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) error {
+	if !c.isHiveAvailable(alert.Network) {
+		return nil
 	}
 
-	hiveAvailable, err := c.bot.GetHive().IsAvailable(context.Background(), alert.Network)
+	var consensusNode, executionNode string
+
+	if clients.IsELClient(alert.Client) {
+		executionNode = alert.Client
+	} else {
+		consensusNode = alert.Client
+	}
+
+	content, err := c.bot.GetHive().Snapshot(ctx, hive.SnapshotConfig{
+		Network:       alert.Network,
+		ConsensusNode: consensusNode,
+		ExecutionNode: executionNode,
+	})
 	if err != nil {
-		return false, fmt.Errorf("failed to check hive availability: %w", err)
-	}
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			c.log.WithFields(logrus.Fields{
+				"network":       alert.Network,
+				"consensusNode": consensusNode,
+				"executionNode": executionNode,
+			}).WithError(err).Error("hive screenshot timed out")
 
-	if hiveAvailable {
-		hiveContent, hiveErr := c.bot.GetHive().Snapshot(context.Background(), hive.SnapshotConfig{
-			Network:       alert.Network,
-			ConsensusNode: consensusNode,
-			ExecutionNode: executionNode,
-		})
-		if hiveErr != nil {
-			if strings.Contains(hiveErr.Error(), "context deadline exceeded") {
-				c.log.WithFields(logrus.Fields{
-					"network":       alert.Network,
-					"consensusNode": consensusNode,
-					"executionNode": executionNode,
-				}).WithError(hiveErr).Error("hive screenshot timed out")
-			} else {
-				return false, fmt.Errorf("failed to snapshot test coverage: %w", hiveErr)
-			}
+			return nil
 		}
 
-		// Persist the hive output, so we can include in our discord embed.
-		if len(hiveContent) > 0 {
-			if persistErr := c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
-				Network:   alert.Network,
-				Client:    alert.Client,
-				CheckID:   runner.GetID(),
-				Type:      "png",
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-				Content:   hiveContent,
-			}); persistErr != nil {
-				return false, fmt.Errorf("failed to persist check artifact: %w", persistErr)
-			}
-		}
+		return fmt.Errorf("failed to snapshot test coverage: %w", err)
 	}
 
-	// Send the results to Discord.
-	alertSent, err := c.sendResults(alert, runner, hiveAvailable)
-	if err != nil {
-		return alertSent, fmt.Errorf("failed to send discord notification: %w", err)
+	if len(content) == 0 {
+		return nil
 	}
 
-	return alertSent, nil
+	now := time.Now()
+
+	return c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
+		Network:   alert.Network,
+		Client:    alert.Client,
+		CheckID:   runner.GetID(),
+		Type:      "png",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Content:   content,
+	})
 }
 
 // sendResults sends the analysis results to Discord.
-func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner, hiveAvailable bool) (bool, error) {
+func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
 	var (
 		hasFailures          = false
 		isRootCause          = false
@@ -302,6 +330,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 		checkID              = runner.GetID()
 		analysis             = runner.GetAnalysis()
 		results              = runner.GetResults()
+		isHiveAvailable      = c.isHiveAvailable(alert.Network)
 	)
 
 	// Check if this client is a root cause.
@@ -345,7 +374,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 		Alert:          alert,
 		CheckID:        checkID,
 		Results:        results,
-		HiveAvailable:  hiveAvailable,
+		HiveAvailable:  isHiveAvailable,
 		GrafanaBaseURL: c.bot.GetGrafana().GetBaseURL(),
 		HiveBaseURL:    c.bot.GetHive().GetBaseURL(),
 	})
@@ -368,7 +397,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 	}
 
 	// If hive is available, pop a screenshot of the test coverage into the thread.
-	if hiveAvailable {
+	if isHiveAvailable {
 		screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
 		if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
 			if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
@@ -393,18 +422,18 @@ func (c *ChecksCommand) createMainMessage(alert *store.MonitorAlert, builder *me
 
 // createThread creates a new thread for the given message.
 func (c *ChecksCommand) createThread(messageID string, alert *store.MonitorAlert) (*discordgo.Channel, error) {
-	threadName := fmt.Sprintf("Issues - %s", time.Now().Format("2006-01-02"))
+	threadName := fmt.Sprintf("Issues - %s", time.Now().Format(threadDateFormat))
 	if alert.Client != "" {
 		threadName = fmt.Sprintf(
 			"%s Issues - %s",
 			cases.Title(language.English, cases.Compact).String(alert.Client),
-			time.Now().Format("2006-01-02"),
+			time.Now().Format(threadDateFormat),
 		)
 	}
 
 	return c.bot.GetSession().MessageThreadStartComplex(alert.DiscordChannel, messageID, &discordgo.ThreadStart{
 		Name:                threadName,
-		AutoArchiveDuration: 60,
+		AutoArchiveDuration: threadAutoArchiveDuration,
 		Invitable:           false,
 	})
 }

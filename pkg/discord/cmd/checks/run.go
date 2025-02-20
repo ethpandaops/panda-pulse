@@ -9,13 +9,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+//nolint:gosec // false positive, no hardcoded credentials.
+const (
+	msgRunningCheck   = "🔄 Running manual check for **%s** on **%s**..."
+	msgChecksPassed   = "✅ All checks passed for **%s** on **%s**"
+	msgIssuesDetected = "ℹ️ Issues detected for **%s** on **%s**, see below for details"
+)
+
 // handleRun handles the '/checks run' command.
-func (c *ChecksCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
-	var (
-		options = data.Options
-		network = options[0].StringValue()
-		client  = options[1].StringValue()
-	)
+func (c *ChecksCommand) handleRun(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	data *discordgo.ApplicationCommandInteractionDataOption,
+) error {
+	network, client := extractOptions(data)
 
 	c.log.WithFields(logrus.Fields{
 		"command": "/checks run",
@@ -28,42 +35,46 @@ func (c *ChecksCommand) handleRun(s *discordgo.Session, i *discordgo.Interaction
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("🔄 Running manual check for **%s** on **%s**...", client, network),
+			Content: fmt.Sprintf(msgRunningCheck, client, network),
 		},
 	}); err != nil {
 		return fmt.Errorf("failed to send initial response: %w", err)
 	}
 
-	// Create a temporary alert.
-	tempAlert := &store.MonitorAlert{
+	// Run the check using the service.
+	alertSent, err := c.RunChecks(context.Background(), &store.MonitorAlert{
 		Network:        network,
 		Client:         client,
 		DiscordChannel: i.ChannelID,
-	}
-
-	// Run the check using the service.
-	alertSent, err := c.RunChecks(context.Background(), tempAlert)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to run checks: %w", err)
 	}
 
+	// If no alert was sent, everything is good.
 	if !alertSent {
-		// If no alert was sent, everything is good..
-		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("✅ All checks passed for **%s** on **%s**", client, network)),
-		})
-		if err != nil {
-			c.log.Printf("Failed to edit initial response: %v", err)
-		}
-	} else {
-		// Otherwise, we have issues.
-		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("ℹ️ Issues detected for **%s** on **%s**, see below for details", client, network)),
-		})
-		if err != nil {
+		if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf(msgChecksPassed, client, network)),
+		}); err != nil {
 			c.log.Errorf("Failed to edit initial response: %v", err)
 		}
+
+		return nil
+	}
+
+	// Otherwise, we have issues.
+	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: stringPtr(fmt.Sprintf(msgIssuesDetected, client, network)),
+	}); err != nil {
+		c.log.Errorf("Failed to edit initial response: %v", err)
 	}
 
 	return nil
+}
+
+// extractOptions extracts command options into a structured format.
+func extractOptions(data *discordgo.ApplicationCommandInteractionDataOption) (network, client string) {
+	options := data.Options
+
+	return options[0].StringValue(), options[1].StringValue()
 }

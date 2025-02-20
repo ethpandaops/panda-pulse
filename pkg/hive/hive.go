@@ -9,8 +9,16 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// BaseURL is the base URL of the Hive instance.
-const BaseURL = "https://hive.ethpandaops.io"
+const (
+	BaseURL               = "https://hive.ethpandaops.io"
+	defaultViewportWidth  = 500
+	defaultViewportHeight = 800
+	httpTimeout           = 30 * time.Second
+)
+
+var httpClient = &http.Client{
+	Timeout: httpTimeout,
+}
 
 // Hive is the interface for Hive operations.
 type Hive interface {
@@ -47,36 +55,28 @@ func (h *hive) GetBaseURL() string {
 
 // Snapshot takes a screenshot of the test coverage for a specific client.
 func (h *hive) Snapshot(ctx context.Context, cfg SnapshotConfig) ([]byte, error) {
-	// Create browser context with mobile viewport, use mobile emulation to get a better screenshot
-	// and less dead space.
-	opts := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.DisableGPU,
-		chromedp.NoSandbox,
-		chromedp.Flag("ignore-certificate-errors", true),
-		chromedp.Flag("headless", true),
-		chromedp.WindowSize(500, 800),
-		chromedp.Flag("enable-mobile-emulation", true),
-	)
+	// Ensure the configuration is valid.
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	// Create browser context with mobile viewport.
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), getDefaultChromeOptions()...)
 	defer cancel()
 
 	browserCtx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	// Set timeout
-	timeoutCtx, cancel := context.WithTimeout(browserCtx, 10*time.Second)
+	// Set timeout.
+	timeoutCtx, cancel := context.WithTimeout(browserCtx, httpTimeout)
 	defer cancel()
 
 	// Determine which client to screenshot and map the name.
 	var clientName string
 	if cfg.ConsensusNode != "" {
 		clientName = mapClientName(cfg.ConsensusNode)
-	} else if cfg.ExecutionNode != "" {
-		clientName = mapClientName(cfg.ExecutionNode)
 	} else {
-		return nil, fmt.Errorf("no client specified")
+		clientName = mapClientName(cfg.ExecutionNode)
 	}
 
 	// Build the URL + build a selector for both boxes (consume-engine and consume-rlp).
@@ -87,7 +87,7 @@ func (h *hive) Snapshot(ctx context.Context, cfg SnapshotConfig) ([]byte, error)
 		exists   bool
 	)
 
-	// First check if the element exists
+	// First check if the element exists.
 	if err := chromedp.Run(
 		timeoutCtx,
 		chromedp.Navigate(pageURL),
@@ -104,13 +104,14 @@ func (h *hive) Snapshot(ctx context.Context, cfg SnapshotConfig) ([]byte, error)
 	}
 
 	// Get the parent div that contains both boxes.
-	parentSelector := fmt.Sprintf(`//div[contains(@class, "client-box") and @data-client="%s_default"]/ancestor::div[contains(@class, "suite-box")]`, clientName)
+	parentSelector := fmt.Sprintf(
+		`//div[contains(@class, "client-box") and @data-client="%s_default"]/ancestor::div[contains(@class, "suite-box")]`,
+		clientName,
+	)
 
 	if err := chromedp.Run(
 		timeoutCtx,
-		// Wait for any boxes for this client to be visible.
 		chromedp.WaitVisible(selector),
-		// Take screenshot of the parent div containing both boxes.
 		chromedp.Screenshot(parentSelector, &buf, chromedp.NodeVisible, chromedp.BySearch),
 	); err != nil {
 		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
@@ -121,17 +122,25 @@ func (h *hive) Snapshot(ctx context.Context, cfg SnapshotConfig) ([]byte, error)
 
 // IsAvailable checks if Hive is available for a given network.
 func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
-	url := fmt.Sprintf("%s/%s/index.html", h.baseURL, network)
+	if network == "" {
+		return false, fmt.Errorf("network cannot be empty")
+	}
 
-	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodHead,
+		fmt.Sprintf("%s/%s/index.html", h.baseURL, network),
+		nil,
+	)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("failed to check hive availability: %w", err)
 	}
+
 	defer resp.Body.Close()
 
 	return resp.StatusCode == http.StatusOK, nil
@@ -144,4 +153,16 @@ func mapClientName(client string) string {
 	}
 
 	return client
+}
+
+func getDefaultChromeOptions() []chromedp.ExecAllocatorOption {
+	return append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.DisableGPU,
+		chromedp.NoSandbox,
+		chromedp.Flag("ignore-certificate-errors", true),
+		chromedp.Flag("headless", true),
+		chromedp.WindowSize(defaultViewportWidth, defaultViewportHeight),
+		chromedp.Flag("enable-mobile-emulation", true),
+	)
 }

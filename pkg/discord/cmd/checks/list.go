@@ -11,8 +11,26 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	msgNoChecksRegistered = "ℹ️ No checks are currently registered%s\n"
+	msgNoChecksForNetwork = " for the network **%s**"
+	msgNoChecksAnyNetwork = " for any network"
+	msgNetworkClients     = "🌐 Clients registered for **%s** notifications\n"
+	msgAlertsSentTo       = "Alerts are sent to "
+)
+
+// clientInfo represents registration status and channel for a client.
+type clientInfo struct {
+	registered bool
+	channelID  string
+}
+
 // handleList handles the '/checks list' command.
-func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
+func (c *ChecksCommand) handleList(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	data *discordgo.ApplicationCommandInteractionDataOption,
+) error {
 	var network *string
 
 	if len(data.Options) > 0 {
@@ -40,15 +58,13 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 
 	// If no alerts found.
 	if len(networks) == 0 {
-		msg.WriteString("ℹ️ No checks are currently registered")
+		suffix := msgNoChecksAnyNetwork
 
 		if network != nil {
-			msg.WriteString(fmt.Sprintf(" for the network **%s**", *network))
-		} else {
-			msg.WriteString(" for any network")
+			suffix = fmt.Sprintf(msgNoChecksForNetwork, *network)
 		}
 
-		msg.WriteString("\n")
+		msg.WriteString(fmt.Sprintf(msgNoChecksRegistered, suffix))
 	}
 
 	// For each network, show the client status table.
@@ -58,11 +74,6 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 		}
 
 		// Create a map of registered clients for this network.
-		type clientInfo struct {
-			registered bool
-			channelID  string
-		}
-
 		var (
 			registered = make(map[string]clientInfo)
 			allClients = append(clients.CLClients, clients.ELClients...)
@@ -83,26 +94,8 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 			}
 		}
 
-		msg.WriteString(fmt.Sprintf("🌐 Clients registered for **%s** notifications\n", networkName))
-		msg.WriteString("```\n")
-		msg.WriteString("┌──────────────┬────────┐\n")
-		msg.WriteString("│ Client       │ Status │\n")
-		msg.WriteString("├──────────────┼────────┤\n")
-
-		for _, client := range allClients {
-			var (
-				info   = registered[client]
-				status = "❌"
-			)
-
-			if info.registered {
-				status = "✅"
-			}
-
-			msg.WriteString(fmt.Sprintf("│ %-12s │   %s   │\n", client, status))
-		}
-
-		msg.WriteString("└──────────────┴────────┘\n```")
+		msg.WriteString(fmt.Sprintf(msgNetworkClients, networkName))
+		msg.WriteString(buildClientTable(allClients, registered))
 
 		// Collect all unique channels.
 		channels := make(map[string]bool)
@@ -114,10 +107,9 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 		}
 
 		if len(channels) > 0 {
-			msg.WriteString("Alerts are sent to ")
+			msg.WriteString(msgAlertsSentTo)
 
 			var first = true
-
 			for channelID := range channels {
 				if !first {
 					msg.WriteString(", ")
@@ -161,4 +153,29 @@ func (c *ChecksCommand) listAlerts(ctx context.Context, network *string) ([]*sto
 	}
 
 	return filtered, nil
+}
+
+// buildClientTable creates an ASCII table of client statuses.
+func buildClientTable(clients []string, registered map[string]clientInfo) string {
+	var msg strings.Builder
+
+	msg.WriteString("```\n")
+	msg.WriteString("┌──────────────┬────────┐\n")
+	msg.WriteString("│ Client       │ Status │\n")
+	msg.WriteString("├──────────────┼────────┤\n")
+
+	for _, client := range clients {
+		info := registered[client]
+		status := "❌"
+
+		if info.registered {
+			status = "✅"
+		}
+
+		msg.WriteString(fmt.Sprintf("│ %-12s │   %s   │\n", client, status))
+	}
+
+	msg.WriteString("└──────────────┴────────┘\n```")
+
+	return msg.String()
 }

@@ -11,8 +11,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	msgAlreadyRegistered = "ℹ️ Client **%s** is already registered for **%s** in <#%s>"
+	msgRegisteredClient  = "✅ Successfully registered **%s** for **%s** notifications in <#%s>"
+	msgRegisteredAll     = "✅ Successfully registered **all clients** for **%s** notifications in <#%s>"
+	defaultSchedule      = "*/1 * * * *"
+)
+
 // handleRegister handles the '/checks register' command.
-func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
+func (c *ChecksCommand) handleRegister(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	data *discordgo.ApplicationCommandInteractionDataOption,
+) error {
 	var (
 		options = data.Options
 		network = options[0].StringValue()
@@ -34,13 +45,10 @@ func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.Intera
 
 	if err := c.registerAlert(context.Background(), network, channel.ID, client); err != nil {
 		if alreadyRegistered, ok := err.(*store.AlertAlreadyRegisteredError); ok {
-			msg := fmt.Sprintf("ℹ️ Client **%s** is already registered for **%s** in <#%s>",
-				alreadyRegistered.Client, network, channel.ID)
-
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: msg,
+					Content: fmt.Sprintf(msgAlreadyRegistered, alreadyRegistered.Client, network, channel.ID),
 				},
 			})
 		}
@@ -51,9 +59,9 @@ func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.Intera
 	var msg string
 
 	if client != nil {
-		msg = fmt.Sprintf("✅ Successfully registered **%s** for **%s** notifications in <#%s>", *client, network, channel.ID)
+		msg = fmt.Sprintf(msgRegisteredClient, *client, network, channel.ID)
 	} else {
-		msg = fmt.Sprintf("✅ Successfully registered **all clients** for **%s** notifications in <#%s>", network, channel.ID)
+		msg = fmt.Sprintf(msgRegisteredAll, network, channel.ID)
 	}
 
 	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -66,7 +74,6 @@ func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.Intera
 
 func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID string, specificClient *string) error {
 	if specificClient == nil {
-		// For registering all clients, just proceed with registration.
 		return c.registerAllClients(ctx, network, channelID)
 	}
 
@@ -86,40 +93,12 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 		}
 	}
 
-	// Check if client exists in our known clients.
-	clientType := clients.ClientTypeAll
-
-	for _, c := range clients.CLClients {
-		if c == *specificClient {
-			clientType = clients.ClientTypeCL
-
-			break
-		}
-	}
-
-	if clientType == clients.ClientTypeAll {
-		for _, c := range clients.ELClients {
-			if c == *specificClient {
-				clientType = clients.ClientTypeEL
-
-				break
-			}
-		}
-	}
-
+	clientType := getClientType(*specificClient)
 	if clientType == clients.ClientTypeAll {
 		return fmt.Errorf("unknown client: %s", *specificClient)
 	}
 
-	alert := &store.MonitorAlert{
-		Network:        network,
-		Client:         *specificClient,
-		ClientType:     clientType,
-		DiscordChannel: channelID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
+	alert := newMonitorAlert(network, *specificClient, clientType, channelID)
 	if err := c.scheduleAlert(ctx, alert); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}
@@ -131,15 +110,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID string) error {
 	// Register CL clients.
 	for _, client := range clients.CLClients {
-		alert := &store.MonitorAlert{
-			Network:        network,
-			Client:         client,
-			ClientType:     clients.ClientTypeCL,
-			DiscordChannel: channelID,
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
-
+		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID)
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule CL alert: %w", err)
 		}
@@ -147,15 +118,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 
 	// Register EL clients.
 	for _, client := range clients.ELClients {
-		alert := &store.MonitorAlert{
-			Network:        network,
-			Client:         client,
-			ClientType:     clients.ClientTypeEL,
-			DiscordChannel: channelID,
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
-		}
-
+		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID)
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule EL alert: %w", err)
 		}
@@ -166,16 +129,12 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 
 // scheduleAlert schedules a monitor alert to run every minute.
 func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorAlert) error {
+	// Firstly, persist the alert to our store.
 	if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
-		c.log.WithError(err).Error("Failed to persist alert")
-
 		return err
 	}
 
-	var (
-		schedule = "*/1 * * * *"
-		jobName  = c.bot.GetMonitorRepo().Key(alert)
-	)
+	jobName := c.bot.GetMonitorRepo().Key(alert)
 
 	c.log.WithFields(logrus.Fields{
 		"network": alert.Network,
@@ -184,8 +143,13 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 		"key":     jobName,
 	}).Info("Registered monitor")
 
-	if err := c.bot.GetScheduler().AddJob(jobName, schedule, func(ctx context.Context) error {
-		c.log.Infof("Running checks for network=%s client=%s", alert.Network, alert.Client)
+	// And secondly, schedule the alert to run on our schedule.
+	if err := c.bot.GetScheduler().AddJob(jobName, defaultSchedule, func(ctx context.Context) error {
+		c.log.WithFields(logrus.Fields{
+			"network": alert.Network,
+			"client":  alert.Client,
+			"key":     jobName,
+		}).Info("Running checks")
 
 		_, err := c.RunChecks(ctx, alert)
 
@@ -195,9 +159,40 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"schedule": schedule,
+		"schedule": defaultSchedule,
 		"key":      jobName,
 	}).Info("Scheduled monitor alert")
 
 	return nil
+}
+
+// newMonitorAlert creates a new monitor alert with the given parameters.
+func newMonitorAlert(network, client string, clientType clients.ClientType, channelID string) *store.MonitorAlert {
+	now := time.Now()
+
+	return &store.MonitorAlert{
+		Network:        network,
+		Client:         client,
+		ClientType:     clientType,
+		DiscordChannel: channelID,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+}
+
+// getClientType determines the client type from a client name.
+func getClientType(clientName string) clients.ClientType {
+	for _, c := range clients.CLClients {
+		if c == clientName {
+			return clients.ClientTypeCL
+		}
+	}
+
+	for _, c := range clients.ELClients {
+		if c == clientName {
+			return clients.ClientTypeEL
+		}
+	}
+
+	return clients.ClientTypeAll
 }

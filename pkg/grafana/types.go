@@ -42,3 +42,36 @@ type QueryResults struct {
 type QueryResponse struct {
 	Results QueryResults `json:"results"`
 }
+
+// queryPayload represents the common structure for Grafana queries.
+type queryPayload struct {
+	Queries []query `json:"queries"`
+	From    string  `json:"from"`
+	To      string  `json:"to"`
+}
+
+type query struct {
+	RefID         string                 `json:"refId"`
+	Datasource    map[string]interface{} `json:"datasource"`
+	Expr          string                 `json:"expr"`
+	MaxDataPoints int                    `json:"maxDataPoints"`
+	IntervalMs    int                    `json:"intervalMs"`
+	Interval      string                 `json:"interval"`
+	LegendFormat  string                 `json:"legendFormat,omitempty"`
+}
+
+// networkResponse represents the response structure for network queries.
+type networkResponse struct {
+	Results map[string]struct {
+		Frames []struct {
+			Data struct {
+				Values [][]interface{} `json:"values"`
+			} `json:"data"`
+			Schema struct {
+				Fields []struct {
+					Labels map[string]string `json:"labels"`
+				} `json:"fields"`
+			} `json:"schema"`
+		} `json:"frames"`
+	} `json:"results"`
+}

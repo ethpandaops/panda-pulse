@@ -9,8 +9,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	msgNoClientsRegistered = "ℹ️ No clients are registered for **%s** checks"
+	msgClientNotRegistered = "ℹ️ Client **%s** is not registered for **%s** checks"
+	msgDeregisteredClient  = "✅ Successfully deregistered **%s** from **%s** notifications"
+	msgDeregisteredAll     = "✅ Successfully deregistered **all clients** from **%s** notifications"
+)
+
 // handleDeregister handles the '/checks deregister' command.
-func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
+func (c *ChecksCommand) handleDeregister(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+	data *discordgo.ApplicationCommandInteractionDataOption,
+) error {
 	var (
 		options = data.Options
 		network = options[0].StringValue()
@@ -30,12 +41,10 @@ func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.Inte
 
 	if err := c.deregisterAlert(context.Background(), network, client); err != nil {
 		if notRegistered, ok := err.(*store.AlertNotRegisteredError); ok {
-			var msg string
+			msg := fmt.Sprintf(msgClientNotRegistered, notRegistered.Client, network)
 
 			if notRegistered.Client == "any" {
-				msg = fmt.Sprintf("ℹ️ No clients are registered for **%s** checks", network)
-			} else {
-				msg = fmt.Sprintf("ℹ️ Client **%s** is not registered for **%s** checks", notRegistered.Client, network)
+				msg = fmt.Sprintf(msgNoClientsRegistered, network)
 			}
 
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -52,9 +61,9 @@ func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.Inte
 	var msg string
 
 	if client != nil {
-		msg = fmt.Sprintf("✅ Successfully deregistered **%s** from **%s** notifications", *client, network)
+		msg = fmt.Sprintf(msgDeregisteredClient, *client, network)
 	} else {
-		msg = fmt.Sprintf("✅ Successfully deregistered **all clients** from **%s** notifications", network)
+		msg = fmt.Sprintf(msgDeregisteredAll, network)
 	}
 
 	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -67,6 +76,7 @@ func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.Inte
 
 // deregisterAlert deregisters an alert for a given network and client.
 func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, client *string) error {
+	// First, list all alerts.
 	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
@@ -74,17 +84,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 
 	// If client is specified, only remove that client's alert.
 	if client != nil {
-		// Find the alert monitor in question.
-		var alert *store.MonitorAlert
-
-		for _, a := range alerts {
-			if a.Network == network && a.Client == *client {
-				alert = a
-
-				break
-			}
-		}
-
+		alert := c.getExistingAlert(alerts, network, *client)
 		if alert == nil {
 			return &store.AlertNotRegisteredError{
 				Network: network,
@@ -99,9 +99,9 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 		return nil
 	}
 
+	// Otherwise, remove all clients for this network.
 	var found bool
 
-	// Otherwise, remove all clients for this network.
 	for _, alert := range alerts {
 		if alert.Network == network {
 			found = true
@@ -125,7 +125,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 func (c *ChecksCommand) unscheduleAlert(ctx context.Context, alert *store.MonitorAlert) error {
 	key := c.bot.GetMonitorRepo().Key(alert)
 
-	// Remove from S3.
+	// Remove from S3
 	if err := c.bot.GetMonitorRepo().Purge(ctx, alert.Network, alert.Client); err != nil {
 		return fmt.Errorf("failed to delete alert: %w", err)
 	}
@@ -137,10 +137,21 @@ func (c *ChecksCommand) unscheduleAlert(ctx context.Context, alert *store.Monito
 		"key":     key,
 	}).Info("Deregistered monitor")
 
-	// Remove from scheduler.
+	// Remove from scheduler
 	c.bot.GetScheduler().RemoveJob(key)
 
 	c.log.WithField("key", key).Info("Unscheduled monitor alert")
+
+	return nil
+}
+
+// getExistingAlert finds an alert for a given network and client.
+func (c *ChecksCommand) getExistingAlert(alerts []*store.MonitorAlert, network, client string) *store.MonitorAlert {
+	for _, a := range alerts {
+		if a.Network == network && a.Client == client {
+			return a
+		}
+	}
 
 	return nil
 }

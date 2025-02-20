@@ -17,16 +17,20 @@ import (
 
 const (
 	affectedInstancesHeader = "\n**Affected instances**\n```bash\n"
-	sshCommandsHeader       = "\n**SSH commands**\n```bash\n"
+	sshCommandsHeader       = "\n**SSH commands**\n"
 	codeBlockEnd            = "```"
+	defaultCategoryEmoji    = "ℹ️"
 )
 
-// instance represents an instance/node of a client pair.
-type instance struct {
-	name    string
-	network string
-	client  string
-}
+var (
+	// Category emojis for different check categories.
+	categoryEmojis = map[checks.Category]string{
+		checks.CategorySync: "🔄",
+	}
+	// Detail keys in result sets that we care about. Results are stored as a map[string]interface{}
+	// and return all sorts of data, so we cherry pick the ones we want to determine alert info.
+	relevantDetailKeys = []string{"lowPeerNodes", "notSyncedNodes", "stuckNodes", "behindNodes"}
+)
 
 // AlertMessageBuilder builds the alert message.
 type AlertMessageBuilder struct {
@@ -126,40 +130,79 @@ func (b *AlertMessageBuilder) extractInstances(checks []*checks.Result) map[stri
 	instances := make(map[string]bool)
 
 	for _, check := range checks {
-		if details := check.Details; details != nil {
-			for k, v := range details {
-				if k == "lowPeerNodes" || k == "notSyncedNodes" || k == "stuckNodes" || k == "behindNodes" {
-					if str, ok := v.(string); ok {
-						for _, line := range strings.Split(str, "\n") {
-							parts := strings.Fields(line)
-							if len(parts) > 0 {
-								instance := parts[0]
-								if strings.HasPrefix(instance, "(") && len(parts) > 1 {
-									instance = parts[1]
-								}
-
-								instance = strings.Split(instance, " (")[0]
-
-								// Split the instance name into parts
-								nodeParts := strings.Split(instance, "-")
-								if len(nodeParts) < 2 {
-									continue
-								}
-
-								// Match exactly the CL or EL client name
-								if nodeParts[0] == b.alert.Client || // CL client
-									(len(nodeParts) > 1 && nodeParts[1] == b.alert.Client) { // EL client
-									instances[instance] = true
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		b.extractInstancesFromCheck(check, instances)
 	}
 
 	return instances
+}
+
+// extractInstancesFromCheck extracts instances from a single check result.
+func (b *AlertMessageBuilder) extractInstancesFromCheck(check *checks.Result, instances map[string]bool) {
+	if check.Details == nil {
+		return
+	}
+
+	for k, v := range check.Details {
+		if !b.isRelevantDetailKey(k) {
+			continue
+		}
+
+		str, ok := v.(string)
+		if !ok {
+			continue
+		}
+
+		b.parseInstancesFromString(str, instances)
+	}
+}
+
+// isRelevantDetailKey checks if the detail key is one we care about.
+func (b *AlertMessageBuilder) isRelevantDetailKey(key string) bool {
+	for _, k := range relevantDetailKeys {
+		if key == k {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseInstancesFromString parses instances from a multiline string.
+func (b *AlertMessageBuilder) parseInstancesFromString(str string, instances map[string]bool) {
+	for _, line := range strings.Split(str, "\n") {
+		if instance := b.parseInstanceFromLine(line); instance != "" {
+			instances[instance] = true
+		}
+	}
+}
+
+// parseInstanceFromLine extracts an instance name from a single line.
+func (b *AlertMessageBuilder) parseInstanceFromLine(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	instance := parts[0]
+	if strings.HasPrefix(instance, "(") && len(parts) > 1 {
+		instance = parts[1]
+	}
+
+	instance = strings.Split(instance, " (")[0]
+
+	// Split the instance name into parts.
+	nodeParts := strings.Split(instance, "-")
+	if len(nodeParts) < 2 {
+		return ""
+	}
+
+	// Match exactly the CL or EL client name.
+	if nodeParts[0] == b.alert.Client || // CL client
+		(len(nodeParts) > 1 && nodeParts[1] == b.alert.Client) { // EL client
+		return instance
+	}
+
+	return ""
 }
 
 // buildInstanceList builds the instance list.
@@ -189,10 +232,11 @@ func (b *AlertMessageBuilder) buildSSHCommands(instances map[string]bool) string
 	sb.WriteString(sshCommandsHeader)
 
 	for _, inst := range sortedInstances {
+		sb.WriteString("```bash\n")
 		sb.WriteString(inst.sshCommand())
+		sb.WriteString(codeBlockEnd)
+		sb.WriteString("\n")
 	}
-
-	sb.WriteString(codeBlockEnd)
 
 	return sb.String()
 }
@@ -201,7 +245,7 @@ func (b *AlertMessageBuilder) buildSSHCommands(instances map[string]bool) string
 func (b *AlertMessageBuilder) getSortedInstances(instances map[string]bool) []instance {
 	sorted := make([]instance, 0, len(instances))
 	for name := range instances {
-		sorted = append(sorted, b.newInstance(name))
+		sorted = append(sorted, newInstance(name, b.alert.Network, b.alert.Client))
 	}
 
 	sort.Slice(sorted, func(i, j int) bool {
@@ -211,26 +255,13 @@ func (b *AlertMessageBuilder) getSortedInstances(instances map[string]bool) []in
 	return sorted
 }
 
-// newInstance creates a new instance.
-func (b *AlertMessageBuilder) newInstance(name string) instance {
-	return instance{
-		name:    name,
-		network: b.alert.Network,
-		client:  b.alert.Client,
-	}
-}
-
 // getCategoryEmoji returns the emoji for the category.
 func (b *AlertMessageBuilder) getCategoryEmoji(category checks.Category) string {
-	emojis := map[checks.Category]string{
-		checks.CategorySync: "🔄",
-	}
-
-	if emoji, ok := emojis[category]; ok {
+	if emoji, ok := categoryEmojis[category]; ok {
 		return emoji
 	}
 
-	return "ℹ️" // default emoji
+	return defaultCategoryEmoji
 }
 
 // buildGrafanaURL returns the Grafana URL.
@@ -343,9 +374,4 @@ func (b *AlertMessageBuilder) getTitle() string {
 	}
 
 	return b.alert.Network
-}
-
-// sshCommand returns the SSH command for the instance.
-func (i instance) sshCommand() string {
-	return fmt.Sprintf("ssh devops@%s.%s.ethpandaops.io\n\n", i.name, i.network)
 }
