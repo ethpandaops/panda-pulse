@@ -56,7 +56,7 @@ func (c *ChecksCommand) handleRun(s *discordgo.Session, i *discordgo.Interaction
 	} else {
 		// Otherwise, we have issues.
 		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("🚫 Issues detected for **%s** on **%s**, see below for details", client, network)),
+			Content: stringPtr(fmt.Sprintf("ℹ️ Issues detected for **%s** on **%s**, see below for details", client, network)),
 		})
 		if err != nil {
 			c.log.Errorf("Failed to edit initial response: %v", err)

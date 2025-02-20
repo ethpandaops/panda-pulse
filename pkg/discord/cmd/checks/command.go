@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
@@ -229,19 +231,62 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 
 	// Persist the check output, for debugging purposes later if needed.
 	if err := c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
-		Network:    alert.Network,
-		Client:     alert.Client,
-		CheckID:    runner.GetID(),
-		Type:       "log",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		LogContent: runner.GetLog().GetBuffer().Bytes(),
+		Network:   alert.Network,
+		Client:    alert.Client,
+		CheckID:   runner.GetID(),
+		Type:      "log",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Content:   runner.GetLog().GetBuffer().Bytes(),
 	}); err != nil {
-		return false, fmt.Errorf("failed to persist check log content: %w", err)
+		return false, fmt.Errorf("failed to persist check artifact: %w", err)
+	}
+
+	hiveAvailable, err := hive.IsAvailable(context.Background(), hive.Config{
+		Network:       alert.Network,
+		ConsensusNode: consensusNode,
+		ExecutionNode: executionNode,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to check hive availability: %w", err)
+	}
+
+	if hiveAvailable {
+		hiveContent, err := hive.SnapshotTestCoverage(context.Background(), hive.Config{
+			Network:       alert.Network,
+			ConsensusNode: consensusNode,
+			ExecutionNode: executionNode,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "context deadline exceeded") {
+				c.log.WithFields(logrus.Fields{
+					"network":       alert.Network,
+					"consensusNode": consensusNode,
+					"executionNode": executionNode,
+				}).WithError(err).Error("hive screenshot timed out")
+			} else {
+				return false, fmt.Errorf("failed to snapshot test coverage: %w", err)
+			}
+		}
+
+		// Persist the hive output, so we can include in our discord embed.
+		if hiveContent != nil && len(hiveContent) > 0 {
+			if err := c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
+				Network:   alert.Network,
+				Client:    alert.Client,
+				CheckID:   runner.GetID(),
+				Type:      "png",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				Content:   hiveContent,
+			}); err != nil {
+				return false, fmt.Errorf("failed to persist check artifact: %w", err)
+			}
+		}
 	}
 
 	// Send the results to Discord.
-	alertSent, err := c.sendResults(alert, runner)
+	alertSent, err := c.sendResults(alert, runner, hiveAvailable)
 	if err != nil {
 		return alertSent, fmt.Errorf("failed to send discord notification: %w", err)
 	}
@@ -250,7 +295,7 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 }
 
 // sendResults sends the analysis results to Discord.
-func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
+func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner, hiveAvailable bool) (bool, error) {
 	var (
 		hasFailures          bool
 		isRootCause          bool
@@ -327,7 +372,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 	}
 
 	// Create + send the main message.
-	mainMsg := c.createMainMessage(embed, alert, results, checkID)
+	mainMsg := c.createMainMessage(embed, alert, results, checkID, hiveAvailable)
 
 	msg, err := c.bot.GetSession().ChannelMessageSendComplex(alert.DiscordChannel, mainMsg)
 	if err != nil {
@@ -360,7 +405,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 			continue
 		}
 
-		if err := c.sendCategoryIssues(alert, thread.ID, category, cat); err != nil {
+		if err := c.sendCategoryIssues(alert, thread.ID, category, cat, checkID, hiveAvailable); err != nil {
 			return true, err
 		}
 	}
@@ -369,7 +414,7 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 }
 
 // createMainMessage creates the main message with embed and buttons.
-func (c *ChecksCommand) createMainMessage(embed *discordgo.MessageEmbed, alert *store.MonitorAlert, results []*checks.Result, checkID string) *discordgo.MessageSend {
+func (c *ChecksCommand) createMainMessage(embed *discordgo.MessageEmbed, alert *store.MonitorAlert, results []*checks.Result, checkID string, hiveAvailable bool) *discordgo.MessageSend {
 	// Count unique failed checks.
 	uniqueFailedChecks := make(map[string]bool)
 
@@ -416,22 +461,32 @@ func (c *ChecksCommand) createMainMessage(embed *discordgo.MessageEmbed, alert *
 		consensusClient = alert.Client
 	}
 
+	btns := []discordgo.MessageComponent{
+		discordgo.Button{
+			Label: "📊 Grafana",
+			Style: discordgo.LinkButton,
+			URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/cebekx08rl9tsc/panda-pulse?orgId=1&var-consensus_client=%s&var-execution_client=%s&var-network=%s&var-filter=ingress_user%%7C%%21~%%7Csynctest.%%2A", consensusClient, executionClient, alert.Network),
+		},
+		discordgo.Button{
+			Label: "📝 Logs",
+			Style: discordgo.LinkButton,
+			URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/aebfg1654nqwwd/panda-pulse-client-error-logs?orgId=1&var-network=%s", alert.Network),
+		},
+	}
+
+	if hiveAvailable {
+		btns = append(btns, discordgo.Button{
+			Label: "🐝 Hive",
+			Style: discordgo.LinkButton,
+			URL:   fmt.Sprintf("https://hive.ethpandaops.io/%s/index.html#summary-sort=name&group-by=client", alert.Network),
+		})
+	}
+
 	return &discordgo.MessageSend{
 		Embed: embed,
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
-				Components: []discordgo.MessageComponent{
-					discordgo.Button{
-						Label: "📊 Grafana",
-						Style: discordgo.LinkButton,
-						URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/cebekx08rl9tsc/panda-pulse?orgId=1&var-consensus_client=%s&var-execution_client=%s&var-network=%s&var-filter=ingress_user%%7C%%21~%%7Csynctest.%%2A", consensusClient, executionClient, alert.Network),
-					},
-					discordgo.Button{
-						Label: "📝 Logs",
-						Style: discordgo.LinkButton,
-						URL:   fmt.Sprintf("https://grafana.observability.ethpandaops.io/d/aebfg1654nqwwd/panda-pulse-client-error-logs?orgId=1&var-network=%s", alert.Network),
-					},
-				},
+				Components: btns,
 			},
 		},
 	}
@@ -443,6 +498,8 @@ func (c *ChecksCommand) sendCategoryIssues(
 	threadID string,
 	category checks.Category,
 	cat *categoryResults,
+	checkID string,
+	hiveAvailable bool,
 ) error {
 	msg := fmt.Sprintf("\n\n**%s %s Issues**\n------------------------------------------\n", getCategoryEmoji(category), category.String())
 	msg += "**Issues detected**\n"
@@ -474,9 +531,29 @@ func (c *ChecksCommand) sendCategoryIssues(
 	}
 
 	// Only send SSH commands if a specific client is targeted.
-	if alert.Client != "" {
-		if err := c.sendSSHCommands(threadID, instances, alert.Network); err != nil {
-			return err
+	if err := c.sendSSHCommands(threadID, instances, alert.Network); err != nil {
+		return err
+	}
+
+	if !hiveAvailable {
+		return nil
+	}
+
+	// Get and send the Hive screenshot
+	screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
+	if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
+		_, err = c.bot.GetSession().ChannelMessageSendComplex(threadID, &discordgo.MessageSend{
+			Content: "\n**Hive Summary**",
+			Files: []*discordgo.File{
+				{
+					Name:        fmt.Sprintf("hive-%s-%s.png", alert.Client, checkID),
+					ContentType: "image/png",
+					Reader:      bytes.NewReader(screenshot.Content),
+				},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send hive screenshot: %w", err)
 		}
 	}
 

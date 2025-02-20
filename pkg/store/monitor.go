@@ -21,6 +21,7 @@ type MonitorRepo struct {
 
 // MonitorAlert represents a monitor alert.
 type MonitorAlert struct {
+	CheckID        string             `json:"check_id"`
 	Network        string             `json:"network"`
 	DiscordChannel string             `json:"discord_channel"`
 	Client         string             `json:"client"`

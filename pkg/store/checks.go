@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,13 +17,13 @@ import (
 
 // CheckArtifact represents a single artifact from a check run
 type CheckArtifact struct {
-	Network    string    `json:"network"`
-	Client     string    `json:"client"`
-	CheckID    string    `json:"check_id"`
-	Type       string    `json:"type"` // log, image, etc
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	LogContent []byte    `json:"log_content"`
+	Network   string    `json:"network"`
+	Client    string    `json:"client"`
+	CheckID   string    `json:"check_id"`
+	Type      string    `json:"type"` // log, png, etc
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Content   []byte    `json:"content"`
 }
 
 // ChecksRepo implements Repository for check artifacts
@@ -121,9 +122,9 @@ func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error
 		Key:    aws.String(s.Key(artifact)),
 	}
 
-	if len(artifact.LogContent) > 0 {
-		contentType := http.DetectContentType(artifact.LogContent)
-		put.Body = bytes.NewReader(artifact.LogContent)
+	if len(artifact.Content) > 0 {
+		contentType := http.DetectContentType(artifact.Content)
+		put.Body = bytes.NewReader(artifact.Content)
 		put.ContentType = aws.String(contentType)
 	}
 
@@ -210,4 +211,33 @@ func (s *ChecksRepo) GetPrefix() string {
 // GetStore returns the S3 client
 func (s *ChecksRepo) GetStore() *s3.Client {
 	return s.store
+}
+
+// GetArtifact retrieves an artifact from S3
+func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, artifactType string) (*CheckArtifact, error) {
+	key := fmt.Sprintf("%s/networks/%s/checks/%s/%s.%s", s.prefix, network, client, checkID, artifactType)
+	output, err := s.store.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get artifact: %w", err)
+	}
+	defer output.Body.Close()
+
+	// Read the content
+	content, err := io.ReadAll(output.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read artifact content: %w", err)
+	}
+
+	return &CheckArtifact{
+		Network:   network,
+		Client:    client,
+		CheckID:   checkID,
+		Type:      artifactType,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Content:   content,
+	}, nil
 }
