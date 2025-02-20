@@ -4,8 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana/mock"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -84,8 +86,9 @@ func TestCLSyncCheck_Run(t *testing.T) {
 			mockClient := mock.NewMockClient(ctrl)
 			mockClient.EXPECT().Query(gomock.Any(), gomock.Any()).Return(tt.mockResponse, tt.mockError)
 
+			log := logger.NewCheckLogger("id")
 			check := NewCLSyncCheck(mockClient)
-			result, err := check.Run(context.Background(), tt.config)
+			result, err := check.Run(context.Background(), log, tt.config)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -114,5 +117,5 @@ func TestCLSyncCheck_Category(t *testing.T) {
 
 func TestCLSyncCheck_ClientType(t *testing.T) {
 	check := NewCLSyncCheck(nil)
-	assert.Equal(t, ClientTypeCL, check.ClientType())
+	assert.Equal(t, clients.ClientTypeCL, check.ClientType())
 }

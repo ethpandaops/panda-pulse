@@ -11,9 +11,11 @@ import (
 
 // handleRun handles the '/checks run' command.
 func (c *ChecksCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
-	options := data.Options
-	network := options[0].StringValue()
-	client := options[1].StringValue()
+	var (
+		options = data.Options
+		network = options[0].StringValue()
+		client  = options[1].StringValue()
+	)
 
 	c.log.WithFields(logrus.Fields{
 		"command": "/checks run",

@@ -31,6 +31,7 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 	}
 
 	var matchingArtifact *store.CheckArtifact
+
 	for _, artifact := range artifacts {
 		if artifact.CheckID == checkID {
 			matchingArtifact = artifact
@@ -40,11 +41,10 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 	}
 
 	if matchingArtifact == nil {
-		notFoundMsg := fmt.Sprintf("ℹ️ No check found with ID: %s", checkID)
-		if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &notFoundMsg,
-		}); err != nil {
-			return fmt.Errorf("failed to send not found message: %w", err)
+		if _, ierr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: stringPtr(fmt.Sprintf("ℹ️ No check found with ID: %s", checkID)),
+		}); ierr != nil {
+			return fmt.Errorf("failed to send not found message: %w", ierr)
 		}
 
 		return nil
@@ -63,6 +63,7 @@ func (c *ChecksCommand) handleDebug(s *discordgo.Session, i *discordgo.Interacti
 	if err != nil {
 		return fmt.Errorf("failed to get log content: %w", err)
 	}
+
 	defer output.Body.Close()
 
 	// Read the log content.

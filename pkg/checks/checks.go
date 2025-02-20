@@ -296,7 +296,10 @@ func contains(slice []string, str string) bool {
 func generateCheckID() string {
 	// Generate 8 random bytes
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// If random fails, use timestamp only
+		return time.Now().UTC().Format("20060102-150405")
+	}
 
 	// Format as timestamp-random
 	return fmt.Sprintf("%s-%s",

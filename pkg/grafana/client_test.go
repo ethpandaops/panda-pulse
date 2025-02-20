@@ -70,7 +70,11 @@ func TestQuery(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewClient(server.URL, "datasource-id", "test-key", server.Client())
+			client := NewClient(&Config{
+				BaseURL:          server.URL,
+				PromDatasourceID: "datasource-id",
+				Token:            "test-key",
+			}, server.Client())
 
 			resp, err := client.Query(context.Background(), tt.query)
 

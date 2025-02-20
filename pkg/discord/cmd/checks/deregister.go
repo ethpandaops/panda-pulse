@@ -11,9 +11,12 @@ import (
 
 // handleDeregister handles the '/checks deregister' command.
 func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
-	options := data.Options
-	network := options[0].StringValue()
-	var client *string
+	var (
+		options = data.Options
+		network = options[0].StringValue()
+		client  *string
+	)
+
 	if len(options) > 1 {
 		c := options[1].StringValue()
 		client = &c
@@ -73,6 +76,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 	if client != nil {
 		// Find the alert monitor in question.
 		var alert *store.MonitorAlert
+
 		for _, a := range alerts {
 			if a.Network == network && a.Client == *client {
 				alert = a

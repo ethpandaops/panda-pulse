@@ -41,6 +41,20 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
+// GetBaseURL mocks base method.
+func (m *MockClient) GetBaseURL() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBaseURL")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetBaseURL indicates an expected call of GetBaseURL.
+func (mr *MockClientMockRecorder) GetBaseURL() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBaseURL", reflect.TypeOf((*MockClient)(nil).GetBaseURL))
+}
+
 // GetNetworks mocks base method.
 func (m *MockClient) GetNetworks(ctx context.Context) ([]string, error) {
 	m.ctrl.T.Helper()

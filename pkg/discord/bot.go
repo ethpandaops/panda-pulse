@@ -8,6 +8,7 @@ import (
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
@@ -22,6 +23,7 @@ type Bot struct {
 	monitorRepo *store.MonitorRepo
 	checksRepo  *store.ChecksRepo
 	grafana     grafana.Client
+	hive        hive.Hive
 	commands    []common.Command
 }
 
@@ -33,6 +35,7 @@ func NewBot(
 	monitorRepo *store.MonitorRepo,
 	checksRepo *store.ChecksRepo,
 	grafana grafana.Client,
+	hive hive.Hive,
 ) (*Bot, error) {
 	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -48,6 +51,7 @@ func NewBot(
 		monitorRepo: monitorRepo,
 		checksRepo:  checksRepo,
 		grafana:     grafana,
+		hive:        hive,
 		commands:    make([]common.Command, 0),
 	}
 
@@ -108,9 +112,13 @@ func (b *Bot) GetChecksRepo() *store.ChecksRepo {
 }
 
 // GetGrafana returns the Grafana client.
-
 func (b *Bot) GetGrafana() grafana.Client {
 	return b.grafana
+}
+
+// GetHive returns the Hive client.
+func (b *Bot) GetHive() hive.Hive {
+	return b.hive
 }
 
 // handleInteraction handles interactions from the Discord client.
@@ -123,6 +131,7 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 	for _, cmd := range b.commands {
 		if cmd.Name() == data.Name {
 			cmd.Handle(s, i)
+
 			return
 		}
 	}
@@ -158,6 +167,7 @@ func (b *Bot) scheduleExistingAlerts() error {
 		// Add it to the scheduler.
 		if err := b.scheduler.AddJob(jobName, schedule, func(ctx context.Context) error {
 			_, err := checksCmd.RunChecks(ctx, alertCopy)
+
 			return err
 		}); err != nil {
 			return fmt.Errorf("failed to schedule alert for %s: %w", alert.Network, err)

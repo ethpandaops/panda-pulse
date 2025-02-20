@@ -15,23 +15,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// CheckArtifact represents a single artifact from a check run
+// CheckArtifact represents a single artifact from a check run.
 type CheckArtifact struct {
 	Network   string    `json:"network"`
 	Client    string    `json:"client"`
-	CheckID   string    `json:"check_id"`
+	CheckID   string    `json:"checkId"`
 	Type      string    `json:"type"` // log, png, etc
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 	Content   []byte    `json:"content"`
 }
 
-// ChecksRepo implements Repository for check artifacts
+// ChecksRepo implements Repository for check artifacts.
 type ChecksRepo struct {
 	BaseRepo
 }
 
-// NewChecksRepo creates a new ChecksRepo
+// NewChecksRepo creates a new ChecksRepo.
 func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*ChecksRepo, error) {
 	baseRepo, err := NewBaseRepo(ctx, log, cfg)
 	if err != nil {
@@ -43,15 +43,17 @@ func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*Che
 	}, nil
 }
 
-// List implements Repository
+// List implements Repository.
 func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
-	input := &s3.ListObjectsV2Input{
-		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(fmt.Sprintf("%s/networks/", s.prefix)),
-	}
+	var (
+		artifacts []*CheckArtifact
+		input     = &s3.ListObjectsV2Input{
+			Bucket: aws.String(s.bucket),
+			Prefix: aws.String(fmt.Sprintf("%s/networks/", s.prefix)),
+		}
+		paginator = s3.NewListObjectsV2Paginator(s.store, input)
+	)
 
-	var artifacts []*CheckArtifact
-	paginator := s3.NewListObjectsV2Paginator(s.store, input)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
@@ -77,12 +79,15 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 
 			// Skip if we already have this artifact
 			exists := false
+
 			for _, a := range artifacts {
 				if a.CheckID == checkID {
 					exists = true
+
 					break
 				}
 			}
+
 			if exists {
 				continue
 			}
@@ -92,9 +97,12 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 				artifact, err := s.getArtifact(ctx, *obj.Key)
 				if err != nil {
 					s.log.Errorf("Failed to get artifact %s: %v", *obj.Key, err)
+
 					continue
 				}
+
 				artifacts = append(artifacts, artifact)
+
 				continue
 			}
 
@@ -115,7 +123,7 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 	return artifacts, nil
 }
 
-// Persist implements Repository
+// Persist implements Repository.
 func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error {
 	put := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -135,21 +143,22 @@ func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error
 	return nil
 }
 
-// Purge implements Repository
+// Purge implements Repository.
 func (s *ChecksRepo) Purge(ctx context.Context, identifiers ...string) error {
 	if len(identifiers) != 3 {
 		return fmt.Errorf("expected network, client and checkID identifiers, got %d identifiers", len(identifiers))
 	}
 
-	network, client, checkID := identifiers[0], identifiers[1], identifiers[2]
-	prefix := fmt.Sprintf("%s/networks/%s/checks/%s/%s", s.prefix, network, client, checkID)
+	var (
+		network, client, checkID = identifiers[0], identifiers[1], identifiers[2]
+		prefix                   = fmt.Sprintf("%s/networks/%s/checks/%s/%s", s.prefix, network, client, checkID)
+		input                    = &s3.ListObjectsV2Input{
+			Bucket: aws.String(s.bucket),
+			Prefix: aws.String(prefix),
+		}
+		paginator = s3.NewListObjectsV2Paginator(s.store, input)
+	)
 
-	input := &s3.ListObjectsV2Input{
-		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(prefix),
-	}
-
-	paginator := s3.NewListObjectsV2Paginator(s.store, input)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
@@ -169,7 +178,7 @@ func (s *ChecksRepo) Purge(ctx context.Context, identifiers ...string) error {
 	return nil
 }
 
-// Key implements Repository
+// Key implements Repository.
 func (s *ChecksRepo) Key(artifact *CheckArtifact) string {
 	if artifact == nil {
 		s.log.Error("artifact is nil")
@@ -188,6 +197,7 @@ func (s *ChecksRepo) getArtifact(ctx context.Context, key string) (*CheckArtifac
 	if err != nil {
 		return nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
+
 	defer output.Body.Close()
 
 	var artifact CheckArtifact
@@ -198,24 +208,25 @@ func (s *ChecksRepo) getArtifact(ctx context.Context, key string) (*CheckArtifac
 	return &artifact, nil
 }
 
-// GetBucket returns the S3 bucket name
+// GetBucket returns the S3 bucket name.
 func (s *ChecksRepo) GetBucket() string {
 	return s.bucket
 }
 
-// GetPrefix returns the S3 prefix
+// GetPrefix returns the S3 prefix.
 func (s *ChecksRepo) GetPrefix() string {
 	return s.prefix
 }
 
-// GetStore returns the S3 client
+// GetStore returns the S3 client.
 func (s *ChecksRepo) GetStore() *s3.Client {
 	return s.store
 }
 
-// GetArtifact retrieves an artifact from S3
+// GetArtifact retrieves an artifact from S3.
 func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, artifactType string) (*CheckArtifact, error) {
 	key := fmt.Sprintf("%s/networks/%s/checks/%s/%s.%s", s.prefix, network, client, checkID, artifactType)
+
 	output, err := s.store.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
@@ -223,6 +234,7 @@ func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
+
 	defer output.Body.Close()
 
 	// Read the content

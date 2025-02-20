@@ -5,6 +5,7 @@ import (
 
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
 
@@ -54,6 +55,13 @@ func (c *Config) AsGrafanaConfig() *grafana.Config {
 		Token:            c.GrafanaToken,
 		PromDatasourceID: c.PromDatasourceID,
 		BaseURL:          c.GrafanaBaseURL,
+	}
+}
+
+// AsHiveConfig converts the configuration to a HiveConfig.
+func (c *Config) AsHiveConfig() *hive.Config {
+	return &hive.Config{
+		BaseURL: hive.BaseURL,
 	}
 }
 

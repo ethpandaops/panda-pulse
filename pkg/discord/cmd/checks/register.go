@@ -13,11 +13,13 @@ import (
 
 // handleRegister handles the '/checks register' command.
 func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
-	options := data.Options
-	network := options[0].StringValue()
-	channel := options[1].ChannelValue(s)
+	var (
+		options = data.Options
+		network = options[0].StringValue()
+		channel = options[1].ChannelValue(s)
+		client  *string
+	)
 
-	var client *string
 	if len(options) > 2 {
 		c := options[2].StringValue()
 		client = &c
@@ -86,9 +88,11 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 
 	// Check if client exists in our known clients.
 	clientType := clients.ClientTypeAll
+
 	for _, c := range clients.CLClients {
 		if c == *specificClient {
 			clientType = clients.ClientTypeCL
+
 			break
 		}
 	}
@@ -97,10 +101,12 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 		for _, c := range clients.ELClients {
 			if c == *specificClient {
 				clientType = clients.ClientTypeEL
+
 				break
 			}
 		}
 	}
+
 	if clientType == clients.ClientTypeAll {
 		return fmt.Errorf("unknown client: %s", *specificClient)
 	}
@@ -161,7 +167,9 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 // scheduleAlert schedules a monitor alert to run every minute.
 func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorAlert) error {
 	if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
-		return fmt.Errorf("failed to store CL alert: %w", err)
+		c.log.WithError(err).Error("Failed to persist alert")
+
+		return err
 	}
 
 	var (
@@ -178,7 +186,9 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 
 	if err := c.bot.GetScheduler().AddJob(jobName, schedule, func(ctx context.Context) error {
 		c.log.Infof("Running checks for network=%s client=%s", alert.Network, alert.Client)
+
 		_, err := c.RunChecks(ctx, alert)
+
 		return err
 	}); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)

@@ -21,13 +21,15 @@ type MonitorRepo struct {
 
 // MonitorAlert represents a monitor alert.
 type MonitorAlert struct {
-	CheckID        string             `json:"check_id"`
 	Network        string             `json:"network"`
-	DiscordChannel string             `json:"discord_channel"`
 	Client         string             `json:"client"`
-	ClientType     clients.ClientType `json:"client_type"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	CheckID        string             `json:"checkId"`
+	Enabled        bool               `json:"enabled"`
+	DiscordChannel string             `json:"discordChannel"`
+	Interval       time.Duration      `json:"interval"`
+	ClientType     clients.ClientType `json:"clientType"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	UpdatedAt      time.Time          `json:"updatedAt"`
 }
 
 // NewMonitorRepo creates a new MonitorRepo.
@@ -44,13 +46,15 @@ func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*Mo
 
 // List implements Repository[*MonitorAlert].
 func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
-	input := &s3.ListObjectsV2Input{
-		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(fmt.Sprintf("%s/networks/", s.prefix)),
-	}
+	var (
+		input = &s3.ListObjectsV2Input{
+			Bucket: aws.String(s.bucket),
+			Prefix: aws.String(fmt.Sprintf("%s/networks/", s.prefix)),
+		}
+		alerts    []*MonitorAlert
+		paginator = s3.NewListObjectsV2Paginator(s.store, input)
+	)
 
-	var alerts []*MonitorAlert
-	paginator := s3.NewListObjectsV2Paginator(s.store, input)
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
@@ -131,6 +135,7 @@ func (s *MonitorRepo) getAlert(ctx context.Context, key string) (*MonitorAlert, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get alert: %w", err)
 	}
+
 	defer output.Body.Close()
 
 	var alert MonitorAlert

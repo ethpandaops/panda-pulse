@@ -14,6 +14,7 @@ import (
 // handleList handles the '/checks list' command.
 func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.InteractionCreate, data *discordgo.ApplicationCommandInteractionDataOption) error {
 	var network *string
+
 	if len(data.Options) > 0 {
 		n := data.Options[0].StringValue()
 		network = &n
@@ -40,11 +41,13 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 	// If no alerts found.
 	if len(networks) == 0 {
 		msg.WriteString("ℹ️ No checks are currently registered")
+
 		if network != nil {
 			msg.WriteString(fmt.Sprintf(" for the network **%s**", *network))
 		} else {
 			msg.WriteString(" for any network")
 		}
+
 		msg.WriteString("\n")
 	}
 
@@ -112,13 +115,16 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 
 		if len(channels) > 0 {
 			msg.WriteString("Alerts are sent to ")
-			first := true
+
+			var first = true
 
 			for channelID := range channels {
 				if !first {
 					msg.WriteString(", ")
 				}
+
 				msg.WriteString(fmt.Sprintf("<#%s>", channelID))
+
 				first = false
 			}
 
@@ -145,8 +151,9 @@ func (c *ChecksCommand) listAlerts(ctx context.Context, network *string) ([]*sto
 		return alerts, nil
 	}
 
-	// Filter alerts for specific network
+	// Filter alerts for specific network.
 	filtered := make([]*store.MonitorAlert, 0)
+
 	for _, alert := range alerts {
 		if alert.Network == *network {
 			filtered = append(filtered, alert)

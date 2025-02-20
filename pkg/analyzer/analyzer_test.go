@@ -3,6 +3,7 @@ package analyzer
 import (
 	"testing"
 
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -263,7 +264,8 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := NewAnalyzer(tt.targetClient, tt.clientType)
+			log := logger.NewCheckLogger("id")
+			a := NewAnalyzer(log, tt.targetClient, tt.clientType)
 
 			for nodeName, isHealthy := range tt.nodes {
 				a.AddNodeStatus(nodeName, isHealthy)

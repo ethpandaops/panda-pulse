@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -32,6 +33,9 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	// Grafana, the source of truth for our data.
 	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), httpClient)
 
+	// Hive, used to take screenshots of the test coverage.
+	hive := hive.NewHive(cfg.AsHiveConfig())
+
 	// Repository for managing monitor alerts.
 	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config())
 	if err != nil {
@@ -45,8 +49,8 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	}
 
 	// Check S3 connection health, no point in continuing if we can't access the store.
-	if err := monitorRepo.VerifyConnection(ctx); err != nil {
-		return nil, fmt.Errorf("failed to verify S3 connection: %w", err)
+	if verr := monitorRepo.VerifyConnection(ctx); verr != nil {
+		return nil, fmt.Errorf("failed to verify S3 connection: %w", verr)
 	}
 
 	// Scheduler for managing the monitor alerts.
@@ -60,6 +64,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		monitorRepo,
 		checksRepo,
 		grafanaClient,
+		hive,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord bot: %w", err)
@@ -83,12 +88,14 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Start the discord bot.
 	s.log.Info("Starting discord bot")
+
 	if err := s.bot.Start(); err != nil {
 		return fmt.Errorf("failed to start discord bot: %w", err)
 	}
 
 	// Start the scheduler.
 	s.log.Info("Starting scheduler")
+
 	s.scheduler.Start()
 
 	s.log.Info("Service started successfully")
@@ -99,22 +106,26 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) Stop(ctx context.Context) {
 	// Stop the scheduler.
 	s.log.Info("Stopping scheduler")
+
 	s.scheduler.Stop()
 
 	// Stop the discord bot.
 	s.log.Info("Stopping discord bot")
+
 	if err := s.bot.Stop(); err != nil {
 		s.log.Errorf("Error stopping discord bot: %v", err)
 	}
 
 	// Stop the health server.
 	s.log.Info("Stopping health server")
+
 	if err := s.healthSrv.Shutdown(ctx); err != nil {
 		s.log.Errorf("Health server shutdown error: %v", err)
 	}
 
 	// Stop the metrics server.
 	s.log.Info("Stopping metrics server")
+
 	if err := s.metricsSrv.Shutdown(ctx); err != nil {
 		s.log.Errorf("Metrics server shutdown error: %v", err)
 	}
@@ -134,13 +145,17 @@ func (s *Service) startHealthServer() *http.Server {
 
 	mux := http.NewServeMux()
 	srv := &http.Server{
-		Addr:    s.config.HealthCheckAddress,
-		Handler: mux,
+		Addr:              s.config.HealthCheckAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+
+		if _, err := w.Write([]byte("ok")); err != nil {
+			s.log.Errorf("Failed to write health check response: %v", err)
+		}
 	})
 
 	go func() {

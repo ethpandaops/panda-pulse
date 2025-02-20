@@ -3,6 +3,7 @@ package common
 import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
@@ -29,4 +30,6 @@ type BotContext interface {
 	GetChecksRepo() *store.ChecksRepo
 	// GetGrafana returns the Grafana client.
 	GetGrafana() grafana.Client
+	// GetHive returns the Hive client.
+	GetHive() hive.Hive
 }

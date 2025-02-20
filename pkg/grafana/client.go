@@ -23,6 +23,8 @@ type Client interface {
 	Query(ctx context.Context, query string) (*QueryResponse, error)
 	// GetNetworks fetches the list of networks from Grafana.
 	GetNetworks(ctx context.Context) ([]string, error)
+	// GetBaseURL returns the base URL of the Grafana instance.
+	GetBaseURL() string
 }
 
 // client is a Grafana client implementation of Client.
@@ -166,6 +168,7 @@ func (c *client) GetNetworks(ctx context.Context) ([]string, error) {
 	}
 
 	networks := make([]string, 0)
+
 	if result, ok := response.Results["networks"]; ok {
 		for _, frame := range result.Frames {
 			for _, field := range frame.Schema.Fields {
@@ -179,4 +182,9 @@ func (c *client) GetNetworks(ctx context.Context) ([]string, error) {
 	}
 
 	return networks, nil
+}
+
+// GetBaseURL returns the base URL of the Grafana instance.
+func (c *client) GetBaseURL() string {
+	return c.baseURL
 }
