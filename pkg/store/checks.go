@@ -43,7 +43,7 @@ func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*Che
 	}, nil
 }
 
-// List implements Repository.
+// List implements Repository[*CheckArtifact].
 func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 	var (
 		artifacts []*CheckArtifact
@@ -123,7 +123,7 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 	return artifacts, nil
 }
 
-// Persist implements Repository.
+// Persist implements Repository[*CheckArtifact].
 func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error {
 	put := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -143,7 +143,7 @@ func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error
 	return nil
 }
 
-// Purge implements Repository.
+// Purge implements Repository[*CheckArtifact].
 func (s *ChecksRepo) Purge(ctx context.Context, identifiers ...string) error {
 	if len(identifiers) != 3 {
 		return fmt.Errorf("expected network, client and checkID identifiers, got %d identifiers", len(identifiers))
@@ -178,7 +178,7 @@ func (s *ChecksRepo) Purge(ctx context.Context, identifiers ...string) error {
 	return nil
 }
 
-// Key implements Repository.
+// Key implements Repository[*CheckArtifact].
 func (s *ChecksRepo) Key(artifact *CheckArtifact) string {
 	if artifact == nil {
 		s.log.Error("artifact is nil")

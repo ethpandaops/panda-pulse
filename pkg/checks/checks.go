@@ -294,14 +294,14 @@ func contains(slice []string, str string) bool {
 
 // generateCheckID generates a unique ID for a check run.
 func generateCheckID() string {
-	// Generate 8 random bytes
+	// Generate 8 random bytes.
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		// If random fails, use timestamp only
+		// If random fails, use timestamp only.
 		return time.Now().UTC().Format("20060102-150405")
 	}
 
-	// Format as timestamp-random
+	// Format as timestamp-random.
 	return fmt.Sprintf("%s-%s",
 		time.Now().UTC().Format("20060102-150405"),
 		hex.EncodeToString(b),

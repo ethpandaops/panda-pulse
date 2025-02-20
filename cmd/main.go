@@ -61,7 +61,10 @@ func main() {
 			defer shutdownCancel()
 
 			log.Info("Shutting down...")
-			svc.Stop(shutdownCtx)
+
+			if err := svc.Stop(shutdownCtx); err != nil {
+				log.Errorf("Failed to stop service: %v", err)
+			}
 
 			return nil
 		},

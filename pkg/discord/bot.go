@@ -14,8 +14,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Bot represents the Discord bot.
-type Bot struct {
+//go:generate mockgen -package mock -destination mock/bot.mock.go github.com/ethpandaops/panda-pulse/pkg/discord Bot
+
+// Bot represents the interface for the Discord bot.
+type Bot interface {
+	Start() error
+	Stop() error
+	GetSession() *discordgo.Session
+	GetScheduler() *scheduler.Scheduler
+	GetMonitorRepo() *store.MonitorRepo
+	GetChecksRepo() *store.ChecksRepo
+	GetGrafana() grafana.Client
+	GetHive() hive.Hive
+}
+
+// botImpl represents the Discord bot implementation.
+type botImpl struct {
 	log         *logrus.Logger
 	config      *Config
 	session     *discordgo.Session
@@ -36,14 +50,14 @@ func NewBot(
 	checksRepo *store.ChecksRepo,
 	grafana grafana.Client,
 	hive hive.Hive,
-) (*Bot, error) {
+) (Bot, error) {
 	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
-	bot := &Bot{
+	bot := &botImpl{
 		log:         log,
 		config:      cfg,
 		session:     session,
@@ -65,7 +79,7 @@ func NewBot(
 }
 
 // Start starts the bot.
-func (b *Bot) Start() error {
+func (b *botImpl) Start() error {
 	// Open connection with Discord.
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open discord connection: %w", err)
@@ -87,42 +101,42 @@ func (b *Bot) Start() error {
 }
 
 // Stop stops the bot.
-func (b *Bot) Stop() error {
+func (b *botImpl) Stop() error {
 	return b.session.Close()
 }
 
 // GetSession returns the Discord session.
-func (b *Bot) GetSession() *discordgo.Session {
+func (b *botImpl) GetSession() *discordgo.Session {
 	return b.session
 }
 
 // GetScheduler returns the scheduler.
-func (b *Bot) GetScheduler() *scheduler.Scheduler {
+func (b *botImpl) GetScheduler() *scheduler.Scheduler {
 	return b.scheduler
 }
 
 // GetMonitorRepo returns the monitor repository.
-func (b *Bot) GetMonitorRepo() *store.MonitorRepo {
+func (b *botImpl) GetMonitorRepo() *store.MonitorRepo {
 	return b.monitorRepo
 }
 
 // GetChecksRepo returns the checks repository.
-func (b *Bot) GetChecksRepo() *store.ChecksRepo {
+func (b *botImpl) GetChecksRepo() *store.ChecksRepo {
 	return b.checksRepo
 }
 
 // GetGrafana returns the Grafana client.
-func (b *Bot) GetGrafana() grafana.Client {
+func (b *botImpl) GetGrafana() grafana.Client {
 	return b.grafana
 }
 
 // GetHive returns the Hive client.
-func (b *Bot) GetHive() hive.Hive {
+func (b *botImpl) GetHive() hive.Hive {
 	return b.hive
 }
 
 // handleInteraction handles interactions from the Discord client.
-func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func (b *botImpl) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
@@ -138,7 +152,7 @@ func (b *Bot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 }
 
 // scheduleExistingAlerts schedules existing monitor alerts.
-func (b *Bot) scheduleExistingAlerts() error {
+func (b *botImpl) scheduleExistingAlerts() error {
 	alerts, err := b.monitorRepo.List(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
@@ -186,7 +200,7 @@ func (b *Bot) scheduleExistingAlerts() error {
 }
 
 // getChecksCmd returns the checks command.
-func (b *Bot) getChecksCmd() *cmdchecks.ChecksCommand {
+func (b *botImpl) getChecksCmd() *cmdchecks.ChecksCommand {
 	for _, cmd := range b.commands {
 		if c, ok := cmd.(*cmdchecks.ChecksCommand); ok {
 			return c

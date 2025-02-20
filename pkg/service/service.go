@@ -19,7 +19,7 @@ type Service struct {
 	config      *Config
 	log         *logrus.Logger
 	scheduler   *scheduler.Scheduler
-	bot         *discord.Bot
+	bot         discord.Bot
 	monitorRepo *store.MonitorRepo
 	healthSrv   *http.Server
 	metricsSrv  *http.Server
@@ -103,7 +103,7 @@ func (s *Service) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) Stop(ctx context.Context) {
+func (s *Service) Stop(ctx context.Context) error {
 	// Stop the scheduler.
 	s.log.Info("Stopping scheduler")
 
@@ -113,24 +113,26 @@ func (s *Service) Stop(ctx context.Context) {
 	s.log.Info("Stopping discord bot")
 
 	if err := s.bot.Stop(); err != nil {
-		s.log.Errorf("Error stopping discord bot: %v", err)
+		return fmt.Errorf("error stopping discord bot: %w", err)
 	}
 
 	// Stop the health server.
 	s.log.Info("Stopping health server")
 
 	if err := s.healthSrv.Shutdown(ctx); err != nil {
-		s.log.Errorf("Health server shutdown error: %v", err)
+		return fmt.Errorf("health server shutdown error: %w", err)
 	}
 
 	// Stop the metrics server.
 	s.log.Info("Stopping metrics server")
 
 	if err := s.metricsSrv.Shutdown(ctx); err != nil {
-		s.log.Errorf("Metrics server shutdown error: %v", err)
+		return fmt.Errorf("metrics server shutdown error: %w", err)
 	}
 
 	s.log.Info("Service stopped successfully")
+
+	return nil
 }
 
 func (s *Service) startHealthServer() *http.Server {
