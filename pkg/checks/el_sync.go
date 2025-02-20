@@ -3,12 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryELSync = `
@@ -45,7 +45,7 @@ func (c *ELSyncCheck) ClientType() clients.ClientType {
 }
 
 // Run executes the check.
-func (c *ELSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *ELSyncCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(queryELSync, cfg.Network, cfg.ConsensusNode, cfg.ExecutionNode)
 
 	log.Print("\n=== Running EL sync check")

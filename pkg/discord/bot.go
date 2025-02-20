@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	corechecks "github.com/ethpandaops/panda-pulse/pkg/checks"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
@@ -16,14 +15,14 @@ import (
 
 // Bot represents the Discord bot.
 type Bot struct {
-	log          *logrus.Logger
-	config       *Config
-	session      *discordgo.Session
-	scheduler    *scheduler.Scheduler
-	monitorRepo  *store.MonitorRepo
-	checksRunner corechecks.Runner
-	grafana      grafana.Client
-	commands     []common.Command
+	log         *logrus.Logger
+	config      *Config
+	session     *discordgo.Session
+	scheduler   *scheduler.Scheduler
+	monitorRepo *store.MonitorRepo
+	checksRepo  *store.ChecksRepo
+	grafana     grafana.Client
+	commands    []common.Command
 }
 
 // NewBot creates a new Discord bot.
@@ -32,7 +31,7 @@ func NewBot(
 	cfg *Config,
 	scheduler *scheduler.Scheduler,
 	monitorRepo *store.MonitorRepo,
-	checksRunner corechecks.Runner,
+	checksRepo *store.ChecksRepo,
 	grafana grafana.Client,
 ) (*Bot, error) {
 	// Create a new Discord session.
@@ -42,14 +41,14 @@ func NewBot(
 	}
 
 	bot := &Bot{
-		log:          log,
-		config:       cfg,
-		session:      session,
-		scheduler:    scheduler,
-		monitorRepo:  monitorRepo,
-		checksRunner: checksRunner,
-		grafana:      grafana,
-		commands:     make([]common.Command, 0),
+		log:         log,
+		config:      cfg,
+		session:     session,
+		scheduler:   scheduler,
+		monitorRepo: monitorRepo,
+		checksRepo:  checksRepo,
+		grafana:     grafana,
+		commands:    make([]common.Command, 0),
 	}
 
 	// Register command handlers.
@@ -103,9 +102,9 @@ func (b *Bot) GetMonitorRepo() *store.MonitorRepo {
 	return b.monitorRepo
 }
 
-// GetChecksRunner returns the checks runner.
-func (b *Bot) GetChecksRunner() corechecks.Runner {
-	return b.checksRunner
+// GetChecksRepo returns the checks repository.
+func (b *Bot) GetChecksRepo() *store.ChecksRepo {
+	return b.checksRepo
 }
 
 // GetGrafana returns the Grafana client.
@@ -136,7 +135,9 @@ func (b *Bot) scheduleExistingAlerts() error {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
-	b.log.Infof("Found %d existing monitor alerts to schedule", len(alerts))
+	b.log.WithFields(logrus.Fields{
+		"count": len(alerts),
+	}).Info("Existing monitor alerts requiring scheduling")
 
 	if len(alerts) == 0 {
 		return nil
@@ -149,7 +150,7 @@ func (b *Bot) scheduleExistingAlerts() error {
 
 	for _, alert := range alerts {
 		schedule := "*/1 * * * *"
-		jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", alert.Network, alert.ClientType, alert.Client)
+		jobName := b.monitorRepo.Key(alert)
 
 		// Create a copy of the alert for the closure.
 		alertCopy := alert
@@ -162,7 +163,13 @@ func (b *Bot) scheduleExistingAlerts() error {
 			return fmt.Errorf("failed to schedule alert for %s: %w", alert.Network, err)
 		}
 
-		b.log.Infof("Scheduled alert for %s: %s", alert.Network, jobName)
+		b.log.WithFields(logrus.Fields{
+			"network":  alert.Network,
+			"channel":  alert.DiscordChannel,
+			"client":   alert.Client,
+			"schedule": schedule,
+			"key":      jobName,
+		}).Info("Scheduled monitor alert")
 	}
 
 	return nil

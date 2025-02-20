@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 // handleList handles the '/checks list' command.
@@ -17,6 +18,11 @@ func (c *ChecksCommand) handleList(s *discordgo.Session, i *discordgo.Interactio
 		n := data.Options[0].StringValue()
 		network = &n
 	}
+
+	c.log.WithFields(logrus.Fields{
+		"command": "/checks list",
+		"user":    i.Member.User.Username,
+	}).Info("Received command")
 
 	alerts, err := c.listAlerts(context.Background(), network)
 	if err != nil {

@@ -3,12 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryCLFinalizedEpoch = `
@@ -46,7 +46,7 @@ func (c *CLFinalizedEpochCheck) ClientType() clients.ClientType {
 }
 
 // Run executes the check.
-func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *CLFinalizedEpochCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(
 		queryCLFinalizedEpoch,
 		cfg.Network,

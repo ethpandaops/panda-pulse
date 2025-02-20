@@ -82,15 +82,11 @@ func (s *MonitorRepo) Persist(ctx context.Context, alert *MonitorAlert) error {
 		return fmt.Errorf("failed to marshal alert: %w", err)
 	}
 
-	s.log.Infof("Registering alert for network=%s channel=%s bucket=%s", alert.Network, alert.DiscordChannel, s.bucket)
-
-	key := s.alertKey(alert.Network, alert.Client)
-	_, err = s.store.PutObject(ctx, &s3.PutObjectInput{
+	if _, err = s.store.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
+		Key:    aws.String(s.Key(alert)),
 		Body:   bytes.NewReader(data),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to put alert: %w", err)
 	}
 
@@ -105,20 +101,25 @@ func (s *MonitorRepo) Purge(ctx context.Context, identifiers ...string) error {
 
 	network, client := identifiers[0], identifiers[1]
 
-	key := s.alertKey(network, client)
-	_, err := s.store.DeleteObject(ctx, &s3.DeleteObjectInput{
+	if _, err := s.store.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
+		Key:    aws.String(s.Key(&MonitorAlert{Network: network, Client: client})),
+	}); err != nil {
 		return fmt.Errorf("failed to delete alert: %w", err)
 	}
 
 	return nil
 }
 
-func (s *MonitorRepo) alertKey(network, client string) string {
-	return fmt.Sprintf("%s/networks/%s/monitor/%s.json", s.prefix, network, client)
+// Key implements Repository[*MonitorAlert].
+func (s *MonitorRepo) Key(alert *MonitorAlert) string {
+	if alert == nil {
+		s.log.Error("alert is nil")
+
+		return ""
+	}
+
+	return fmt.Sprintf("%s/networks/%s/monitor/%s.json", s.prefix, alert.Network, alert.Client)
 }
 
 func (s *MonitorRepo) getAlert(ctx context.Context, key string) (*MonitorAlert, error) {

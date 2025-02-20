@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 // handleRegister handles the '/checks register' command.
@@ -22,8 +23,12 @@ func (c *ChecksCommand) handleRegister(s *discordgo.Session, i *discordgo.Intera
 		client = &c
 	}
 
-	c.log.Infof("Received checks register command: network=%s channel=%s client=%v from user=%s",
-		network, channel.Name, client, i.Member.User.Username)
+	c.log.WithFields(logrus.Fields{
+		"command": "/checks register",
+		"network": network,
+		"channel": channel.Name,
+		"user":    i.Member.User.Username,
+	}).Info("Received command")
 
 	if err := c.registerAlert(context.Background(), network, channel.ID, client); err != nil {
 		if alreadyRegistered, ok := err.(*store.AlertAlreadyRegisteredError); ok {
@@ -109,11 +114,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 		UpdatedAt:      time.Now(),
 	}
 
-	if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
-		return fmt.Errorf("failed to store alert: %w", err)
-	}
-
-	if err := c.scheduleAlert(alert); err != nil {
+	if err := c.scheduleAlert(ctx, alert); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}
 
@@ -133,11 +134,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 			UpdatedAt:      time.Now(),
 		}
 
-		if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
-			return fmt.Errorf("failed to store CL alert: %w", err)
-		}
-
-		if err := c.scheduleAlert(alert); err != nil {
+		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule CL alert: %w", err)
 		}
 	}
@@ -153,11 +150,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 			UpdatedAt:      time.Now(),
 		}
 
-		if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
-			return fmt.Errorf("failed to store EL alert: %w", err)
-		}
-
-		if err := c.scheduleAlert(alert); err != nil {
+		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule EL alert: %w", err)
 		}
 	}
@@ -166,16 +159,35 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 }
 
 // scheduleAlert schedules a monitor alert to run every minute.
-func (c *ChecksCommand) scheduleAlert(alert *store.MonitorAlert) error {
-	schedule := "*/1 * * * *"
-	jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", alert.Network, alert.ClientType, alert.Client)
+func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorAlert) error {
+	if err := c.bot.GetMonitorRepo().Persist(ctx, alert); err != nil {
+		return fmt.Errorf("failed to store CL alert: %w", err)
+	}
 
-	c.log.Infof("Scheduling alert: network=%s client=%s type=%s job=%s schedule=%s",
-		alert.Network, alert.Client, alert.ClientType, jobName, schedule)
+	var (
+		schedule = "*/1 * * * *"
+		jobName  = c.bot.GetMonitorRepo().Key(alert)
+	)
 
-	return c.bot.GetScheduler().AddJob(jobName, schedule, func(ctx context.Context) error {
+	c.log.WithFields(logrus.Fields{
+		"network": alert.Network,
+		"channel": alert.DiscordChannel,
+		"client":  alert.Client,
+		"key":     jobName,
+	}).Info("Registered monitor")
+
+	if err := c.bot.GetScheduler().AddJob(jobName, schedule, func(ctx context.Context) error {
 		c.log.Infof("Running checks for network=%s client=%s", alert.Network, alert.Client)
 		_, err := c.RunChecks(ctx, alert)
 		return err
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to schedule alert: %w", err)
+	}
+
+	c.log.WithFields(logrus.Fields{
+		"schedule": schedule,
+		"key":      jobName,
+	}).Info("Scheduled monitor alert")
+
+	return nil
 }

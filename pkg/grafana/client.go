@@ -34,11 +34,11 @@ type client struct {
 }
 
 // NewClient creates a new Grafana client.
-func NewClient(baseURL string, dataSourceID string, apiKey string, httpClient *http.Client) Client {
+func NewClient(cfg *Config, httpClient *http.Client) Client {
 	return &client{
-		baseURL:      baseURL,
-		dataSourceID: dataSourceID,
-		apiKey:       apiKey,
+		baseURL:      cfg.BaseURL,
+		dataSourceID: cfg.PromDatasourceID,
+		apiKey:       cfg.Token,
 		httpClient:   httpClient,
 	}
 }

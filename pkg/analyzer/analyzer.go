@@ -2,8 +2,9 @@ package analyzer
 
 import (
 	"fmt"
-	"log"
 	"strings"
+
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const (
@@ -32,6 +33,7 @@ type Analyzer struct {
 	nodeStatusMap NodeStatusMap
 	targetClient  string
 	clientType    ClientType
+	log           *logger.CheckLogger
 }
 
 type Config struct {
@@ -45,16 +47,17 @@ type Config struct {
 	PromDatasourceID string
 }
 
-func NewAnalyzer(targetClient string, clientType ClientType) *Analyzer {
+func NewAnalyzer(log *logger.CheckLogger, targetClient string, clientType ClientType) *Analyzer {
 	return &Analyzer{
 		nodeStatusMap: make(NodeStatusMap),
 		targetClient:  targetClient,
 		clientType:    clientType,
+		log:           log,
 	}
 }
 
 func (a *Analyzer) Analyze() *AnalysisResult {
-	log.Print("\n=== Analyzing check results")
+	a.log.Print("\n=== Analyzing check results")
 
 	state := &AnalysisState{
 		CLFailures: make(map[string]*ClientFailure),
@@ -163,7 +166,7 @@ func (a *Analyzer) collectFailures(state *AnalysisState) {
 			)
 		}
 
-		log.Printf("  - %s is failing with %s", pair.CLClient, pair.ELClient)
+		a.log.Printf("  - %s is failing with %s", pair.CLClient, pair.ELClient)
 	}
 }
 
@@ -177,7 +180,7 @@ func (a *Analyzer) findPrimaryRootCauses(state *AnalysisState) {
 				strings.Join(failure.FailedWith, ", "),
 			)
 
-			log.Printf("  - Primary root cause: %s (%s)", client, state.RootCauses[client])
+			a.log.Printf("  - Primary root cause: %s (%s)", client, state.RootCauses[client])
 		}
 	}
 
@@ -190,7 +193,7 @@ func (a *Analyzer) findPrimaryRootCauses(state *AnalysisState) {
 				strings.Join(failure.FailedWith, ", "),
 			)
 
-			log.Printf("  - Primary root cause: %s (%s)", client, state.RootCauses[client])
+			a.log.Printf("  - Primary root cause: %s (%s)", client, state.RootCauses[client])
 		}
 	}
 }
@@ -222,7 +225,7 @@ func (a *Analyzer) findSecondaryRootCauses(state *AnalysisState) {
 				strings.Join(nonRootCauseList, ", "),
 			)
 
-			log.Printf("  - Secondary root cause: %s (%s)", client, state.RootCauses[client])
+			a.log.Printf("  - Secondary root cause: %s (%s)", client, state.RootCauses[client])
 		}
 	}
 
@@ -252,7 +255,7 @@ func (a *Analyzer) findSecondaryRootCauses(state *AnalysisState) {
 				strings.Join(nonRootCauseList, ", "),
 			)
 
-			log.Printf("  - Secondary root cause: %s (%s)", client, state.RootCauses[client])
+			a.log.Printf("  - Secondary root cause: %s (%s)", client, state.RootCauses[client])
 		}
 	}
 }
@@ -310,12 +313,12 @@ func (a *Analyzer) removeFalsePositives(state *AnalysisState) {
 			toRemove = append(toRemove, client)
 
 			if nonMajorRootCauseFailures == 0 {
-				log.Printf(
+				a.log.Printf(
 					"  - Removing false positive: %s (only failing with major root causes)",
 					client,
 				)
 			} else {
-				log.Printf(
+				a.log.Printf(
 					"  - Removing false positive: %s (only failing with %d non-major-root-cause peers)",
 					client,
 					nonMajorRootCauseFailures,
@@ -358,7 +361,7 @@ func (a *Analyzer) findUnexplainedIssues(state *AnalysisState) {
 					Nodes: failingNodes,
 				})
 
-				log.Printf("  - Unexplained issue: %s-%s", pair.CLClient, pair.ELClient)
+				a.log.Printf("  - Unexplained issue: %s-%s", pair.CLClient, pair.ELClient)
 			}
 		}
 	}
@@ -377,17 +380,17 @@ func (a *Analyzer) isTargetClientIssue(pair ClientPair) bool {
 
 func (a *Analyzer) logAnalysisResults(result *AnalysisResult) {
 	if len(result.UnexplainedIssues) == 0 && len(result.RootCause) == 0 {
-		log.Printf("  - No issues to analyze")
+		a.log.Printf("  - No issues to analyze")
 
 		return
 	}
 
 	for _, cause := range result.RootCause {
-		log.Printf("  - Root cause identified: %s (%s)", cause, result.RootCauseEvidence[cause])
+		a.log.Printf("  - Root cause identified: %s (%s)", cause, result.RootCauseEvidence[cause])
 	}
 
 	for _, issue := range result.UnexplainedIssues {
-		log.Printf("  - %s (unexplained issue)", issue)
+		a.log.Printf("  - %s (unexplained issue)", issue)
 	}
 }
 

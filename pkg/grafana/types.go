@@ -1,5 +1,12 @@
 package grafana
 
+// Config contains the configuration for the Grafana client.
+type Config struct {
+	Token            string
+	PromDatasourceID string
+	BaseURL          string
+}
+
 // QueryField represents a field in the Grafana response.
 type QueryField struct {
 	Labels map[string]string `json:"labels"`

@@ -2,7 +2,6 @@ package common
 
 import (
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
@@ -26,8 +25,8 @@ type BotContext interface {
 	GetScheduler() *scheduler.Scheduler
 	// GetMonitorRepo returns the monitor repository.
 	GetMonitorRepo() *store.MonitorRepo
-	// GetChecksRunner returns the checks runner.
-	GetChecksRunner() checks.Runner
+	// GetChecksRepo returns the checks repository.
+	GetChecksRepo() *store.ChecksRepo
 	// GetGrafana returns the Grafana client.
 	GetGrafana() grafana.Client
 }

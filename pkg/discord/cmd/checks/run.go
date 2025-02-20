@@ -6,6 +6,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 // handleRun handles the '/checks run' command.
@@ -14,8 +15,12 @@ func (c *ChecksCommand) handleRun(s *discordgo.Session, i *discordgo.Interaction
 	network := options[0].StringValue()
 	client := options[1].StringValue()
 
-	c.log.Infof("Received checks run command: network=%s client=%s from user=%s",
-		network, client, i.Member.User.Username)
+	c.log.WithFields(logrus.Fields{
+		"command": "/checks run",
+		"network": network,
+		"client":  client,
+		"user":    i.Member.User.Username,
+	}).Info("Received command")
 
 	// First respond that we're working on it.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

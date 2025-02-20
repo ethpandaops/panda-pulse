@@ -85,6 +85,8 @@ func setConfig(cfg *service.Config) {
 	cfg.S3BucketPrefix = os.Getenv("S3_BUCKET_PREFIX")
 	cfg.S3Region = os.Getenv("AWS_REGION")
 	cfg.S3EndpointURL = os.Getenv("AWS_ENDPOINT_URL")
+	cfg.HealthCheckAddress = os.Getenv("HEALTH_CHECK_ADDRESS")
+	cfg.MetricsAddress = os.Getenv("METRICS_ADDRESS")
 
 	if cfg.GrafanaBaseURL == "" {
 		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL

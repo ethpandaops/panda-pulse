@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 // handleDeregister handles the '/checks deregister' command.
@@ -19,8 +19,11 @@ func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.Inte
 		client = &c
 	}
 
-	c.log.Infof("Received checks deregister command: network=%s client=%v from user=%s",
-		network, client, i.Member.User.Username)
+	c.log.WithFields(logrus.Fields{
+		"command": "/checks deregister",
+		"network": network,
+		"user":    i.Member.User.Username,
+	}).Info("Received command")
 
 	if err := c.deregisterAlert(context.Background(), network, client); err != nil {
 		if notRegistered, ok := err.(*store.AlertNotRegisteredError); ok {
@@ -61,65 +64,46 @@ func (c *ChecksCommand) handleDeregister(s *discordgo.Session, i *discordgo.Inte
 
 // deregisterAlert deregisters an alert for a given network and client.
 func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, client *string) error {
-	c.log.Infof("Deregistering alert for network=%s client=%v", network, client)
+	alerts, err := c.bot.GetMonitorRepo().List(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list alerts: %w", err)
+	}
 
 	// If client is specified, only remove that client's alert.
 	if client != nil {
-		// First try to find the alert to get its type.
-		alerts, err := c.bot.GetMonitorRepo().List(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list alerts: %w", err)
-		}
-
-		// Find the alert to get its type.
-		var (
-			clientType clients.ClientType
-			found      bool
-		)
-
+		// Find the alert monitor in question.
+		var alert *store.MonitorAlert
 		for _, a := range alerts {
 			if a.Network == network && a.Client == *client {
-				clientType = a.ClientType
-				found = true
+				alert = a
 
 				break
 			}
 		}
 
-		if !found {
+		if alert == nil {
 			return &store.AlertNotRegisteredError{
 				Network: network,
 				Client:  *client,
 			}
 		}
 
-		jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", network, clientType, *client)
-		c.bot.GetScheduler().RemoveJob(jobName)
-
-		// Remove from S3.
-		if err := c.bot.GetMonitorRepo().Purge(ctx, network, *client); err != nil {
-			return fmt.Errorf("failed to delete alert: %w", err)
+		if err := c.unscheduleAlert(ctx, alert); err != nil {
+			return fmt.Errorf("failed to unschedule alert: %w", err)
 		}
 
 		return nil
 	}
 
+	var found bool
+
 	// Otherwise, remove all clients for this network.
-	alerts, err := c.bot.GetMonitorRepo().List(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list alerts: %w", err)
-	}
-
-	found := false
-
 	for _, alert := range alerts {
 		if alert.Network == network {
 			found = true
-			jobName := fmt.Sprintf("monitor-alert-%s-%s-%s", network, alert.ClientType, alert.Client)
-			c.bot.GetScheduler().RemoveJob(jobName)
 
-			if err := c.bot.GetMonitorRepo().Purge(ctx, network, alert.Client); err != nil {
-				return fmt.Errorf("failed to delete alert: %w", err)
+			if err := c.unscheduleAlert(ctx, alert); err != nil {
+				return fmt.Errorf("failed to unschedule alert: %w", err)
 			}
 		}
 	}
@@ -130,6 +114,29 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 			Client:  "any",
 		}
 	}
+
+	return nil
+}
+
+func (c *ChecksCommand) unscheduleAlert(ctx context.Context, alert *store.MonitorAlert) error {
+	key := c.bot.GetMonitorRepo().Key(alert)
+
+	// Remove from S3.
+	if err := c.bot.GetMonitorRepo().Purge(ctx, alert.Network, alert.Client); err != nil {
+		return fmt.Errorf("failed to delete alert: %w", err)
+	}
+
+	c.log.WithFields(logrus.Fields{
+		"network": alert.Network,
+		"channel": alert.DiscordChannel,
+		"client":  alert.Client,
+		"key":     key,
+	}).Info("Deregistered monitor")
+
+	// Remove from scheduler.
+	c.bot.GetScheduler().RemoveJob(key)
+
+	c.log.WithField("key", key).Info("Unscheduled monitor alert")
 
 	return nil
 }

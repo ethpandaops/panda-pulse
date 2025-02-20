@@ -24,6 +24,8 @@ type Repository[T any] interface {
 	Persist(ctx context.Context, item T) error
 	// Purge removes an item based on its identifiers.
 	Purge(ctx context.Context, identifiers ...string) error
+	// Key returns the key for an item based on its identifiers.
+	Key(item T) string
 }
 
 // BaseRepo contains common S3 functionality for all repositories.
@@ -75,6 +77,28 @@ func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (BaseRe
 		prefix: cfg.Prefix,
 		log:    log,
 	}, nil
+}
+
+// VerifyConnection verifies the S3 connection and bucket accessibility.
+func (b *BaseRepo) VerifyConnection(ctx context.Context) error {
+	// Test bucket listing.
+	if _, err := b.store.ListBuckets(ctx, &s3.ListBucketsInput{}); err != nil {
+		return fmt.Errorf("failed to list buckets: %w", err)
+	}
+
+	// Test bucket access.
+	if _, err := b.store.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(b.bucket),
+	}); err != nil {
+		return fmt.Errorf("failed to access bucket %s: %w", b.bucket, err)
+	}
+
+	b.log.WithFields(logrus.Fields{
+		"bucket": b.bucket,
+		"prefix": b.prefix,
+	}).Info("Verified S3 connection")
+
+	return nil
 }
 
 // GetS3Client returns the underlying S3 client.
