@@ -48,8 +48,6 @@ func (c *ChecksCommand) handleList(
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
-	var msg strings.Builder
-
 	// Get all unique networks.
 	networks := make(map[string]bool)
 	for _, alert := range alerts {
@@ -64,10 +62,26 @@ func (c *ChecksCommand) handleList(
 			suffix = fmt.Sprintf(msgNoChecksForNetwork, *network)
 		}
 
-		msg.WriteString(fmt.Sprintf(msgNoChecksRegistered, suffix))
+		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf(msgNoChecksRegistered, suffix),
+			},
+		})
 	}
 
-	// For each network, show the client status table.
+	// First, respond to the interaction to acknowledge it.
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Listing checks...",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to respond to interaction: %w", err)
+	}
+
+	// Then send each network's table as a separate message, we do this to get around the 2000 message limit.
 	for networkName := range networks {
 		if network != nil && networkName != *network {
 			continue
@@ -94,6 +108,8 @@ func (c *ChecksCommand) handleList(
 			}
 		}
 
+		var msg strings.Builder
+
 		msg.WriteString(fmt.Sprintf(msgNetworkClients, networkName))
 		msg.WriteString(buildClientTable(allClients, registered))
 
@@ -110,6 +126,7 @@ func (c *ChecksCommand) handleList(
 			msg.WriteString(msgAlertsSentTo)
 
 			var first = true
+
 			for channelID := range channels {
 				if !first {
 					msg.WriteString(", ")
@@ -122,14 +139,13 @@ func (c *ChecksCommand) handleList(
 
 			msg.WriteString("\n")
 		}
+
+		if _, err := s.ChannelMessageSend(i.ChannelID, msg.String()); err != nil {
+			c.log.WithError(err).WithField("network", networkName).Error("Failed to send network checks table")
+		}
 	}
 
-	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: msg.String(),
-		},
-	})
+	return nil
 }
 
 // listAlerts lists all alerts for a given network.

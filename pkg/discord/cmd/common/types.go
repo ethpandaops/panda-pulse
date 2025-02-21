@@ -28,6 +28,8 @@ type BotContext interface {
 	GetMonitorRepo() *store.MonitorRepo
 	// GetChecksRepo returns the checks repository.
 	GetChecksRepo() *store.ChecksRepo
+	// GetMentionsRepo returns the mentions repository.
+	GetMentionsRepo() *store.MentionsRepo
 	// GetGrafana returns the Grafana client.
 	GetGrafana() grafana.Client
 	// GetHive returns the Hive client.

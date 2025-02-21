@@ -55,7 +55,7 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Name:        "run",
-				Description: "Run a specific health check",
+				Description: "Run a specific health check for a network and client",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
@@ -76,7 +76,7 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 			},
 			{
 				Name:        "register",
-				Description: "Register health checks",
+				Description: "Register health checks for a network (and optional client)",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
@@ -103,7 +103,7 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 			},
 			{
 				Name:        "deregister",
-				Description: "Deregister health checks",
+				Description: "Deregister health checks for a network (and optional client)",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
@@ -124,7 +124,7 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 			},
 			{
 				Name:        "list",
-				Description: "List registered health checks",
+				Description: "List all registered health checks",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
@@ -369,6 +369,12 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 		return false, nil
 	}
 
+	// Get mentions for this client/network.
+	mentions, err := c.bot.GetMentionsRepo().Get(context.Background(), alert.Network, alert.Client)
+	if err != nil {
+		c.log.WithError(err).Error("Failed to get mentions")
+	}
+
 	// Use the new builder.
 	builder := message.NewAlertMessageBuilder(&message.Config{
 		Alert:          alert,
@@ -403,6 +409,13 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 			if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
 				return true, fmt.Errorf("failed to send hive screenshot: %w", err)
 			}
+		}
+	}
+
+	// Add mentions at the bottom of the thread if they're enabled.
+	if mentions != nil && mentions.Enabled && len(mentions.Mentions) > 0 {
+		if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildMentionMessage(mentions.Mentions)); err != nil {
+			c.log.WithError(err).Error("Failed to send mentions message")
 		}
 	}
 

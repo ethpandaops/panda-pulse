@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	cmdmentions "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
@@ -28,6 +29,7 @@ type BotServices interface {
 	GetScheduler() *scheduler.Scheduler
 	GetMonitorRepo() *store.MonitorRepo
 	GetChecksRepo() *store.ChecksRepo
+	GetMentionsRepo() *store.MentionsRepo
 	GetGrafana() grafana.Client
 	GetHive() hive.Hive
 }
@@ -40,15 +42,16 @@ type Bot interface {
 
 // discordBot represents the Discord bot implementation.
 type discordBot struct {
-	log         *logrus.Logger
-	config      *Config
-	session     *discordgo.Session
-	scheduler   *scheduler.Scheduler
-	monitorRepo *store.MonitorRepo
-	checksRepo  *store.ChecksRepo
-	grafana     grafana.Client
-	hive        hive.Hive
-	commands    []common.Command
+	log          *logrus.Logger
+	config       *Config
+	session      *discordgo.Session
+	scheduler    *scheduler.Scheduler
+	monitorRepo  *store.MonitorRepo
+	checksRepo   *store.ChecksRepo
+	mentionsRepo *store.MentionsRepo
+	grafana      grafana.Client
+	hive         hive.Hive
+	commands     []common.Command
 }
 
 // NewBot creates a new Discord bot.
@@ -58,6 +61,7 @@ func NewBot(
 	scheduler *scheduler.Scheduler,
 	monitorRepo *store.MonitorRepo,
 	checksRepo *store.ChecksRepo,
+	mentionsRepo *store.MentionsRepo,
 	grafana grafana.Client,
 	hive hive.Hive,
 ) (Bot, error) {
@@ -68,19 +72,21 @@ func NewBot(
 	}
 
 	bot := &discordBot{
-		log:         log,
-		config:      cfg,
-		session:     session,
-		scheduler:   scheduler,
-		monitorRepo: monitorRepo,
-		checksRepo:  checksRepo,
-		grafana:     grafana,
-		hive:        hive,
-		commands:    make([]common.Command, 0),
+		log:          log,
+		config:       cfg,
+		session:      session,
+		scheduler:    scheduler,
+		monitorRepo:  monitorRepo,
+		checksRepo:   checksRepo,
+		mentionsRepo: mentionsRepo,
+		grafana:      grafana,
+		hive:         hive,
+		commands:     make([]common.Command, 0),
 	}
 
 	// Register command handlers.
 	bot.commands = append(bot.commands, cmdchecks.NewChecksCommand(log, bot))
+	bot.commands = append(bot.commands, cmdmentions.NewMentionsCommand(log, bot))
 
 	// Register event handlers.
 	session.AddHandler(bot.handleInteraction)
@@ -142,6 +148,11 @@ func (b *discordBot) GetMonitorRepo() *store.MonitorRepo {
 // GetChecksRepo returns the checks repository.
 func (b *discordBot) GetChecksRepo() *store.ChecksRepo {
 	return b.checksRepo
+}
+
+// GetMentionsRepo returns the mentions repository.
+func (b *discordBot) GetMentionsRepo() *store.MentionsRepo {
+	return b.mentionsRepo
 }
 
 // GetGrafana returns the Grafana client.

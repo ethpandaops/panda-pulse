@@ -25,14 +25,15 @@ const (
 
 // Service is the main service for the panda-pulse application.
 type Service struct {
-	config      *Config
-	log         *logrus.Logger
-	scheduler   *scheduler.Scheduler
-	bot         discord.Bot
-	monitorRepo *store.MonitorRepo
-	checksRepo  *store.ChecksRepo
-	healthSrv   *http.Server
-	metricsSrv  *http.Server
+	config       *Config
+	log          *logrus.Logger
+	scheduler    *scheduler.Scheduler
+	bot          discord.Bot
+	monitorRepo  *store.MonitorRepo
+	checksRepo   *store.ChecksRepo
+	mentionsRepo *store.MentionsRepo
+	healthSrv    *http.Server
+	metricsSrv   *http.Server
 }
 
 // NewService creates a new Service.
@@ -59,6 +60,12 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		return nil, fmt.Errorf("failed to create S3 store: %w", err)
 	}
 
+	// Repository for managing mentions.
+	mentionsRepo, err := store.NewMentionsRepo(ctx, log, cfg.AsS3Config())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 store: %w", err)
+	}
+
 	// Check S3 connection health, no point in continuing if we can't access the store.
 	if verr := monitorRepo.VerifyConnection(ctx); verr != nil {
 		return nil, fmt.Errorf("failed to verify S3 connection: %w", verr)
@@ -74,6 +81,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		scheduler,
 		monitorRepo,
 		checksRepo,
+		mentionsRepo,
 		grafanaClient,
 		hive,
 	)
@@ -82,12 +90,13 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	}
 
 	return &Service{
-		config:      cfg,
-		log:         log,
-		bot:         bot,
-		scheduler:   scheduler,
-		monitorRepo: monitorRepo,
-		checksRepo:  checksRepo,
+		config:       cfg,
+		log:          log,
+		bot:          bot,
+		scheduler:    scheduler,
+		monitorRepo:  monitorRepo,
+		checksRepo:   checksRepo,
+		mentionsRepo: mentionsRepo,
 	}, nil
 }
 

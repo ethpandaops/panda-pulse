@@ -11,10 +11,6 @@ import (
 
 // Config contains the configuration for the service.
 type Config struct {
-	// Network            string
-	// ConsensusNode      string
-	// ExecutionNode      string
-	// DiscordChannel     string
 	GrafanaToken       string
 	DiscordToken       string
 	GrafanaBaseURL     string

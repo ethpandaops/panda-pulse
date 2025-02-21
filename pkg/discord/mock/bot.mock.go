@@ -87,6 +87,20 @@ func (mr *MockBotMockRecorder) GetHive() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHive", reflect.TypeOf((*MockBot)(nil).GetHive))
 }
 
+// GetMentionsRepo mocks base method.
+func (m *MockBot) GetMentionsRepo() *store.MentionsRepo {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMentionsRepo")
+	ret0, _ := ret[0].(*store.MentionsRepo)
+	return ret0
+}
+
+// GetMentionsRepo indicates an expected call of GetMentionsRepo.
+func (mr *MockBotMockRecorder) GetMentionsRepo() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMentionsRepo", reflect.TypeOf((*MockBot)(nil).GetMentionsRepo))
+}
+
 // GetMonitorRepo mocks base method.
 func (m *MockBot) GetMonitorRepo() *store.MonitorRepo {
 	m.ctrl.T.Helper()

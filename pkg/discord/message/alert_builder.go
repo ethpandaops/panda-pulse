@@ -65,10 +65,12 @@ func NewAlertMessageBuilder(cfg *Config) *AlertMessageBuilder {
 
 // BuildMainMessage builds the main message.
 func (b *AlertMessageBuilder) BuildMainMessage() *discordgo.MessageSend {
-	return &discordgo.MessageSend{
+	msg := &discordgo.MessageSend{
 		Embed:      b.buildMainEmbed(),
 		Components: b.buildActionButtons(),
 	}
+
+	return msg
 }
 
 // BuildThreadMessages builds the category message.
@@ -99,6 +101,7 @@ func (b *AlertMessageBuilder) BuildThreadMessages(category checks.Category, fail
 	return messages
 }
 
+// BuildHiveMessage builds the Hive message.
 func (b *AlertMessageBuilder) BuildHiveMessage(content []byte) *discordgo.MessageSend {
 	return &discordgo.MessageSend{
 		Content: "\n**Hive Summary**",
@@ -109,6 +112,13 @@ func (b *AlertMessageBuilder) BuildHiveMessage(content []byte) *discordgo.Messag
 				Reader:      bytes.NewReader(content),
 			},
 		},
+	}
+}
+
+// BuildMentionMessage builds the mention message.
+func (b *AlertMessageBuilder) BuildMentionMessage(mentions []string) *discordgo.MessageSend {
+	return &discordgo.MessageSend{
+		Content: strings.Join(mentions, " "),
 	}
 }
 
