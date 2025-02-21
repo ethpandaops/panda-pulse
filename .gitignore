@@ -1,4 +1,4 @@
-# Localstack
+# Any localstack test data.
 localstack/data
 
 # Output of the go coverage tool.

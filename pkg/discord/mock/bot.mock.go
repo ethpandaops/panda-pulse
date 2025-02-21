@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	discordgo "github.com/bwmarrin/discordgo"
+	common "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	grafana "github.com/ethpandaops/panda-pulse/pkg/grafana"
 	hive "github.com/ethpandaops/panda-pulse/pkg/hive"
 	scheduler "github.com/ethpandaops/panda-pulse/pkg/scheduler"
@@ -113,6 +114,20 @@ func (m *MockBot) GetMonitorRepo() *store.MonitorRepo {
 func (mr *MockBotMockRecorder) GetMonitorRepo() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMonitorRepo", reflect.TypeOf((*MockBot)(nil).GetMonitorRepo))
+}
+
+// GetRoleConfig mocks base method.
+func (m *MockBot) GetRoleConfig() *common.RoleConfig {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRoleConfig")
+	ret0, _ := ret[0].(*common.RoleConfig)
+	return ret0
+}
+
+// GetRoleConfig indicates an expected call of GetRoleConfig.
+func (mr *MockBotMockRecorder) GetRoleConfig() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRoleConfig", reflect.TypeOf((*MockBot)(nil).GetRoleConfig))
 }
 
 // GetScheduler mocks base method.

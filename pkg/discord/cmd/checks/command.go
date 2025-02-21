@@ -91,6 +91,9 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 						Description: "Channel to send alerts to",
 						Type:        discordgo.ApplicationCommandOptionChannel,
 						Required:    true,
+						ChannelTypes: []discordgo.ChannelType{
+							discordgo.ChannelTypeGuildText,
+						},
 					},
 					{
 						Name:        "client",
@@ -351,8 +354,13 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 		}
 	}
 
-	// If they are neither, or if unexplained alerts are disabled, we're done.
+	// If they are neither, we're done.
 	if !isRootCause && !hasUnexplainedIssues {
+		c.log.WithFields(logrus.Fields{
+			"network": alert.Network,
+			"client":  alert.Client,
+		}).Info("No issues detected, not sending notification")
+
 		return false, nil
 	}
 
@@ -366,6 +374,11 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 
 	// Sanity check they're failures.
 	if !hasFailures {
+		c.log.WithFields(logrus.Fields{
+			"network": alert.Network,
+			"client":  alert.Client,
+		}).Info("No failures detected, not sending notification")
+
 		return false, nil
 	}
 
@@ -418,6 +431,11 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 			c.log.WithError(err).Error("Failed to send mentions message")
 		}
 	}
+
+	c.log.WithFields(logrus.Fields{
+		"network": alert.Network,
+		"client":  alert.Client,
+	}).Info("Issues detected, sent notification")
 
 	return true, nil
 }

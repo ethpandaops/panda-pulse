@@ -1,12 +1,21 @@
 package common
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
+
+// RoleConfig defines the roles required for each permission level.
+type RoleConfig struct {
+	AdminRoles  map[string]bool   // Map of admin role names that have full access
+	ClientRoles map[string]string // Map of client names to their team role names
+}
 
 // Command represents a Discord slash command.
 type Command interface {
@@ -34,4 +43,71 @@ type BotContext interface {
 	GetGrafana() grafana.Client
 	// GetHive returns the Hive client.
 	GetHive() hive.Hive
+	// GetRoleConfig returns the role configuration.
+	GetRoleConfig() *RoleConfig
+}
+
+// HasPermission checks if a member has permission to execute a command.
+func HasPermission(member *discordgo.Member, session *discordgo.Session, guildID string, config *RoleConfig, cmdData *discordgo.ApplicationCommandInteractionData) bool {
+	// Check admin roles first and let it through to the keeper.
+	for _, roleID := range member.Roles {
+		role, err := session.State.Role(guildID, roleID)
+		if err != nil {
+			continue
+		}
+
+		roleName := strings.ToLower(role.Name)
+		if config.AdminRoles[roleName] {
+			return true
+		}
+	}
+
+	// For client team members, we need to check if they're trying to access their own client.
+	clientArg := findClientArgument(cmdData)
+	if clientArg != "" {
+		// Get the required team role for this client.
+		requiredRole := config.ClientRoles[strings.ToLower(clientArg)]
+		if requiredRole == "" {
+			return false // Unknown client.
+		}
+
+		// Check if user has the required team role.
+		for _, roleID := range member.Roles {
+			role, err := session.State.Role(guildID, roleID)
+			if err != nil {
+				continue
+			}
+
+			if strings.EqualFold(role.Name, requiredRole) {
+				return true
+			}
+		}
+
+		return false // User doesn't have the required team role.
+	}
+
+	// If no client is specified in the command, only admins can execute it.
+	return false
+}
+
+// findClientArgument looks for a client argument in the command data.
+func findClientArgument(data *discordgo.ApplicationCommandInteractionData) string {
+	if data == nil || len(data.Options) == 0 {
+		return ""
+	}
+
+	// Check subcommand options.
+	subCmd := data.Options[0]
+	for _, opt := range subCmd.Options {
+		if opt.Name == "client" {
+			return opt.StringValue()
+		}
+	}
+
+	return ""
+}
+
+// NoPermissionError returns a formatted error message for permission denied.
+func NoPermissionError(command string) error {
+	return fmt.Errorf("🚫 Sorry, you do not have permission to use the `/%s` command", command)
 }

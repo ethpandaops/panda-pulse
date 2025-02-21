@@ -40,7 +40,6 @@ func (c *Config) AsS3Config() *store.S3Config {
 // AsDiscordConfig converts the configuration to a DiscordConfig.
 func (c *Config) AsDiscordConfig() *discord.Config {
 	return &discord.Config{
-		GrafanaToken: c.GrafanaToken,
 		DiscordToken: c.DiscordToken,
 	}
 }

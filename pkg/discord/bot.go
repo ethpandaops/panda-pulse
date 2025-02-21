@@ -38,6 +38,7 @@ type BotServices interface {
 type Bot interface {
 	BotCore
 	BotServices
+	GetRoleConfig() *common.RoleConfig
 }
 
 // discordBot represents the Discord bot implementation.
@@ -174,6 +175,20 @@ func (b *discordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 	data := i.ApplicationCommandData()
 	for _, cmd := range b.commands {
 		if cmd.Name() == data.Name {
+			// Check permissions before executing command.
+			if !common.HasPermission(i.Member, s, i.GuildID, b.config.AsRoleConfig(), &data) {
+				if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: common.NoPermissionError(fmt.Sprintf("%s %s", cmd.Name(), data.Options[0].Name)).Error(),
+					},
+				}); err != nil {
+					b.log.WithError(err).Error("Failed to respond with permission error")
+				}
+
+				return
+			}
+
 			cmd.Handle(s, i)
 
 			return
@@ -250,4 +265,9 @@ func (b *discordBot) getChecksCmd() *cmdchecks.ChecksCommand {
 	}
 
 	return nil
+}
+
+// GetRoleConfig returns the role configuration.
+func (b *discordBot) GetRoleConfig() *common.RoleConfig {
+	return b.config.AsRoleConfig()
 }

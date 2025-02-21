@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -30,6 +31,28 @@ func (c *ChecksCommand) handleRegister(
 		channel = options[1].ChannelValue(s)
 		client  *string
 	)
+
+	// Check if it's a text channel.
+	if channel.Type != discordgo.ChannelTypeGuildText {
+		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "🚫 Alerts can only be registered in text channels",
+			},
+		})
+	}
+
+	// Check if channel is in the 'bots' category.
+	if parentChannel, err := s.Channel(channel.ParentID); err == nil {
+		if !strings.EqualFold(parentChannel.Name, "bots") {
+			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "🚫 Alerts can only be registered in channels under the `bots` category",
+				},
+			})
+		}
+	}
 
 	if len(options) > 2 {
 		c := options[2].StringValue()
