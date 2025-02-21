@@ -217,14 +217,13 @@ func (b *discordBot) scheduleExistingAlerts() error {
 	}
 
 	for _, alert := range alerts {
-		schedule := "*/1 * * * *"
 		jobName := b.monitorRepo.Key(alert)
 
 		// Create a copy of the alert for the closure.
 		alertCopy := alert
 
 		// Add it to the scheduler.
-		if err := b.scheduler.AddJob(jobName, schedule, func(ctx context.Context) error {
+		if err := b.scheduler.AddJob(jobName, cmdchecks.DefaultCheckSchedule, func(ctx context.Context) error {
 			b.log.WithFields(logrus.Fields{
 				"network": alert.Network,
 				"client":  alert.Client,
@@ -248,7 +247,7 @@ func (b *discordBot) scheduleExistingAlerts() error {
 			"network":  alert.Network,
 			"channel":  alert.DiscordChannel,
 			"client":   alert.Client,
-			"schedule": schedule,
+			"schedule": cmdchecks.DefaultCheckSchedule,
 			"key":      jobName,
 		}).Info("Scheduled monitor alert")
 	}

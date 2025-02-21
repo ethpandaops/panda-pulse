@@ -3,21 +3,48 @@ package message
 import (
 	"crypto/sha256"
 	"math"
+	"strings"
 )
 
 // hashToColor generates a visually distinct, deterministic color int from a string.
+// This is then used for the discord alert to color code alerts for different networks.
 func hashToColor(s string) int {
-	hash := sha256.Sum256([]byte(s))
+	// Extract the network identifier (e.g., "peerdas" from "peerdas-network-5").
+	parts := strings.Split(s, "-")
+	if len(parts) == 0 {
+		return 0
+	}
 
-	// Map hue to avoid green (90°-180°)
-	hue := remapHue(float64(hash[0]) / 255.0)
-	saturation := 0.75                                     // Fixed for vibrancy
-	lightness := 0.55 + (float64(hash[10]) / 255.0 * 0.15) // Ensures spread-out lightness
+	// Use the network identifier and number for better distribution.
+	var (
+		identifier = parts[0]
+		number     = "0"
+	)
 
-	// Convert HSL to RGB
+	if len(parts) > 2 {
+		number = parts[len(parts)-1]
+	}
+
+	// Create a unique string that emphasizes the differences.
+	uniqueStr := identifier + number
+
+	hash := sha256.Sum256([]byte(uniqueStr))
+
+	// Use first byte for base hue selection (0-5 for 6 distinct base colors).
+	baseHue := float64(hash[0]%6) / 6.0
+
+	// Use second byte for slight hue variation within the base color.
+	hueVariation := float64(hash[1]) / 255.0 / 12.0 // Small variation (1/12 of the way to the next color)
+
+	hue := baseHue + hueVariation
+
+	// Fixed saturation and lightness for good visibility.
+	saturation := 0.75
+	lightness := 0.60
+
+	// Convert HSL to RGB.
 	r, g, b := hslToRGB(hue, lightness, saturation)
 
-	// Convert to int in 0xRRGGBB format.
 	return (r << 16) | (g << 8) | b
 }
 
@@ -66,16 +93,4 @@ func hueToRGB(p, q, t float64) float64 {
 	}
 
 	return p
-}
-
-// remapHue ensures the hue avoids green (90°-180°).
-func remapHue(h float64) float64 {
-	hueDegrees := h * 360.0
-
-	// If in green range (90-180°), shift to a non-green area.
-	if hueDegrees >= 90.0 && hueDegrees <= 180.0 {
-		hueDegrees = 180.0 + (hueDegrees - 90.0) // Shift it to the blue/purple spectrum.
-	}
-
-	return hueDegrees / 360.0 // Normalize back to 0-1 range.
 }

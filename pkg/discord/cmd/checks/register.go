@@ -16,7 +16,6 @@ const (
 	msgAlreadyRegistered = "ℹ️ Client **%s** is already registered for **%s** in <#%s>"
 	msgRegisteredClient  = "✅ Successfully registered **%s** for **%s** notifications in <#%s>"
 	msgRegisteredAll     = "✅ Successfully registered **all clients** for **%s** notifications in <#%s>"
-	defaultSchedule      = "*/1 * * * *"
 )
 
 // handleRegister handles the '/checks register' command.
@@ -167,7 +166,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}).Info("Registered monitor")
 
 	// And secondly, schedule the alert to run on our schedule.
-	if err := c.bot.GetScheduler().AddJob(jobName, defaultSchedule, func(ctx context.Context) error {
+	if err := c.bot.GetScheduler().AddJob(jobName, DefaultCheckSchedule, func(ctx context.Context) error {
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
@@ -182,7 +181,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"schedule": defaultSchedule,
+		"schedule": DefaultCheckSchedule,
 		"key":      jobName,
 	}).Info("Scheduled monitor alert")
 

@@ -301,6 +301,9 @@ func (b *AlertMessageBuilder) buildMainEmbed() *discordgo.MessageEmbed {
 		}
 	}
 
+	fmt.Printf("hash: %d\n", hashToColor(b.alert.Network))
+	fmt.Printf("network: %s\n", b.alert.Network)
+
 	embed := &discordgo.MessageEmbed{
 		Title:     b.getTitle(),
 		Color:     hashToColor(b.alert.Network),
