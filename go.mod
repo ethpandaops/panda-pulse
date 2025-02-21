@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.0
 	golang.org/x/text v0.3.8
