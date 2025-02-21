@@ -5,7 +5,7 @@ services:
       - "127.0.0.1:4566:4566"
     environment:
       - DEBUG=${DEBUG:-0}
-      - S3_BUCKET=${S3_BUCKET:-locals3}
+      - S3_BUCKET=${S3_BUCKET:-panda-pulse}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
     volumes:
