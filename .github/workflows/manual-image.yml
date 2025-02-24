@@ -3,11 +3,16 @@ name: manual-image
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag for the image (usually branch name)'
+      branch:
+        description: 'Branch to build from'
         required: true
         type: string
         default: 'master'
+      image_tag:
+        description: 'Docker image tag (usually branch name or feature name)'
+        required: true
+        type: string
+        default: 'latest'
 
 permissions:
   contents: read
@@ -20,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag }}
+          ref: ${{ github.event.inputs.branch }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -43,6 +48,8 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --snapshot --skip=publish
+          args: release --clean --snapshot --docker-tags=${{ github.event.inputs.image_tag }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }} 
