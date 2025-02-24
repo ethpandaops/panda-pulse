@@ -3,11 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryCLHeadSlot = `
@@ -18,11 +19,11 @@ const queryCLHeadSlot = `
 
 // HeadSlotCheck is a check that verifies if the CL head slot is advancing.
 type HeadSlotCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewHeadSlotCheck creates a new HeadSlotCheck.
-func NewHeadSlotCheck(grafanaClient grafana.GrafanaClient) *HeadSlotCheck {
+func NewHeadSlotCheck(grafanaClient grafana.Client) *HeadSlotCheck {
 	return &HeadSlotCheck{
 		grafanaClient: grafanaClient,
 	}
@@ -39,12 +40,12 @@ func (c *HeadSlotCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *HeadSlotCheck) ClientType() ClientType {
-	return ClientTypeCL
+func (c *HeadSlotCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeCL
 }
 
 // Run executes the check.
-func (c *HeadSlotCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *HeadSlotCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(queryCLHeadSlot, cfg.Network, cfg.ConsensusNode, cfg.ExecutionNode)
 
 	log.Print("\n=== Running CL head slot check")

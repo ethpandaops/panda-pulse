@@ -1,4 +1,4 @@
-package checks
+package clients
 
 import "strings"
 
@@ -41,10 +41,32 @@ const (
 	ELEthereumJS = "ethereumjs"
 )
 
-// Buckets of known clients.
 var (
+	// Buckets of known clients.
 	CLClients = []string{CLLighthouse, CLPrysm, CLLodestar, CLNimbus, CLTeku, CLGrandine}
 	ELClients = []string{ELNethermind, ELNimbusel, ELBesu, ELGeth, ELReth, ELErigon, ELEthereumJS}
+	// TeamRoles maps clients to their respective team's Discord role.
+	TeamRoles = map[string]string{
+		CLLighthouse: "sigmaprime",
+		CLPrysm:      "prysmatic",
+		CLLodestar:   "chainsafe",
+		CLNimbus:     "nethermind",
+		CLTeku:       "teku",
+		CLGrandine:   "grandine",
+		ELNethermind: "nethermind",
+		ELNimbusel:   "nethermind",
+		ELBesu:       "besu",
+		ELGeth:       "geth",
+		ELReth:       "reth",
+		ELErigon:     "erigon",
+		ELEthereumJS: "ethereumjs",
+	}
+	// AdminRoles maps admin roles to their respective Discord role.
+	AdminRoles = map[string]string{
+		"ef":    "ef",
+		"admin": "admin",
+		"mod":   "mod",
+	}
 )
 
 // IsCLClient returns true if the client is a consensus client.

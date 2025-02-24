@@ -3,11 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryELBlockHeight = `
@@ -19,11 +20,11 @@ const queryELBlockHeight = `
 
 // ELBlockHeightCheck is a check that verifies if the EL nodes are advancing.
 type ELBlockHeightCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewELBlockHeightCheck creates a new ELBlockHeightCheck.
-func NewELBlockHeightCheck(grafanaClient grafana.GrafanaClient) *ELBlockHeightCheck {
+func NewELBlockHeightCheck(grafanaClient grafana.Client) *ELBlockHeightCheck {
 	return &ELBlockHeightCheck{
 		grafanaClient: grafanaClient,
 	}
@@ -40,12 +41,12 @@ func (c *ELBlockHeightCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *ELBlockHeightCheck) ClientType() ClientType {
-	return ClientTypeEL
+func (c *ELBlockHeightCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeEL
 }
 
 // Run executes the check.
-func (c *ELBlockHeightCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *ELBlockHeightCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(
 		queryELBlockHeight,
 		cfg.Network,

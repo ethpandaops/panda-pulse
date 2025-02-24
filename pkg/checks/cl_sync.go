@@ -3,11 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryCLSync = `
@@ -18,11 +19,11 @@ const queryCLSync = `
 
 // CLSyncCheck is a check that verifies if the CL nodes are syncing.
 type CLSyncCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewCLSyncCheck creates a new CLSyncCheck.
-func NewCLSyncCheck(grafanaClient grafana.GrafanaClient) *CLSyncCheck {
+func NewCLSyncCheck(grafanaClient grafana.Client) *CLSyncCheck {
 	return &CLSyncCheck{
 		grafanaClient: grafanaClient,
 	}
@@ -39,12 +40,12 @@ func (c *CLSyncCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *CLSyncCheck) ClientType() ClientType {
-	return ClientTypeCL
+func (c *CLSyncCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeCL
 }
 
 // Run executes the check.
-func (c *CLSyncCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *CLSyncCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(queryCLSync, cfg.Network, cfg.ConsensusNode, cfg.ExecutionNode)
 
 	log.Print("\n=== Running CL sync check")

@@ -3,11 +3,12 @@ package checks
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
 const queryCLFinalizedEpoch = `
@@ -19,11 +20,11 @@ const queryCLFinalizedEpoch = `
 
 // CLFinalizedEpochCheck is a check that verifies if the CL finalized epoch is advancing.
 type CLFinalizedEpochCheck struct {
-	grafanaClient grafana.GrafanaClient
+	grafanaClient grafana.Client
 }
 
 // NewCLFinalizedEpochCheck creates a new CLFinalizedEpochCheck.
-func NewCLFinalizedEpochCheck(grafanaClient grafana.GrafanaClient) *CLFinalizedEpochCheck {
+func NewCLFinalizedEpochCheck(grafanaClient grafana.Client) *CLFinalizedEpochCheck {
 	return &CLFinalizedEpochCheck{
 		grafanaClient: grafanaClient,
 	}
@@ -40,12 +41,12 @@ func (c *CLFinalizedEpochCheck) Category() Category {
 }
 
 // ClientType returns the client type of the check.
-func (c *CLFinalizedEpochCheck) ClientType() ClientType {
-	return ClientTypeCL
+func (c *CLFinalizedEpochCheck) ClientType() clients.ClientType {
+	return clients.ClientTypeCL
 }
 
 // Run executes the check.
-func (c *CLFinalizedEpochCheck) Run(ctx context.Context, cfg Config) (*Result, error) {
+func (c *CLFinalizedEpochCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Config) (*Result, error) {
 	query := fmt.Sprintf(
 		queryCLFinalizedEpoch,
 		cfg.Network,
