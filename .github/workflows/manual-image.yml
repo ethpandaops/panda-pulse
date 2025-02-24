@@ -50,7 +50,7 @@ jobs:
 
       - name: Create temporary tag
         run: |
-          git tag -f ${{ github.event.inputs.image_tag }}
+          git tag -f v0.0.0-${{ github.event.inputs.image_tag }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
@@ -61,5 +61,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ github.event.inputs.image_tag }} 
+          DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }} 
