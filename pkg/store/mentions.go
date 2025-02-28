@@ -59,6 +59,7 @@ func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			s.observeOperation("list", "mentions", err)
+
 			return nil, fmt.Errorf("failed to list mentions: %w", err)
 		}
 
@@ -77,6 +78,7 @@ func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
 	}
 
 	s.metrics.objectsTotal.WithLabelValues("mentions").Set(float64(len(mentions)))
+
 	return mentions, nil
 }
 
@@ -107,6 +109,7 @@ func (s *MentionsRepo) Get(ctx context.Context, network, client string) (*Client
 	}
 
 	s.observeOperation("get", "mentions", nil)
+
 	return mention, nil
 }
 
@@ -117,6 +120,7 @@ func (s *MentionsRepo) Persist(ctx context.Context, mention *ClientMention) erro
 	data, err := json.Marshal(mention)
 	if err != nil {
 		s.observeOperation("persist", "mentions", err)
+
 		return fmt.Errorf("failed to marshal mention: %w", err)
 	}
 
@@ -128,10 +132,12 @@ func (s *MentionsRepo) Persist(ctx context.Context, mention *ClientMention) erro
 		Body:   bytes.NewReader(data),
 	}); err != nil {
 		s.observeOperation("persist", "mentions", err)
+
 		return fmt.Errorf("failed to put mention: %w", err)
 	}
 
 	s.observeOperation("persist", "mentions", nil)
+
 	return nil
 }
 
@@ -150,10 +156,12 @@ func (s *MentionsRepo) Purge(ctx context.Context, identifiers ...string) error {
 		Key:    aws.String(s.Key(&ClientMention{Network: network, Client: client})),
 	}); err != nil {
 		s.observeOperation("purge", "mentions", err)
+
 		return fmt.Errorf("failed to delete mention: %w", err)
 	}
 
 	s.observeOperation("purge", "mentions", nil)
+
 	return nil
 }
 

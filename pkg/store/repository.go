@@ -110,7 +110,7 @@ func (b *BaseRepo) GetS3Client() *s3.Client {
 	return b.store
 }
 
-// Add helper methods for metrics
+// observeOperation observes the operation and increments the metrics.
 func (b *BaseRepo) observeOperation(operation, repository string, err error) {
 	b.metrics.operationsTotal.WithLabelValues(operation, repository).Inc()
 
@@ -127,6 +127,7 @@ func (b *BaseRepo) observeOperation(operation, repository string, err error) {
 	}
 }
 
+// trackDuration tracks the duration of an operation and observes the metrics.
 func (b *BaseRepo) trackDuration(operation, repository string) func() {
 	start := time.Now()
 

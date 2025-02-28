@@ -61,6 +61,7 @@ func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			s.observeOperation("list", "monitor", err)
+
 			return nil, fmt.Errorf("failed to list alerts: %w", err)
 		}
 
@@ -81,6 +82,7 @@ func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
 	}
 
 	s.metrics.objectsTotal.WithLabelValues("monitor").Set(float64(len(alerts)))
+
 	return alerts, nil
 }
 
@@ -91,6 +93,7 @@ func (s *MonitorRepo) Persist(ctx context.Context, alert *MonitorAlert) error {
 	data, err := json.Marshal(alert)
 	if err != nil {
 		s.observeOperation("persist", "monitor", err)
+
 		return fmt.Errorf("failed to marshal alert: %w", err)
 	}
 
@@ -102,10 +105,12 @@ func (s *MonitorRepo) Persist(ctx context.Context, alert *MonitorAlert) error {
 		Body:   bytes.NewReader(data),
 	}); err != nil {
 		s.observeOperation("persist", "monitor", err)
+
 		return fmt.Errorf("failed to put alert: %w", err)
 	}
 
 	s.observeOperation("persist", "monitor", nil)
+
 	return nil
 }
 

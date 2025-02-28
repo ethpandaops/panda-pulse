@@ -60,6 +60,7 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			s.observeOperation("list", "checks", err)
+
 			return nil, fmt.Errorf("failed to list artifacts: %w", err)
 		}
 
@@ -100,6 +101,7 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 				artifact, err := s.getArtifact(ctx, *obj.Key)
 				if err != nil {
 					s.log.Errorf("Failed to get artifact %s: %v", *obj.Key, err)
+
 					continue
 				}
 
@@ -123,6 +125,7 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 	}
 
 	s.metrics.objectsTotal.WithLabelValues("checks").Set(float64(len(artifacts)))
+
 	return artifacts, nil
 }
 
@@ -247,6 +250,7 @@ func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, 
 	})
 	if err != nil {
 		s.observeOperation("get", "checks", err)
+
 		return nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
 
@@ -256,6 +260,7 @@ func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, 
 	content, err := io.ReadAll(output.Body)
 	if err != nil {
 		s.observeOperation("get", "checks", err)
+
 		return nil, fmt.Errorf("failed to read artifact content: %w", err)
 	}
 

@@ -40,6 +40,7 @@ func TestScheduler(t *testing.T) {
 		jobRan := make(chan bool, 1)
 		err := s.AddJob("test", "@every 1s", func(ctx context.Context) error {
 			jobRan <- true
+
 			return nil
 		})
 
@@ -71,6 +72,7 @@ func TestScheduler(t *testing.T) {
 		require.NoError(t, s.AddJob("test", "* * * * *", func(ctx context.Context) error {
 			return nil
 		}))
+
 		firstID := s.jobs["test"]
 
 		// Replace with new job.
@@ -92,6 +94,7 @@ func TestScheduler(t *testing.T) {
 		jobRan := make(chan bool, 1)
 		err := s.AddJob("test", "@every 1s", func(ctx context.Context) error {
 			jobRan <- true
+
 			return nil
 		})
 		assert.NoError(t, err)
