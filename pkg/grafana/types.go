@@ -1,5 +1,12 @@
 package grafana
 
+// Config contains the configuration for the Grafana client.
+type Config struct {
+	Token            string
+	PromDatasourceID string
+	BaseURL          string
+}
+
 // QueryField represents a field in the Grafana response.
 type QueryField struct {
 	Labels map[string]string `json:"labels"`
@@ -34,4 +41,37 @@ type QueryResults struct {
 // QueryResponse is the response from a Grafana query.
 type QueryResponse struct {
 	Results QueryResults `json:"results"`
+}
+
+// queryPayload represents the common structure for Grafana queries.
+type queryPayload struct {
+	Queries []query `json:"queries"`
+	From    string  `json:"from"`
+	To      string  `json:"to"`
+}
+
+type query struct {
+	RefID         string                 `json:"refId"`
+	Datasource    map[string]interface{} `json:"datasource"`
+	Expr          string                 `json:"expr"`
+	MaxDataPoints int                    `json:"maxDataPoints"`
+	IntervalMs    int                    `json:"intervalMs"`
+	Interval      string                 `json:"interval"`
+	LegendFormat  string                 `json:"legendFormat,omitempty"`
+}
+
+// networkResponse represents the response structure for network queries.
+type networkResponse struct {
+	Results map[string]struct {
+		Frames []struct {
+			Data struct {
+				Values [][]interface{} `json:"values"`
+			} `json:"data"`
+			Schema struct {
+				Fields []struct {
+					Labels map[string]string `json:"labels"`
+				} `json:"fields"`
+			} `json:"schema"`
+		} `json:"frames"`
+	} `json:"results"`
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana/mock"
+	"github.com/ethpandaops/panda-pulse/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -81,11 +83,12 @@ func TestELBlockHeightCheck_Run(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockClient := mock.NewMockGrafanaClient(ctrl)
+			mockClient := mock.NewMockClient(ctrl)
 			mockClient.EXPECT().Query(gomock.Any(), gomock.Any()).Return(tt.mockResponse, tt.mockError)
 
+			log := logger.NewCheckLogger("id")
 			check := NewELBlockHeightCheck(mockClient)
-			result, err := check.Run(context.Background(), tt.config)
+			result, err := check.Run(context.Background(), log, tt.config)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -114,5 +117,5 @@ func TestELBlockHeightCheck_Category(t *testing.T) {
 
 func TestELBlockHeightCheck_ClientType(t *testing.T) {
 	check := NewELBlockHeightCheck(nil)
-	assert.Equal(t, ClientTypeEL, check.ClientType())
+	assert.Equal(t, clients.ClientTypeEL, check.ClientType())
 }

@@ -3,178 +3,109 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
-	"strings"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/ethpandaops/panda-pulse/pkg/checks"
-	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
+	"github.com/ethpandaops/panda-pulse/pkg/service"
+	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-const (
-	defaultGrafanaBaseURL   = "https://grafana.observability.ethpandaops.io"
-	defaultPromDatasourceID = "UhcO3vy7z"
-)
-
-// Config contains the configuration for the panda-pulse tool.
-type Config struct {
-	Network          string
-	ConsensusNode    string
-	ExecutionNode    string
-	DiscordChannel   string
-	GrafanaToken     string
-	DiscordToken     string
-	OpenRouterKey    string
-	GrafanaBaseURL   string
-	PromDatasourceID string
-	AlertUnexplained bool
-}
+const shutdownTimeout = 30 * time.Second
 
 func main() {
-	// Remove timestamp from log output, makes it harder to grok.
-	log.SetFlags(0)
+	var cfg service.Config
 
-	var cfg Config
+	// Initialize logger.
+	log := logrus.New()
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
+	// Create root context.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	rootCmd := &cobra.Command{
 		Use:          "panda-pulse",
-		Short:        "EthPandaOps dev-net monitoring tool",
+		Short:        "ethPandaOps dev-net monitoring tool",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cfg.GrafanaToken == "" {
-				return fmt.Errorf("GRAFANA_SERVICE_TOKEN environment variable is required")
-			}
-			if cfg.DiscordToken == "" {
-				return fmt.Errorf("DISCORD_BOT_TOKEN environment variable is required")
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("invalid configuration: %w", err)
 			}
 
-			// We enforce that one of --ethereum-cl or --ethereum-el is specified.
-			clSpecified := cmd.Flags().Changed("ethereum-cl")
-			elSpecified := cmd.Flags().Changed("ethereum-el")
-
-			if !clSpecified && !elSpecified {
-				return fmt.Errorf("must specify either --ethereum-cl or --ethereum-el")
+			svc, err := service.NewService(ctx, log, &cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create service: %w", err)
 			}
 
-			if clSpecified && elSpecified {
-				return fmt.Errorf("cannot specify both --ethereum-cl and --ethereum-el flags")
+			if err := svc.Start(ctx); err != nil {
+				return fmt.Errorf("failed to start service: %w", err)
 			}
 
-			if clSpecified {
-				if err := validateClient(cfg.ConsensusNode, true); err != nil {
-					return err
-				}
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+			select {
+			case <-sig:
+				log.Info("Received shutdown signal...")
+			case <-ctx.Done():
+				log.Info("Context cancelled...")
 			}
 
-			if elSpecified {
-				if err := validateClient(cfg.ExecutionNode, false); err != nil {
-					return err
-				}
+			// Create a new context with timeout for shutdown.
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer shutdownCancel()
+
+			log.Info("Shutting down...")
+
+			if err := svc.Stop(shutdownCtx); err != nil {
+				log.Errorf("Failed to stop service: %v", err)
 			}
 
-			return runChecks(cmd, cfg)
+			return nil
 		},
 	}
 
-	rootCmd.Flags().StringVar(&cfg.Network, "network", "", "network to monitor (e.g., pectra-devnet-5)")
-	rootCmd.Flags().StringVar(&cfg.DiscordChannel, "discord-channel", "", "discord channel to notify")
-	rootCmd.Flags().StringVar(&cfg.ConsensusNode, "ethereum-cl", checks.ClientTypeAll.String(), "consensus client to monitor")
-	rootCmd.Flags().StringVar(&cfg.ExecutionNode, "ethereum-el", checks.ClientTypeAll.String(), "execution client to monitor")
-	rootCmd.Flags().StringVar(&cfg.GrafanaBaseURL, "grafana-base-url", defaultGrafanaBaseURL, "grafana base URL")
-	rootCmd.Flags().StringVar(&cfg.PromDatasourceID, "prometheus-datasource-id", defaultPromDatasourceID, "prometheus datasource ID")
-	rootCmd.Flags().BoolVar(&cfg.AlertUnexplained, "alert-unexplained", true, "whether to alert on unexplained issues")
-
-	if err := rootCmd.MarkFlagRequired("network"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-
-		os.Exit(1)
-	}
-
-	if err := rootCmd.MarkFlagRequired("discord-channel"); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-
-		os.Exit(1)
-	}
-
-	cfg.GrafanaToken = os.Getenv("GRAFANA_SERVICE_TOKEN")
-	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
-	cfg.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")
+	setConfig(&cfg)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func runChecks(cmd *cobra.Command, cfg Config) error {
-	// Create shared HTTP client.
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+func setConfig(cfg *service.Config) {
+	cfg.GrafanaToken = os.Getenv("GRAFANA_SERVICE_TOKEN")
+	cfg.GrafanaBaseURL = os.Getenv("GRAFANA_BASE_URL")
+	cfg.PromDatasourceID = os.Getenv("PROMETHEUS_DATASOURCE_ID")
+	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
+	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
+	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	cfg.S3Bucket = os.Getenv("S3_BUCKET")
+	cfg.S3BucketPrefix = os.Getenv("S3_BUCKET_PREFIX")
+	cfg.S3Region = os.Getenv("AWS_REGION")
+	cfg.S3EndpointURL = os.Getenv("AWS_ENDPOINT_URL")
+	cfg.HealthCheckAddress = os.Getenv("HEALTH_CHECK_ADDRESS")
+	cfg.MetricsAddress = os.Getenv("METRICS_ADDRESS")
 
-	// Initialize Grafana client.
-	grafanaClient := grafana.NewClient(cfg.GrafanaBaseURL, cfg.PromDatasourceID, cfg.GrafanaToken, httpClient)
-
-	// Initialize Discord notifier.
-	discordNotifier, err := discord.NewNotifier(cfg.DiscordToken, cfg.OpenRouterKey)
-	if err != nil {
-		return fmt.Errorf("failed to create Discord notifier: %w", err)
+	if cfg.GrafanaBaseURL == "" {
+		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL
 	}
 
-	// Initialize check runner.
-	runner := checks.NewDefaultRunner()
-
-	// Register checks.
-	runner.RegisterCheck(checks.NewCLSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewHeadSlotCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewCLFinalizedEpochCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELSyncCheck(grafanaClient))
-	runner.RegisterCheck(checks.NewELBlockHeightCheck(grafanaClient))
-
-	// Determine if we're running checks for a specific client.
-	var targetClient string
-	if cmd.Flags().Changed("ethereum-cl") {
-		targetClient = cfg.ConsensusNode
-	} else if cmd.Flags().Changed("ethereum-el") {
-		targetClient = cfg.ExecutionNode
+	if cfg.PromDatasourceID == "" {
+		cfg.PromDatasourceID = grafana.DefaultPromDatasourceID
 	}
 
-	// Execute the checks.
-	results, analysis, err := runner.RunChecks(context.Background(), checks.Config{
-		Network:       cfg.Network,
-		ConsensusNode: cfg.ConsensusNode,
-		ExecutionNode: cfg.ExecutionNode,
-		GrafanaToken:  cfg.GrafanaToken,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to run checks: %w", err)
+	if cfg.S3Region == "" {
+		cfg.S3Region = store.DefaultRegion
 	}
 
-	// Send results to Discord.
-	if err := discordNotifier.SendResults(cfg.DiscordChannel, cfg.Network, targetClient, results, analysis, cfg.AlertUnexplained); err != nil {
-		return fmt.Errorf("failed to send discord notification: %w", err)
+	if cfg.S3BucketPrefix == "" {
+		cfg.S3BucketPrefix = store.DefaultBucketPrefix
 	}
-
-	return nil
-}
-
-// validateClient validates any client flag passed.
-func validateClient(client string, isCL bool) error {
-	// Allow wildcard.
-	if client == checks.ClientTypeAll.String() {
-		return nil
-	}
-
-	if isCL {
-		if !checks.IsCLClient(client) {
-			return fmt.Errorf("invalid consensus client '%s'. Must be one of: %s", client, strings.Join(checks.CLClients, ", "))
-		}
-	} else {
-		if !checks.IsELClient(client) {
-			return fmt.Errorf("invalid execution client '%s'. Must be one of: %s", client, strings.Join(checks.ELClients, ", "))
-		}
-	}
-
-	return nil
 }
