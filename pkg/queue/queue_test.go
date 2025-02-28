@@ -30,7 +30,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -59,7 +59,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -82,7 +82,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		q.Start(ctx)
 
@@ -98,10 +98,10 @@ func TestQueue(t *testing.T) {
 
 func TestGetAlertKey(t *testing.T) {
 	setupTest(t)
-	q := NewQueue(logrus.New(), nil, NewMetrics("test"))
+	q := NewQueue[*store.MonitorAlert](logrus.New(), nil, NewMetrics("test"))
 	alert := &store.MonitorAlert{
 		Network: "testnet",
 		Client:  "client1",
 	}
-	assert.Equal(t, "testnet-client1", q.getAlertKey(alert))
+	assert.Equal(t, "testnet-client1", q.getItemKey(alert))
 }

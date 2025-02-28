@@ -9,6 +9,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
+	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
@@ -38,6 +39,8 @@ type Bot interface {
 	BotCore
 	BotServices
 	GetRoleConfig() *common.RoleConfig
+	SetCommands(commands []common.Command)
+	GetQueues() []queue.Queuer
 }
 
 // DiscordBot represents the Discord bot implementation.
@@ -269,4 +272,18 @@ func (b *DiscordBot) GetChecksCmd() *cmdchecks.ChecksCommand {
 // GetRoleConfig returns the role configuration.
 func (b *DiscordBot) GetRoleConfig() *common.RoleConfig {
 	return b.config.AsRoleConfig()
+}
+
+// GetQueues returns all queues managed by the bot.
+func (b *DiscordBot) GetQueues() []queue.Queuer {
+	var queues []queue.Queuer
+
+	// Add checks queue if available
+	if checksCmd := b.GetChecksCmd(); checksCmd != nil {
+		if q := checksCmd.Queue(); q != nil {
+			queues = append(queues, q)
+		}
+	}
+
+	return queues
 }

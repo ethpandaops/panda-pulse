@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/mock"
+	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -157,6 +158,7 @@ func TestService(t *testing.T) {
 		mockBot.EXPECT().GetScheduler().Return(nil).AnyTimes()
 		mockBot.EXPECT().GetSession().Return(nil).AnyTimes()
 		mockBot.EXPECT().GetHive().Return(nil).AnyTimes()
+		mockBot.EXPECT().GetQueues().Return([]queue.Queuer{}).Times(2) // Called during Start and Stop
 
 		svc.bot = mockBot
 

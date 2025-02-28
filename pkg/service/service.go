@@ -12,7 +12,6 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
-	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -47,7 +46,6 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	// Create metrics.
 	storeMetrics := store.NewMetrics("panda_pulse")
 	schedulerMetrics := scheduler.NewMetrics("panda_pulse")
-	queueMetrics := queue.NewMetrics("panda_pulse")
 
 	// Create store repositories.
 	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
@@ -79,9 +77,6 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	// Scheduler for managing the monitor alerts.
 	scheduler := scheduler.NewScheduler(log, schedulerMetrics)
 
-	// Create queue for managing checks.
-	checksQueue := queue.NewQueue(log, nil, queueMetrics)
-
 	// Create the bot.
 	bot, err := discord.NewBot(
 		log,
@@ -97,19 +92,11 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		return nil, fmt.Errorf("failed to create bot: %w", err)
 	}
 
-	// Create and set up our commands.
-	commands := []common.Command{
-		checks.NewChecksCommand(log, bot, checksQueue),
-		mentions.NewMentionsCommand(log, bot),
-	}
-
 	// Tell the bot about our commands.
-	if discordBot, ok := bot.(*discord.DiscordBot); ok {
-		discordBot.SetCommands(commands)
-	}
-
-	// Start the queue.
-	checksQueue.Start(ctx)
+	bot.SetCommands([]common.Command{
+		checks.NewChecksCommand(log, bot),
+		mentions.NewMentionsCommand(log, bot),
+	})
 
 	return &Service{
 		config:       cfg,
@@ -141,6 +128,13 @@ func (s *Service) Start(ctx context.Context) error {
 
 	s.scheduler.Start()
 
+	// Start the queues.
+	s.log.Info("Starting queues")
+
+	for _, q := range s.bot.GetQueues() {
+		q.Start(ctx)
+	}
+
 	s.log.Info("Service started successfully")
 
 	return nil
@@ -157,6 +151,13 @@ func (s *Service) Stop(ctx context.Context) error {
 
 	if err := s.bot.Stop(ctx); err != nil {
 		return fmt.Errorf("error stopping discord bot: %w", err)
+	}
+
+	// Stop the queues.
+	s.log.Info("Stopping queues")
+
+	for _, q := range s.bot.GetQueues() {
+		q.Stop(ctx)
 	}
 
 	// Stop the health server.

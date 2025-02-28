@@ -30,16 +30,23 @@ const (
 type ChecksCommand struct {
 	log   *logrus.Logger
 	bot   common.BotContext
-	queue *queue.Queue
+	queue *queue.AlertQueue
 }
 
-// NewChecksCommand creates a new ChecksCommand.
-func NewChecksCommand(log *logrus.Logger, bot common.BotContext, queue *queue.Queue) *ChecksCommand {
-	return &ChecksCommand{
-		log:   log,
-		bot:   bot,
-		queue: queue,
+// NewChecksCommand creates a new checks command.
+func NewChecksCommand(log *logrus.Logger, bot common.BotContext) *ChecksCommand {
+	cmd := &ChecksCommand{
+		log: log,
+		bot: bot,
 	}
+
+	cmd.queue = queue.NewAlertQueue(
+		log,
+		cmd.RunChecks,
+		queue.NewMetrics("panda_pulse"),
+	)
+
+	return cmd
 }
 
 // Name returns the name of the command.
@@ -47,8 +54,8 @@ func (c *ChecksCommand) Name() string {
 	return "checks"
 }
 
-// Queue returns the queue associated with the ChecksCommand.
-func (c *ChecksCommand) Queue() *queue.Queue {
+// Queue returns the queue instance.
+func (c *ChecksCommand) Queue() *queue.AlertQueue {
 	return c.queue
 }
 
