@@ -32,8 +32,8 @@ type ChecksRepo struct {
 }
 
 // NewChecksRepo creates a new ChecksRepo.
-func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*ChecksRepo, error) {
-	baseRepo, err := NewBaseRepo(ctx, log, cfg)
+func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (*ChecksRepo, error) {
+	baseRepo, err := NewBaseRepo(ctx, log, cfg, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}
@@ -45,6 +45,8 @@ func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*Che
 
 // List implements Repository[*CheckArtifact].
 func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
+	defer s.trackDuration("list", "checks")()
+
 	var (
 		artifacts []*CheckArtifact
 		input     = &s3.ListObjectsV2Input{
@@ -57,6 +59,8 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			s.observeOperation("list", "checks", err)
+
 			return nil, fmt.Errorf("failed to list artifacts: %w", err)
 		}
 
@@ -120,11 +124,15 @@ func (s *ChecksRepo) List(ctx context.Context) ([]*CheckArtifact, error) {
 		}
 	}
 
+	s.metrics.objectsTotal.WithLabelValues("checks").Set(float64(len(artifacts)))
+
 	return artifacts, nil
 }
 
 // Persist implements Repository[*CheckArtifact].
 func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error {
+	defer s.trackDuration("persist", "checks")()
+
 	put := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.Key(artifact)),
@@ -132,13 +140,20 @@ func (s *ChecksRepo) Persist(ctx context.Context, artifact *CheckArtifact) error
 
 	if len(artifact.Content) > 0 {
 		contentType := http.DetectContentType(artifact.Content)
+
 		put.Body = bytes.NewReader(artifact.Content)
 		put.ContentType = aws.String(contentType)
+
+		s.metrics.objectSizeBytes.WithLabelValues("checks").Observe(float64(len(artifact.Content)))
 	}
 
 	if _, err := s.store.PutObject(ctx, put); err != nil {
+		s.observeOperation("persist", "checks", err)
+
 		return fmt.Errorf("failed to put artifact: %w", err)
 	}
+
+	s.observeOperation("persist", "checks", nil)
 
 	return nil
 }
@@ -225,6 +240,8 @@ func (s *ChecksRepo) GetStore() *s3.Client {
 
 // GetArtifact retrieves an artifact from S3.
 func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, artifactType string) (*CheckArtifact, error) {
+	defer s.trackDuration("get", "checks")()
+
 	key := fmt.Sprintf("%s/networks/%s/checks/%s/%s.%s", s.prefix, network, client, checkID, artifactType)
 
 	output, err := s.store.GetObject(ctx, &s3.GetObjectInput{
@@ -232,6 +249,8 @@ func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, 
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		s.observeOperation("get", "checks", err)
+
 		return nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
 
@@ -240,8 +259,13 @@ func (s *ChecksRepo) GetArtifact(ctx context.Context, network, client, checkID, 
 	// Read the content
 	content, err := io.ReadAll(output.Body)
 	if err != nil {
+		s.observeOperation("get", "checks", err)
+
 		return nil, fmt.Errorf("failed to read artifact content: %w", err)
 	}
+
+	s.observeOperation("get", "checks", nil)
+	s.metrics.objectSizeBytes.WithLabelValues("checks").Observe(float64(len(content)))
 
 	return &CheckArtifact{
 		Network:   network,

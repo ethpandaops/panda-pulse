@@ -12,6 +12,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/message"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
+	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
@@ -27,21 +28,35 @@ const (
 
 // ChecksCommand handles the /checks command.
 type ChecksCommand struct {
-	log *logrus.Logger
-	bot common.BotContext
+	log   *logrus.Logger
+	bot   common.BotContext
+	queue *queue.AlertQueue
 }
 
-// NewChecksCommand creates a new ChecksCommand.
+// NewChecksCommand creates a new checks command.
 func NewChecksCommand(log *logrus.Logger, bot common.BotContext) *ChecksCommand {
-	return &ChecksCommand{
+	cmd := &ChecksCommand{
 		log: log,
 		bot: bot,
 	}
+
+	cmd.queue = queue.NewAlertQueue(
+		log,
+		cmd.RunChecks,
+		queue.NewMetrics("panda_pulse"),
+	)
+
+	return cmd
 }
 
 // Name returns the name of the command.
 func (c *ChecksCommand) Name() string {
 	return "checks"
+}
+
+// Queue returns the queue instance.
+func (c *ChecksCommand) Queue() *queue.AlertQueue {
+	return c.queue
 }
 
 // Register registers the /checks command with the given discord session.
@@ -222,11 +237,7 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 		return false, err
 	}
 
-	if err := c.handleHiveResults(ctx, alert, runner); err != nil {
-		return false, err
-	}
-
-	return c.sendResults(alert, runner)
+	return c.sendResults(ctx, alert, runner)
 }
 
 // setupRunner creates and configures a new checks runner.
@@ -278,10 +289,6 @@ func (c *ChecksCommand) isHiveAvailable(network string) bool {
 
 // handleHiveResults handles capturing and persisting Hive results.
 func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) error {
-	if !c.isHiveAvailable(alert.Network) {
-		return nil
-	}
-
 	var consensusNode, executionNode string
 
 	if clients.IsELClient(alert.Client) {
@@ -327,7 +334,7 @@ func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.Moni
 }
 
 // sendResults sends the analysis results to Discord.
-func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
+func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
 	var (
 		hasFailures          = false
 		isRootCause          = false
@@ -419,10 +426,14 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 
 	// If hive is available, pop a screenshot of the test coverage into the thread.
 	if isHiveAvailable {
-		screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
-		if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
-			if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
-				return true, fmt.Errorf("failed to send hive screenshot: %w", err)
+		// Ignoring error, as it's not critical to include hive screenshot.
+		err := c.handleHiveResults(ctx, alert, runner)
+		if err == nil {
+			screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
+			if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
+				if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
+					return true, fmt.Errorf("failed to send hive screenshot: %w", err)
+				}
 			}
 		}
 	}

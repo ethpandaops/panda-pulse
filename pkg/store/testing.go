@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -105,8 +106,9 @@ func (h *testHelper) teardown(ctx context.Context) {
 
 func (h *testHelper) createBucket(ctx context.Context) {
 	h.t.Helper()
+	setupTest(h.t)
 
-	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg)
+	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg, NewMetrics("test"))
 	if err != nil {
 		h.t.Fatalf("Failed to create base repo: %v", err)
 	}
@@ -122,11 +124,18 @@ func (h *testHelper) createBucket(ctx context.Context) {
 // createBaseRepo creates a new BaseRepo for testing.
 func (h *testHelper) createBaseRepo(ctx context.Context) BaseRepo {
 	h.t.Helper()
+	setupTest(h.t)
 
-	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg)
+	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg, NewMetrics("test"))
 	if err != nil {
 		h.t.Fatalf("Failed to create base repo: %v", err)
 	}
 
 	return baseRepo
+}
+
+func setupTest(t *testing.T) {
+	t.Helper()
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }

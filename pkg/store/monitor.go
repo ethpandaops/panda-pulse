@@ -33,8 +33,8 @@ type MonitorAlert struct {
 }
 
 // NewMonitorRepo creates a new MonitorRepo.
-func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*MonitorRepo, error) {
-	baseRepo, err := NewBaseRepo(ctx, log, cfg)
+func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (*MonitorRepo, error) {
+	baseRepo, err := NewBaseRepo(ctx, log, cfg, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}
@@ -46,6 +46,8 @@ func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*Mo
 
 // List implements Repository[*MonitorAlert].
 func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
+	defer s.trackDuration("list", "monitor")()
+
 	var (
 		input = &s3.ListObjectsV2Input{
 			Bucket: aws.String(s.bucket),
@@ -58,6 +60,8 @@ func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			s.observeOperation("list", "monitor", err)
+
 			return nil, fmt.Errorf("failed to list alerts: %w", err)
 		}
 
@@ -77,23 +81,35 @@ func (s *MonitorRepo) List(ctx context.Context) ([]*MonitorAlert, error) {
 		}
 	}
 
+	s.metrics.objectsTotal.WithLabelValues("monitor").Set(float64(len(alerts)))
+
 	return alerts, nil
 }
 
 // Persist implements Repository[*MonitorAlert].
 func (s *MonitorRepo) Persist(ctx context.Context, alert *MonitorAlert) error {
+	defer s.trackDuration("persist", "monitor")()
+
 	data, err := json.Marshal(alert)
 	if err != nil {
+		s.observeOperation("persist", "monitor", err)
+
 		return fmt.Errorf("failed to marshal alert: %w", err)
 	}
+
+	s.metrics.objectSizeBytes.WithLabelValues("monitor").Observe(float64(len(data)))
 
 	if _, err = s.store.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.Key(alert)),
 		Body:   bytes.NewReader(data),
 	}); err != nil {
+		s.observeOperation("persist", "monitor", err)
+
 		return fmt.Errorf("failed to put alert: %w", err)
 	}
+
+	s.observeOperation("persist", "monitor", nil)
 
 	return nil
 }

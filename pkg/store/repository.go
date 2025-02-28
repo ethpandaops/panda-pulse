@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -30,10 +32,11 @@ type Repository[T any] interface {
 
 // BaseRepo contains common S3 functionality for all repositories.
 type BaseRepo struct {
-	store  *s3.Client
-	bucket string
-	prefix string
-	log    *logrus.Logger
+	store   *s3.Client
+	bucket  string
+	prefix  string
+	log     *logrus.Logger
+	metrics *Metrics
 }
 
 // S3Config contains the configuration for the S3 client.
@@ -47,7 +50,7 @@ type S3Config struct {
 }
 
 // NewBaseRepo creates a new base repository with common S3 functionality.
-func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (BaseRepo, error) {
+func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (BaseRepo, error) {
 	opts := []func(*config.LoadOptions) error{
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			cfg.AccessKeyID,
@@ -72,10 +75,11 @@ func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (BaseRe
 	}
 
 	return BaseRepo{
-		store:  s3.NewFromConfig(awsCfg, cfgOpts...),
-		bucket: cfg.Bucket,
-		prefix: cfg.Prefix,
-		log:    log,
+		store:   s3.NewFromConfig(awsCfg, cfgOpts...),
+		bucket:  cfg.Bucket,
+		prefix:  cfg.Prefix,
+		log:     log,
+		metrics: metrics,
 	}, nil
 }
 
@@ -104,4 +108,30 @@ func (b *BaseRepo) VerifyConnection(ctx context.Context) error {
 // GetS3Client returns the underlying S3 client.
 func (b *BaseRepo) GetS3Client() *s3.Client {
 	return b.store
+}
+
+// observeOperation observes the operation and increments the metrics.
+func (b *BaseRepo) observeOperation(operation, repository string, err error) {
+	b.metrics.operationsTotal.WithLabelValues(operation, repository).Inc()
+
+	if err != nil {
+		errType := "unknown"
+
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			errType = "timeout"
+		} else if strings.Contains(err.Error(), "not found") {
+			errType = "not_found"
+		}
+
+		b.metrics.operationErrors.WithLabelValues(operation, repository, errType).Inc()
+	}
+}
+
+// trackDuration tracks the duration of an operation and observes the metrics.
+func (b *BaseRepo) trackDuration(operation, repository string) func() {
+	start := time.Now()
+
+	return func() {
+		b.metrics.operationDuration.WithLabelValues(operation, repository).Observe(time.Since(start).Seconds())
+	}
 }

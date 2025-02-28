@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
@@ -40,31 +43,31 @@ type Service struct {
 func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service, error) {
 	log.Info("Starting service")
 
-	httpClient := &http.Client{Timeout: defaultHTTPTimeout}
+	// Create metrics.
+	storeMetrics := store.NewMetrics("panda_pulse")
+	schedulerMetrics := scheduler.NewMetrics("panda_pulse")
 
-	// Grafana, the source of truth for our data.
-	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), httpClient)
+	// Create store repositories.
+	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create monitor repo: %w", err)
+	}
 
-	// Hive, used to take screenshots of the test coverage.
+	checksRepo, err := store.NewChecksRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create checks repo: %w", err)
+	}
+
+	mentionsRepo, err := store.NewMentionsRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mentions repo: %w", err)
+	}
+
+	// Create Grafana client.
+	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), &http.Client{Timeout: defaultHTTPTimeout})
+
+	// Create Hive client.
 	hive := hive.NewHive(cfg.AsHiveConfig())
-
-	// Repository for managing monitor alerts.
-	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 store: %w", err)
-	}
-
-	// Repository for managing checks.
-	checksRepo, err := store.NewChecksRepo(ctx, log, cfg.AsS3Config())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 store: %w", err)
-	}
-
-	// Repository for managing mentions.
-	mentionsRepo, err := store.NewMentionsRepo(ctx, log, cfg.AsS3Config())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create S3 store: %w", err)
-	}
 
 	// Check S3 connection health, no point in continuing if we can't access the store.
 	if verr := monitorRepo.VerifyConnection(ctx); verr != nil {
@@ -72,9 +75,9 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	}
 
 	// Scheduler for managing the monitor alerts.
-	scheduler := scheduler.NewScheduler(log)
+	scheduler := scheduler.NewScheduler(log, schedulerMetrics)
 
-	// And finally, our bot.
+	// Create the bot.
 	bot, err := discord.NewBot(
 		log,
 		cfg.AsDiscordConfig(),
@@ -86,8 +89,14 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		hive,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discord bot: %w", err)
+		return nil, fmt.Errorf("failed to create bot: %w", err)
 	}
+
+	// Tell the bot about our commands.
+	bot.SetCommands([]common.Command{
+		checks.NewChecksCommand(log, bot),
+		mentions.NewMentionsCommand(log, bot),
+	})
 
 	return &Service{
 		config:       cfg,
@@ -119,6 +128,13 @@ func (s *Service) Start(ctx context.Context) error {
 
 	s.scheduler.Start()
 
+	// Start the queues.
+	s.log.Info("Starting queues")
+
+	for _, q := range s.bot.GetQueues() {
+		q.Start(ctx)
+	}
+
 	s.log.Info("Service started successfully")
 
 	return nil
@@ -135,6 +151,13 @@ func (s *Service) Stop(ctx context.Context) error {
 
 	if err := s.bot.Stop(ctx); err != nil {
 		return fmt.Errorf("error stopping discord bot: %w", err)
+	}
+
+	// Stop the queues.
+	s.log.Info("Stopping queues")
+
+	for _, q := range s.bot.GetQueues() {
+		q.Stop(ctx)
 	}
 
 	// Stop the health server.

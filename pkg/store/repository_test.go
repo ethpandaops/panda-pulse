@@ -15,6 +15,7 @@ func TestBaseRepo(t *testing.T) {
 	defer helper.teardown(ctx)
 
 	t.Run("NewBaseRepo", func(t *testing.T) {
+		setupTest(t)
 		baseRepo := helper.createBaseRepo(ctx)
 		require.NotNil(t, baseRepo.store)
 		assert.Equal(t, testBucket, baseRepo.bucket)
@@ -34,11 +35,12 @@ func TestBaseRepo(t *testing.T) {
 	})
 
 	t.Run("Invalid_Credentials", func(t *testing.T) {
+		setupTest(t)
 		invalidCfg := *helper.cfg
 		invalidCfg.AccessKeyID = "invalid"
 		invalidCfg.SecretAccessKey = "invalid"
 
-		_, err := NewBaseRepo(ctx, helper.log, &invalidCfg)
+		_, err := NewBaseRepo(ctx, helper.log, &invalidCfg, NewMetrics("test"))
 		require.NoError(t, err) // Creation should succeed as AWS SDK validates credentials lazily
 
 		baseRepo := helper.createBaseRepo(ctx)
@@ -47,10 +49,11 @@ func TestBaseRepo(t *testing.T) {
 	})
 
 	t.Run("Invalid_Bucket", func(t *testing.T) {
+		setupTest(t)
 		invalidCfg := *helper.cfg
 		invalidCfg.Bucket = "nonexistent-bucket"
 
-		baseRepo, err := NewBaseRepo(ctx, helper.log, &invalidCfg)
+		baseRepo, err := NewBaseRepo(ctx, helper.log, &invalidCfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		err = baseRepo.VerifyConnection(ctx)
@@ -59,10 +62,11 @@ func TestBaseRepo(t *testing.T) {
 	})
 
 	t.Run("Invalid_Endpoint", func(t *testing.T) {
+		setupTest(t)
 		invalidCfg := *helper.cfg
 		invalidCfg.EndpointURL = "http://invalid:1234"
 
-		baseRepo, err := NewBaseRepo(ctx, helper.log, &invalidCfg)
+		baseRepo, err := NewBaseRepo(ctx, helper.log, &invalidCfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		err = baseRepo.VerifyConnection(ctx)
