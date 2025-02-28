@@ -7,12 +7,22 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
+func setupTest(t *testing.T) {
+	t.Helper()
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+}
+
 func TestQueue(t *testing.T) {
+	setupTest(t)
+
 	t.Run("processes items in order", func(t *testing.T) {
+		setupTest(t)
 		var processed int32
 		worker := func(ctx context.Context, alert *store.MonitorAlert) (bool, error) {
 			atomic.AddInt32(&processed, 1)
@@ -20,7 +30,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -41,6 +51,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("prevents duplicate processing", func(t *testing.T) {
+		setupTest(t)
 		var processed int32
 		worker := func(ctx context.Context, alert *store.MonitorAlert) (bool, error) {
 			atomic.AddInt32(&processed, 1)
@@ -48,7 +59,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -62,6 +73,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("respects context cancellation", func(t *testing.T) {
+		setupTest(t)
 		var processed int32
 
 		worker := func(ctx context.Context, alert *store.MonitorAlert) (bool, error) {
@@ -70,7 +82,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		q.Start(ctx)
 
@@ -85,10 +97,11 @@ func TestQueue(t *testing.T) {
 }
 
 func TestGetAlertKey(t *testing.T) {
-	q := NewQueue(logrus.New(), nil)
+	setupTest(t)
+	q := NewQueue[*store.MonitorAlert](logrus.New(), nil, NewMetrics("test"))
 	alert := &store.MonitorAlert{
 		Network: "testnet",
 		Client:  "client1",
 	}
-	assert.Equal(t, "testnet-client1", q.getAlertKey(alert))
+	assert.Equal(t, "testnet-client1", q.getItemKey(alert))
 }

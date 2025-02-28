@@ -17,6 +17,7 @@ import (
 	common "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	grafana "github.com/ethpandaops/panda-pulse/pkg/grafana"
 	hive "github.com/ethpandaops/panda-pulse/pkg/hive"
+	queue "github.com/ethpandaops/panda-pulse/pkg/queue"
 	scheduler "github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	store "github.com/ethpandaops/panda-pulse/pkg/store"
 	gomock "go.uber.org/mock/gomock"
@@ -116,6 +117,20 @@ func (mr *MockBotMockRecorder) GetMonitorRepo() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMonitorRepo", reflect.TypeOf((*MockBot)(nil).GetMonitorRepo))
 }
 
+// GetQueues mocks base method.
+func (m *MockBot) GetQueues() []queue.Queuer {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetQueues")
+	ret0, _ := ret[0].([]queue.Queuer)
+	return ret0
+}
+
+// GetQueues indicates an expected call of GetQueues.
+func (mr *MockBotMockRecorder) GetQueues() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetQueues", reflect.TypeOf((*MockBot)(nil).GetQueues))
+}
+
 // GetRoleConfig mocks base method.
 func (m *MockBot) GetRoleConfig() *common.RoleConfig {
 	m.ctrl.T.Helper()
@@ -156,6 +171,18 @@ func (m *MockBot) GetSession() *discordgo.Session {
 func (mr *MockBotMockRecorder) GetSession() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSession", reflect.TypeOf((*MockBot)(nil).GetSession))
+}
+
+// SetCommands mocks base method.
+func (m *MockBot) SetCommands(commands []common.Command) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCommands", commands)
+}
+
+// SetCommands indicates an expected call of SetCommands.
+func (mr *MockBotMockRecorder) SetCommands(commands any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCommands", reflect.TypeOf((*MockBot)(nil).SetCommands), commands)
 }
 
 // Start mocks base method.

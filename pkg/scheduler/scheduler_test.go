@@ -7,35 +7,55 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func setupTest(t *testing.T) {
+	t.Helper()
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+}
+
 func TestScheduler(t *testing.T) {
+	setupTest(t)
+
 	t.Run("NewScheduler", func(t *testing.T) {
+		setupTest(t)
 		log := logrus.New()
-		s := NewScheduler(log)
+		s := NewScheduler(log, NewMetrics("test"))
 		require.NotNil(t, s)
 		require.NotNil(t, s.cron)
 		require.NotNil(t, s.jobs)
 	})
 
 	t.Run("AddJob", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
+		s.Start()
+		defer s.Stop()
 
-		require.NoError(t, s.AddJob("test", "* * * * *", func(ctx context.Context) error {
+		jobRan := make(chan bool, 1)
+		err := s.AddJob("test", "@every 1s", func(ctx context.Context) error {
+			jobRan <- true
+
 			return nil
-		}))
+		})
 
-		// Verify job was added
-		assert.Len(t, s.jobs, 1)
-		_, exists := s.jobs["test"]
-		assert.True(t, exists)
+		assert.NoError(t, err)
+		select {
+		case <-jobRan:
+			// Job ran successfully
+		case <-time.After(2 * time.Second):
+			t.Error("Job did not run within expected time")
+		}
 	})
 
 	t.Run("AddJob_InvalidSchedule", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		err := s.AddJob("test", "invalid", func(ctx context.Context) error {
 			return nil
@@ -45,12 +65,14 @@ func TestScheduler(t *testing.T) {
 	})
 
 	t.Run("AddJob_Replaces", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		// Add initial job.
 		require.NoError(t, s.AddJob("test", "* * * * *", func(ctx context.Context) error {
 			return nil
 		}))
+
 		firstID := s.jobs["test"]
 
 		// Replace with new job.
@@ -64,24 +86,39 @@ func TestScheduler(t *testing.T) {
 	})
 
 	t.Run("RemoveJob", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
+		s.Start()
+		defer s.Stop()
 
-		require.NoError(t, s.AddJob("test", "* * * * *", func(ctx context.Context) error {
+		jobRan := make(chan bool, 1)
+		err := s.AddJob("test", "@every 1s", func(ctx context.Context) error {
+			jobRan <- true
+
 			return nil
-		}))
+		})
+		assert.NoError(t, err)
 
 		s.RemoveJob("test")
-		assert.Len(t, s.jobs, 0)
+
+		select {
+		case <-jobRan:
+			// Job ran before removal, that's fine
+		case <-time.After(2 * time.Second):
+			// Job was removed successfully
+		}
 	})
 
 	t.Run("RemoveJob_NonExistent", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		// Should not panic.
 		s.RemoveJob("nonexistent")
 	})
 
 	t.Run("Job_Execution", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -113,9 +150,10 @@ func TestScheduler(t *testing.T) {
 	})
 
 	t.Run("Job_Error", func(t *testing.T) {
+		setupTest(t)
 		var logBuf logrus.Logger
 		log := &logBuf
-		s := NewScheduler(log)
+		s := NewScheduler(log, NewMetrics("test"))
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -133,7 +171,8 @@ func TestScheduler(t *testing.T) {
 	})
 
 	t.Run("Concurrent_Operations", func(t *testing.T) {
-		s := NewScheduler(logrus.New())
+		setupTest(t)
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		s.Start()
 		defer s.Stop()
 

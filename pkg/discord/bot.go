@@ -7,9 +7,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
-	cmdmentions "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
+	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
@@ -39,10 +39,12 @@ type Bot interface {
 	BotCore
 	BotServices
 	GetRoleConfig() *common.RoleConfig
+	SetCommands(commands []common.Command)
+	GetQueues() []queue.Queuer
 }
 
-// discordBot represents the Discord bot implementation.
-type discordBot struct {
+// DiscordBot represents the Discord bot implementation.
+type DiscordBot struct {
 	log          *logrus.Logger
 	config       *Config
 	session      *discordgo.Session
@@ -72,7 +74,7 @@ func NewBot(
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
-	bot := &discordBot{
+	bot := &DiscordBot{
 		log:          log,
 		config:       cfg,
 		session:      session,
@@ -85,18 +87,19 @@ func NewBot(
 		commands:     make([]common.Command, 0),
 	}
 
-	// Register command handlers.
-	bot.commands = append(bot.commands, cmdchecks.NewChecksCommand(log, bot))
-	bot.commands = append(bot.commands, cmdmentions.NewMentionsCommand(log, bot))
-
 	// Register event handlers.
 	session.AddHandler(bot.handleInteraction)
 
 	return bot, nil
 }
 
+// SetCommands sets the commands for the bot.
+func (b *DiscordBot) SetCommands(commands []common.Command) {
+	b.commands = commands
+}
+
 // Start starts the bot.
-func (b *discordBot) Start(ctx context.Context) error {
+func (b *DiscordBot) Start(ctx context.Context) error {
 	// Open connection with Discord.
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open discord connection: %w", err)
@@ -122,7 +125,7 @@ func (b *discordBot) Start(ctx context.Context) error {
 }
 
 // Stop stops the bot.
-func (b *discordBot) Stop(ctx context.Context) error {
+func (b *DiscordBot) Stop(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -132,42 +135,42 @@ func (b *discordBot) Stop(ctx context.Context) error {
 }
 
 // GetSession returns the Discord session.
-func (b *discordBot) GetSession() *discordgo.Session {
+func (b *DiscordBot) GetSession() *discordgo.Session {
 	return b.session
 }
 
 // GetScheduler returns the scheduler.
-func (b *discordBot) GetScheduler() *scheduler.Scheduler {
+func (b *DiscordBot) GetScheduler() *scheduler.Scheduler {
 	return b.scheduler
 }
 
 // GetMonitorRepo returns the monitor repository.
-func (b *discordBot) GetMonitorRepo() *store.MonitorRepo {
+func (b *DiscordBot) GetMonitorRepo() *store.MonitorRepo {
 	return b.monitorRepo
 }
 
 // GetChecksRepo returns the checks repository.
-func (b *discordBot) GetChecksRepo() *store.ChecksRepo {
+func (b *DiscordBot) GetChecksRepo() *store.ChecksRepo {
 	return b.checksRepo
 }
 
 // GetMentionsRepo returns the mentions repository.
-func (b *discordBot) GetMentionsRepo() *store.MentionsRepo {
+func (b *DiscordBot) GetMentionsRepo() *store.MentionsRepo {
 	return b.mentionsRepo
 }
 
 // GetGrafana returns the Grafana client.
-func (b *discordBot) GetGrafana() grafana.Client {
+func (b *DiscordBot) GetGrafana() grafana.Client {
 	return b.grafana
 }
 
 // GetHive returns the Hive client.
-func (b *discordBot) GetHive() hive.Hive {
+func (b *DiscordBot) GetHive() hive.Hive {
 	return b.hive
 }
 
 // handleInteraction handles interactions from the Discord client.
-func (b *discordBot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
@@ -197,7 +200,7 @@ func (b *discordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 }
 
 // scheduleExistingAlerts schedules existing monitor alerts.
-func (b *discordBot) scheduleExistingAlerts() error {
+func (b *DiscordBot) scheduleExistingAlerts() error {
 	alerts, err := b.monitorRepo.List(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
@@ -211,7 +214,7 @@ func (b *discordBot) scheduleExistingAlerts() error {
 		return nil
 	}
 
-	checksCmd := b.getChecksCmd()
+	checksCmd := b.GetChecksCmd()
 	if checksCmd == nil {
 		return fmt.Errorf("checks command not found")
 	}
@@ -255,8 +258,8 @@ func (b *discordBot) scheduleExistingAlerts() error {
 	return nil
 }
 
-// getChecksCmd returns the checks command.
-func (b *discordBot) getChecksCmd() *cmdchecks.ChecksCommand {
+// GetChecksCmd returns the checks command.
+func (b *DiscordBot) GetChecksCmd() *cmdchecks.ChecksCommand {
 	for _, cmd := range b.commands {
 		if c, ok := cmd.(*cmdchecks.ChecksCommand); ok {
 			return c
@@ -267,6 +270,20 @@ func (b *discordBot) getChecksCmd() *cmdchecks.ChecksCommand {
 }
 
 // GetRoleConfig returns the role configuration.
-func (b *discordBot) GetRoleConfig() *common.RoleConfig {
+func (b *DiscordBot) GetRoleConfig() *common.RoleConfig {
 	return b.config.AsRoleConfig()
+}
+
+// GetQueues returns all queues managed by the bot.
+func (b *DiscordBot) GetQueues() []queue.Queuer {
+	var queues []queue.Queuer
+
+	// Add checks queue if available
+	if checksCmd := b.GetChecksCmd(); checksCmd != nil {
+		if q := checksCmd.Queue(); q != nil {
+			queues = append(queues, q)
+		}
+	}
+
+	return queues
 }

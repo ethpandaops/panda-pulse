@@ -16,13 +16,15 @@ func TestMentionsRepo(t *testing.T) {
 	defer helper.teardown(ctx)
 
 	t.Run("NewMentionsRepo", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 		require.NotNil(t, repo)
 	})
 
 	t.Run("List_Empty", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		mentions, err := repo.List(ctx)
@@ -31,7 +33,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Persist_And_List", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		mention := &ClientMention{
@@ -57,7 +60,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Get_NonExistent", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		mention, err := repo.Get(ctx, "non-existent-net", "non-existent-client")
@@ -70,7 +74,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Get_Existing", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		original := &ClientMention{
@@ -94,7 +99,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Purge", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		mention := &ClientMention{
@@ -114,7 +120,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Purge_Invalid_Identifiers", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		err = repo.Purge(ctx, "test-net") // Missing client identifier
@@ -123,7 +130,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Generation", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		mention := &ClientMention{
@@ -136,7 +144,8 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Nil_Mention", func(t *testing.T) {
-		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
+		setupTest(t)
+		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		key := repo.Key(nil)
