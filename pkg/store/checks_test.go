@@ -16,12 +16,14 @@ func TestChecksRepo(t *testing.T) {
 	defer helper.teardown(ctx)
 
 	t.Run("NewChecksRepo", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 		require.NotNil(t, repo)
 	})
 
 	t.Run("List_Empty", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -31,6 +33,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("Persist_And_List", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -58,6 +61,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("GetArtifact", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -81,6 +85,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("Purge", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -103,6 +108,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("Purge_Invalid_Identifiers", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -112,6 +118,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Generation", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -127,6 +134,7 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Nil_Artifact", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -135,18 +143,21 @@ func TestChecksRepo(t *testing.T) {
 	})
 
 	t.Run("GetBucket", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 		assert.Equal(t, testBucket, repo.GetBucket())
 	})
 
 	t.Run("GetPrefix", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 		assert.Equal(t, "test", repo.GetPrefix())
 	})
 
 	t.Run("GetStore", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewChecksRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 		assert.NotNil(t, repo.GetStore())

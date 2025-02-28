@@ -44,6 +44,8 @@ func NewMentionsRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*M
 
 // List implements Repository[*ClientMention].
 func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
+	defer s.trackDuration("list", "mentions")()
+
 	var (
 		input = &s3.ListObjectsV2Input{
 			Bucket: aws.String(s.bucket),
@@ -56,6 +58,7 @@ func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			s.observeOperation("list", "mentions", err)
 			return nil, fmt.Errorf("failed to list mentions: %w", err)
 		}
 
@@ -73,18 +76,21 @@ func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
 		}
 	}
 
+	s.metrics.objectsTotal.WithLabelValues("mentions").Set(float64(len(mentions)))
 	return mentions, nil
 }
 
 // Get retrieves a specific mention by network and client.
 func (s *MentionsRepo) Get(ctx context.Context, network, client string) (*ClientMention, error) {
+	defer s.trackDuration("get", "mentions")()
+
 	mention, err := s.getMention(ctx, s.Key(&ClientMention{Network: network, Client: client}))
 	if err != nil {
-		// Check if this is a NoSuchKey error (404)
 		var noSuchKey *types.NoSuchKey
 
 		if errors.As(err, &noSuchKey) {
-			// Return a default mention configuration instead of an error.
+			s.observeOperation("get", "mentions", nil) // Not really an error in this case
+
 			return &ClientMention{
 				Network:   network,
 				Client:    client,
@@ -95,32 +101,44 @@ func (s *MentionsRepo) Get(ctx context.Context, network, client string) (*Client
 			}, nil
 		}
 
+		s.observeOperation("get", "mentions", err)
+
 		return nil, fmt.Errorf("failed to get mention: %w", err)
 	}
 
+	s.observeOperation("get", "mentions", nil)
 	return mention, nil
 }
 
 // Persist implements Repository[*ClientMention].
 func (s *MentionsRepo) Persist(ctx context.Context, mention *ClientMention) error {
+	defer s.trackDuration("persist", "mentions")()
+
 	data, err := json.Marshal(mention)
 	if err != nil {
+		s.observeOperation("persist", "mentions", err)
 		return fmt.Errorf("failed to marshal mention: %w", err)
 	}
+
+	s.metrics.objectSizeBytes.WithLabelValues("mentions").Observe(float64(len(data)))
 
 	if _, err = s.store.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.Key(mention)),
 		Body:   bytes.NewReader(data),
 	}); err != nil {
+		s.observeOperation("persist", "mentions", err)
 		return fmt.Errorf("failed to put mention: %w", err)
 	}
 
+	s.observeOperation("persist", "mentions", nil)
 	return nil
 }
 
 // Purge implements Repository[*ClientMention].
 func (s *MentionsRepo) Purge(ctx context.Context, identifiers ...string) error {
+	defer s.trackDuration("purge", "mentions")()
+
 	if len(identifiers) != 2 {
 		return fmt.Errorf("expected network and client identifiers, got %d identifiers", len(identifiers))
 	}
@@ -131,9 +149,11 @@ func (s *MentionsRepo) Purge(ctx context.Context, identifiers ...string) error {
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.Key(&ClientMention{Network: network, Client: client})),
 	}); err != nil {
+		s.observeOperation("purge", "mentions", err)
 		return fmt.Errorf("failed to delete mention: %w", err)
 	}
 
+	s.observeOperation("purge", "mentions", nil)
 	return nil
 }
 

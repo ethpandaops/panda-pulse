@@ -16,12 +16,14 @@ func TestMentionsRepo(t *testing.T) {
 	defer helper.teardown(ctx)
 
 	t.Run("NewMentionsRepo", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 		require.NotNil(t, repo)
 	})
 
 	t.Run("List_Empty", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -31,6 +33,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Persist_And_List", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -57,6 +60,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Get_NonExistent", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -70,6 +74,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Get_Existing", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -94,6 +99,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Purge", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -114,6 +120,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Purge_Invalid_Identifiers", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -123,6 +130,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Generation", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 
@@ -136,6 +144,7 @@ func TestMentionsRepo(t *testing.T) {
 	})
 
 	t.Run("Key_Nil_Mention", func(t *testing.T) {
+		setupTest(t)
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg)
 		require.NoError(t, err)
 

@@ -15,14 +15,16 @@ type Queue struct {
 	queue      chan *store.MonitorAlert
 	processing sync.Map
 	worker     func(context.Context, *store.MonitorAlert) (bool, error)
+	metrics    *Metrics
 }
 
 // NewQueue creates a new check queue.
 func NewQueue(log *logrus.Logger, worker func(context.Context, *store.MonitorAlert) (bool, error)) *Queue {
 	return &Queue{
-		log:    log,
-		queue:  make(chan *store.MonitorAlert, 100), // Buffer size of 100 - this is ample give number of clients <> devnets at anyone time.
-		worker: worker,
+		log:     log,
+		queue:   make(chan *store.MonitorAlert, 100),
+		worker:  worker,
+		metrics: NewMetrics("panda_pulse"),
 	}
 }
 
@@ -31,8 +33,8 @@ func (q *Queue) Start(ctx context.Context) {
 }
 
 func (q *Queue) Enqueue(alert *store.MonitorAlert) {
-	// Don't queue if already processing
 	if _, exists := q.processing.LoadOrStore(q.getAlertKey(alert), true); exists {
+		q.metrics.skipsDueToLock.WithLabelValues(alert.Network, alert.Client).Inc()
 		q.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
@@ -41,6 +43,8 @@ func (q *Queue) Enqueue(alert *store.MonitorAlert) {
 		return
 	}
 
+	q.metrics.queuedTotal.WithLabelValues(alert.Network, alert.Client).Inc()
+	q.metrics.queueLength.Inc()
 	q.queue <- alert
 }
 
@@ -51,22 +55,31 @@ func (q *Queue) processQueue(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case alert := <-q.queue:
+			start := time.Now()
 			key := q.getAlertKey(alert)
 
-			q.log.WithFields(logrus.Fields{
-				"network": alert.Network,
-				"client":  alert.Client,
-			}).Info("Processing check from queue")
+			q.metrics.queueLength.Dec()
 
-			if _, err := q.worker(ctx, alert); err != nil {
+			success, err := q.worker(ctx, alert)
+			duration := time.Since(start).Seconds()
+
+			q.metrics.processingTime.WithLabelValues(alert.Network, alert.Client).Observe(duration)
+
+			if err != nil {
+				q.metrics.failuresTotal.WithLabelValues(alert.Network, alert.Client, "worker_error").Inc()
 				q.log.WithError(err).Error("Failed to process check")
 			}
 
-			// Remove from processing map after completion..
+			status := "success"
+			if !success {
+				status = "failed"
+			}
+
+			q.metrics.processedTotal.WithLabelValues(alert.Network, alert.Client, status).Inc()
+
 			q.processing.Delete(key)
 
-			// Add small artificial delay between checks.
-			time.Sleep(2 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 	}
 }
