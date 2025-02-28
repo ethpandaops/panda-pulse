@@ -23,7 +23,7 @@ const (
 	threadAutoArchiveDuration = 60 // 1 hour.
 	threadDateFormat          = "2006-01-02"
 	// DefaultCheckSchedule defines when checks should run (daily at 7am UTC).
-	DefaultCheckSchedule = "*/2 * * * *" //"0 7 * * *"
+	DefaultCheckSchedule = "0 7 * * *"
 )
 
 // ChecksCommand handles the /checks command.
