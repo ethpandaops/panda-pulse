@@ -23,7 +23,7 @@ const (
 	threadAutoArchiveDuration = 60 // 1 hour.
 	threadDateFormat          = "2006-01-02"
 	// DefaultCheckSchedule defines when checks should run (daily at 7am UTC).
-	DefaultCheckSchedule = "0 7 * * *"
+	DefaultCheckSchedule = "*/2 * * * *" //"0 7 * * *"
 )
 
 // ChecksCommand handles the /checks command.
@@ -237,11 +237,7 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 		return false, err
 	}
 
-	if err := c.handleHiveResults(ctx, alert, runner); err != nil {
-		return false, err
-	}
-
-	return c.sendResults(alert, runner)
+	return c.sendResults(ctx, alert, runner)
 }
 
 // setupRunner creates and configures a new checks runner.
@@ -293,10 +289,6 @@ func (c *ChecksCommand) isHiveAvailable(network string) bool {
 
 // handleHiveResults handles capturing and persisting Hive results.
 func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) error {
-	if !c.isHiveAvailable(alert.Network) {
-		return nil
-	}
-
 	var consensusNode, executionNode string
 
 	if clients.IsELClient(alert.Client) {
@@ -342,7 +334,7 @@ func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.Moni
 }
 
 // sendResults sends the analysis results to Discord.
-func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
+func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
 	var (
 		hasFailures          = false
 		isRootCause          = false
@@ -434,10 +426,14 @@ func (c *ChecksCommand) sendResults(alert *store.MonitorAlert, runner checks.Run
 
 	// If hive is available, pop a screenshot of the test coverage into the thread.
 	if isHiveAvailable {
-		screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
-		if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
-			if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
-				return true, fmt.Errorf("failed to send hive screenshot: %w", err)
+		// Ignoring error, as it's not critical to include hive screenshot.
+		err := c.handleHiveResults(ctx, alert, runner)
+		if err == nil {
+			screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
+			if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
+				if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
+					return true, fmt.Errorf("failed to send hive screenshot: %w", err)
+				}
 			}
 		}
 	}

@@ -107,8 +107,6 @@ func (q *Queue[T]) processQueue(ctx context.Context) {
 			q.metrics.processedTotal.WithLabelValues(q.getItemNetwork(item), q.getItemClient(item), status).Inc()
 
 			q.processing.Delete(key)
-
-			time.Sleep(1 * time.Second)
 		}
 	}
 }
