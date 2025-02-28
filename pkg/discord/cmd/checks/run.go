@@ -41,7 +41,8 @@ func (c *ChecksCommand) handleRun(
 		return fmt.Errorf("failed to send initial response: %w", err)
 	}
 
-	// Run the check using the service.
+	// Run the check using the service. We don't need to use the queue here, as
+	// its just a once-off.
 	alertSent, err := c.RunChecks(context.Background(), &store.MonitorAlert{
 		Network:        network,
 		Client:         client,

@@ -171,11 +171,11 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 			"network": alert.Network,
 			"client":  alert.Client,
 			"key":     jobName,
-		}).Info("Running checks")
+		}).Info("Queueing registered check")
 
-		_, err := c.RunChecks(ctx, alert)
+		c.Queue().Enqueue(alert)
 
-		return err
+		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}

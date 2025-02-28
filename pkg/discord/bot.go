@@ -228,11 +228,11 @@ func (b *discordBot) scheduleExistingAlerts() error {
 				"network": alert.Network,
 				"client":  alert.Client,
 				"key":     jobName,
-			}).Info("Running checks")
+			}).Info("Queueing registered check")
 
-			_, err := checksCmd.RunChecks(ctx, alertCopy)
+			checksCmd.Queue().Enqueue(alertCopy)
 
-			return err
+			return nil
 		}); err != nil {
 			// Don't return an error here, just log it and continue scheduling the rest.
 			b.log.WithError(err).WithFields(logrus.Fields{

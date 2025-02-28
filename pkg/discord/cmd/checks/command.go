@@ -12,6 +12,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/message"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
+	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
@@ -27,21 +28,33 @@ const (
 
 // ChecksCommand handles the /checks command.
 type ChecksCommand struct {
-	log *logrus.Logger
-	bot common.BotContext
+	log   *logrus.Logger
+	bot   common.BotContext
+	queue *queue.Queue
 }
 
 // NewChecksCommand creates a new ChecksCommand.
 func NewChecksCommand(log *logrus.Logger, bot common.BotContext) *ChecksCommand {
-	return &ChecksCommand{
+	cmd := &ChecksCommand{
 		log: log,
 		bot: bot,
 	}
+
+	// Create queue with RunChecks as the worker
+	cmd.queue = queue.NewQueue(log, cmd.RunChecks)
+	cmd.queue.Start(context.Background())
+
+	return cmd
 }
 
 // Name returns the name of the command.
 func (c *ChecksCommand) Name() string {
 	return "checks"
+}
+
+// Queue returns the queue associated with the ChecksCommand.
+func (c *ChecksCommand) Queue() *queue.Queue {
+	return c.queue
 }
 
 // Register registers the /checks command with the given discord session.
