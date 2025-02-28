@@ -25,7 +25,7 @@ func TestScheduler(t *testing.T) {
 	t.Run("NewScheduler", func(t *testing.T) {
 		setupTest(t)
 		log := logrus.New()
-		s := NewScheduler(log)
+		s := NewScheduler(log, NewMetrics("test"))
 		require.NotNil(t, s)
 		require.NotNil(t, s.cron)
 		require.NotNil(t, s.jobs)
@@ -33,7 +33,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("AddJob", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		s.Start()
 		defer s.Stop()
 
@@ -55,7 +55,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("AddJob_InvalidSchedule", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		err := s.AddJob("test", "invalid", func(ctx context.Context) error {
 			return nil
@@ -66,7 +66,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("AddJob_Replaces", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		// Add initial job.
 		require.NoError(t, s.AddJob("test", "* * * * *", func(ctx context.Context) error {
@@ -87,7 +87,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("RemoveJob", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		s.Start()
 		defer s.Stop()
 
@@ -111,14 +111,14 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("RemoveJob_NonExistent", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		// Should not panic.
 		s.RemoveJob("nonexistent")
 	})
 
 	t.Run("Job_Execution", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -153,7 +153,7 @@ func TestScheduler(t *testing.T) {
 		setupTest(t)
 		var logBuf logrus.Logger
 		log := &logBuf
-		s := NewScheduler(log)
+		s := NewScheduler(log, NewMetrics("test"))
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -172,7 +172,7 @@ func TestScheduler(t *testing.T) {
 
 	t.Run("Concurrent_Operations", func(t *testing.T) {
 		setupTest(t)
-		s := NewScheduler(logrus.New())
+		s := NewScheduler(logrus.New(), NewMetrics("test"))
 		s.Start()
 		defer s.Stop()
 

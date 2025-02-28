@@ -108,7 +108,7 @@ func (h *testHelper) createBucket(ctx context.Context) {
 	h.t.Helper()
 	setupTest(h.t)
 
-	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg)
+	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg, NewMetrics("test"))
 	if err != nil {
 		h.t.Fatalf("Failed to create base repo: %v", err)
 	}
@@ -126,7 +126,7 @@ func (h *testHelper) createBaseRepo(ctx context.Context) BaseRepo {
 	h.t.Helper()
 	setupTest(h.t)
 
-	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg)
+	baseRepo, err := NewBaseRepo(ctx, h.log, h.cfg, NewMetrics("test"))
 	if err != nil {
 		h.t.Fatalf("Failed to create base repo: %v", err)
 	}

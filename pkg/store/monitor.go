@@ -33,8 +33,8 @@ type MonitorAlert struct {
 }
 
 // NewMonitorRepo creates a new MonitorRepo.
-func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*MonitorRepo, error) {
-	baseRepo, err := NewBaseRepo(ctx, log, cfg)
+func NewMonitorRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (*MonitorRepo, error) {
+	baseRepo, err := NewBaseRepo(ctx, log, cfg, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}

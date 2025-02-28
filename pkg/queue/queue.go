@@ -19,13 +19,18 @@ type Queue struct {
 }
 
 // NewQueue creates a new check queue.
-func NewQueue(log *logrus.Logger, worker func(context.Context, *store.MonitorAlert) (bool, error)) *Queue {
+func NewQueue(log *logrus.Logger, worker func(context.Context, *store.MonitorAlert) (bool, error), metrics *Metrics) *Queue {
 	return &Queue{
 		log:     log,
 		queue:   make(chan *store.MonitorAlert, 100),
 		worker:  worker,
-		metrics: NewMetrics("panda_pulse"),
+		metrics: metrics,
 	}
+}
+
+// SetWorker sets the worker function for processing alerts.
+func (q *Queue) SetWorker(worker func(context.Context, *store.MonitorAlert) (bool, error)) {
+	q.worker = worker
 }
 
 func (q *Queue) Start(ctx context.Context) {

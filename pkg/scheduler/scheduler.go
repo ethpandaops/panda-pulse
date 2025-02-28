@@ -24,12 +24,12 @@ type Scheduler struct {
 	metrics *Metrics
 }
 
-func NewScheduler(log *logrus.Logger) *Scheduler {
+func NewScheduler(log *logrus.Logger, metrics *Metrics) *Scheduler {
 	return &Scheduler{
 		log:     log,
 		cron:    cron.New(),
 		jobs:    make(map[string]cron.EntryID),
-		metrics: NewMetrics("panda_pulse"),
+		metrics: metrics,
 	}
 }
 

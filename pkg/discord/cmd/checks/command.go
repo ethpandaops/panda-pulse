@@ -34,17 +34,12 @@ type ChecksCommand struct {
 }
 
 // NewChecksCommand creates a new ChecksCommand.
-func NewChecksCommand(log *logrus.Logger, bot common.BotContext) *ChecksCommand {
-	cmd := &ChecksCommand{
-		log: log,
-		bot: bot,
+func NewChecksCommand(log *logrus.Logger, bot common.BotContext, queue *queue.Queue) *ChecksCommand {
+	return &ChecksCommand{
+		log:   log,
+		bot:   bot,
+		queue: queue,
 	}
-
-	// Create queue with RunChecks as the worker
-	cmd.queue = queue.NewQueue(log, cmd.RunChecks)
-	cmd.queue.Start(context.Background())
-
-	return cmd
 }
 
 // Name returns the name of the command.

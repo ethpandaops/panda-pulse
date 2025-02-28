@@ -50,7 +50,7 @@ type S3Config struct {
 }
 
 // NewBaseRepo creates a new base repository with common S3 functionality.
-func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (BaseRepo, error) {
+func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (BaseRepo, error) {
 	opts := []func(*config.LoadOptions) error{
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			cfg.AccessKeyID,
@@ -79,7 +79,7 @@ func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (BaseRe
 		bucket:  cfg.Bucket,
 		prefix:  cfg.Prefix,
 		log:     log,
-		metrics: NewMetrics("panda_pulse"),
+		metrics: metrics,
 	}, nil
 }
 

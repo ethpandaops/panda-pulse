@@ -32,8 +32,8 @@ type ChecksRepo struct {
 }
 
 // NewChecksRepo creates a new ChecksRepo.
-func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*ChecksRepo, error) {
-	baseRepo, err := NewBaseRepo(ctx, log, cfg)
+func NewChecksRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (*ChecksRepo, error) {
+	baseRepo, err := NewBaseRepo(ctx, log, cfg, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}

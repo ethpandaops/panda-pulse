@@ -31,8 +31,8 @@ type MentionsRepo struct {
 }
 
 // NewMentionsRepo creates a new MentionsRepo.
-func NewMentionsRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config) (*MentionsRepo, error) {
-	baseRepo, err := NewBaseRepo(ctx, log, cfg)
+func NewMentionsRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics *Metrics) (*MentionsRepo, error) {
+	baseRepo, err := NewBaseRepo(ctx, log, cfg, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base repo: %w", err)
 	}

@@ -18,14 +18,14 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("NewMonitorRepo", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 		require.NotNil(t, repo)
 	})
 
 	t.Run("List_Empty", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		alerts, err := repo.List(ctx)
@@ -35,7 +35,7 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("Persist_And_List", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		alert := &MonitorAlert{
@@ -68,7 +68,7 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("Purge", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		alert := &MonitorAlert{
@@ -89,7 +89,7 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("Purge_Invalid_Identifiers", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		err = repo.Purge(ctx, "test-net") // Missing client identifier
@@ -99,7 +99,7 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("Key_Generation", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		alert := &MonitorAlert{
@@ -113,7 +113,7 @@ func TestMonitorRepo(t *testing.T) {
 
 	t.Run("Key_Nil_Alert", func(t *testing.T) {
 		setupTest(t)
-		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg)
+		repo, err := NewMonitorRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
 		key := repo.Key(nil)

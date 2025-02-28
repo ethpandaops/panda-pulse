@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/mock"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,20 +132,20 @@ func (h *testHelper) createConfig() *Config {
 }
 
 func TestService(t *testing.T) {
-	ctx := context.Background()
-	helper := newTestHelper(t)
-	helper.setup(ctx)
-	defer helper.teardown(ctx)
-
 	t.Run("Start_And_Stop", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+		setupTest(t)
+		helper := newTestHelper(t)
+		ctx := context.Background()
+		helper.setup(ctx)
+		defer helper.teardown(ctx)
 
 		cfg := helper.createConfig()
 		svc, err := NewService(ctx, helper.log, cfg)
 		require.NoError(t, err)
 
 		// Replace the real bot with our mock
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockBot := mock.NewMockBot(ctrl)
 
 		// Set expectations
@@ -183,4 +184,10 @@ func TestService(t *testing.T) {
 		// Stop service.
 		require.NoError(t, svc.Stop(ctx))
 	})
+}
+
+func setupTest(t *testing.T) {
+	t.Helper()
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }

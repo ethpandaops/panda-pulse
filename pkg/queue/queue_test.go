@@ -30,7 +30,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -59,7 +59,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		q.Start(ctx)
@@ -82,7 +82,7 @@ func TestQueue(t *testing.T) {
 			return true, nil
 		}
 
-		q := NewQueue(logrus.New(), worker)
+		q := NewQueue(logrus.New(), worker, NewMetrics("test"))
 		ctx, cancel := context.WithCancel(context.Background())
 		q.Start(ctx)
 
@@ -98,7 +98,7 @@ func TestQueue(t *testing.T) {
 
 func TestGetAlertKey(t *testing.T) {
 	setupTest(t)
-	q := NewQueue(logrus.New(), nil)
+	q := NewQueue(logrus.New(), nil, NewMetrics("test"))
 	alert := &store.MonitorAlert{
 		Network: "testnet",
 		Client:  "client1",
