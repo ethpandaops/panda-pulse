@@ -65,7 +65,11 @@ func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics
 		return BaseRepo{}, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	cfgOpts := []func(*s3.Options){}
+	cfgOpts := []func(*s3.Options){
+		func(o *s3.Options) {
+			o.DisableLogOutputChecksumValidationSkipped = true
+		},
+	}
 
 	if cfg.EndpointURL != "" {
 		cfgOpts = append(cfgOpts, func(o *s3.Options) {
