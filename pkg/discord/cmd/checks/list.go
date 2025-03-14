@@ -31,7 +31,10 @@ func (c *ChecksCommand) handleList(
 	i *discordgo.InteractionCreate,
 	data *discordgo.ApplicationCommandInteractionDataOption,
 ) error {
-	var network *string
+	var (
+		network *string
+		guildID = i.GuildID
+	)
 
 	if len(data.Options) > 0 {
 		n := data.Options[0].StringValue()
@@ -40,16 +43,18 @@ func (c *ChecksCommand) handleList(
 
 	c.log.WithFields(logrus.Fields{
 		"command": "/checks list",
+		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
-	alerts, err := c.listAlerts(context.Background(), network)
+	alerts, err := c.listAlerts(context.Background(), guildID, network)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
 	// Get all unique networks.
 	networks := make(map[string]bool)
+
 	for _, alert := range alerts {
 		networks[alert.Network] = true
 	}
@@ -148,21 +153,30 @@ func (c *ChecksCommand) handleList(
 	return nil
 }
 
-// listAlerts lists all alerts for a given network.
-func (c *ChecksCommand) listAlerts(ctx context.Context, network *string) ([]*store.MonitorAlert, error) {
+// listAlerts lists all alerts for a given guild and optionally filtered by network.
+func (c *ChecksCommand) listAlerts(ctx context.Context, guildID string, network *string) ([]*store.MonitorAlert, error) {
 	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list alerts: %w", err)
 	}
 
-	if network == nil {
-		return alerts, nil
-	}
-
-	// Filter alerts for specific network.
-	filtered := make([]*store.MonitorAlert, 0)
+	// Filter alerts for the specific guild
+	guildAlerts := make([]*store.MonitorAlert, 0)
 
 	for _, alert := range alerts {
+		if alert.DiscordGuildID == guildID {
+			guildAlerts = append(guildAlerts, alert)
+		}
+	}
+
+	if network == nil {
+		return guildAlerts, nil
+	}
+
+	// Further filter alerts for specific network.
+	filtered := make([]*store.MonitorAlert, 0)
+
+	for _, alert := range guildAlerts {
 		if alert.Network == *network {
 			filtered = append(filtered, alert)
 		}

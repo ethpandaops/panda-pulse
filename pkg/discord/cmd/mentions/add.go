@@ -26,27 +26,30 @@ func (c *MentionsCommand) handleAdd(
 		network  = options[0].StringValue()
 		client   = options[1].StringValue()
 		mentions = strings.Fields(options[2].StringValue()) // Split on whitespace
+		guildID  = i.GuildID                                // Get the guild ID from the interaction
 	)
 
 	c.log.WithFields(logrus.Fields{
 		"command":  "/mentions add",
 		"network":  network,
 		"client":   client,
+		"guild":    guildID,
 		"mentions": mentions,
 		"user":     i.Member.User.Username,
 	}).Info("Received command")
 
 	// Get existing mentions or create new.
-	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client)
+	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client, guildID)
 	if err != nil {
 		// If not found, create new.
 		mention = &store.ClientMention{
-			Network:   network,
-			Client:    client,
-			Mentions:  []string{},
-			Enabled:   true,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			Network:        network,
+			Client:         client,
+			DiscordGuildID: guildID,
+			Mentions:       []string{},
+			Enabled:        true,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
 		}
 	}
 

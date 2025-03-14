@@ -38,12 +38,13 @@ func TestMentionsRepo(t *testing.T) {
 		require.NoError(t, err)
 
 		mention := &ClientMention{
-			Network:   "test-net",
-			Client:    "test-client",
-			Mentions:  []string{"@test-user", "@test-role"},
-			Enabled:   true,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Network:        "test-net",
+			Client:         "test-client",
+			DiscordGuildID: "test-guild",
+			Mentions:       []string{"@test-user", "@test-role"},
+			Enabled:        true,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
 		}
 
 		err = repo.Persist(ctx, mention)
@@ -55,6 +56,7 @@ func TestMentionsRepo(t *testing.T) {
 
 		assert.Equal(t, mention.Network, mentions[0].Network)
 		assert.Equal(t, mention.Client, mentions[0].Client)
+		assert.Equal(t, mention.DiscordGuildID, mentions[0].DiscordGuildID)
 		assert.Equal(t, mention.Mentions, mentions[0].Mentions)
 		assert.Equal(t, mention.Enabled, mentions[0].Enabled)
 	})
@@ -64,7 +66,7 @@ func TestMentionsRepo(t *testing.T) {
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
-		mention, err := repo.Get(ctx, "non-existent-net", "non-existent-client")
+		mention, err := repo.Get(ctx, "non-existent-net", "non-existent-client", "")
 		require.NoError(t, err) // Should not error due to our default return
 		require.NotNil(t, mention)
 		assert.Equal(t, "non-existent-net", mention.Network)
@@ -79,21 +81,23 @@ func TestMentionsRepo(t *testing.T) {
 		require.NoError(t, err)
 
 		original := &ClientMention{
-			Network:   "test-net",
-			Client:    "test-client",
-			Mentions:  []string{"@test-user"},
-			Enabled:   true,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			Network:        "test-net",
+			Client:         "test-client",
+			DiscordGuildID: "test-guild",
+			Mentions:       []string{"@test-user"},
+			Enabled:        true,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
 		}
 
 		err = repo.Persist(ctx, original)
 		require.NoError(t, err)
 
-		retrieved, err := repo.Get(ctx, original.Network, original.Client)
+		retrieved, err := repo.Get(ctx, original.Network, original.Client, original.DiscordGuildID)
 		require.NoError(t, err)
 		assert.Equal(t, original.Network, retrieved.Network)
 		assert.Equal(t, original.Client, retrieved.Client)
+		assert.Equal(t, original.DiscordGuildID, retrieved.DiscordGuildID)
 		assert.Equal(t, original.Mentions, retrieved.Mentions)
 		assert.Equal(t, original.Enabled, retrieved.Enabled)
 	})
@@ -104,14 +108,15 @@ func TestMentionsRepo(t *testing.T) {
 		require.NoError(t, err)
 
 		mention := &ClientMention{
-			Network: "test-net",
-			Client:  "test-client",
+			Network:        "test-net",
+			Client:         "test-client",
+			DiscordGuildID: "test-guild",
 		}
 
 		err = repo.Persist(ctx, mention)
 		require.NoError(t, err)
 
-		err = repo.Purge(ctx, mention.Network, mention.Client)
+		err = repo.Purge(ctx, mention.Network, mention.Client, mention.DiscordGuildID)
 		require.NoError(t, err)
 
 		mentions, err := repo.List(ctx)
@@ -124,9 +129,9 @@ func TestMentionsRepo(t *testing.T) {
 		repo, err := NewMentionsRepo(ctx, helper.log, helper.cfg, NewMetrics("test"))
 		require.NoError(t, err)
 
-		err = repo.Purge(ctx, "test-net") // Missing client identifier
+		err = repo.Purge(ctx, "test-net", "test-client") // Missing guildID identifier
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expected network and client identifiers")
+		assert.Contains(t, err.Error(), "expected network, client, and guildID identifiers")
 	})
 
 	t.Run("Key_Generation", func(t *testing.T) {
@@ -135,12 +140,13 @@ func TestMentionsRepo(t *testing.T) {
 		require.NoError(t, err)
 
 		mention := &ClientMention{
-			Network: "test-net",
-			Client:  "test-client",
+			Network:        "test-net",
+			Client:         "test-client",
+			DiscordGuildID: "test-guild",
 		}
 
 		key := repo.Key(mention)
-		assert.Equal(t, "test/networks/test-net/mentions/test-client.json", key)
+		assert.Equal(t, "test/networks/test-net/mentions/test-guild/test-client.json", key)
 	})
 
 	t.Run("Key_Nil_Mention", func(t *testing.T) {

@@ -26,6 +26,7 @@ func (c *ChecksCommand) handleDeregister(
 		options = data.Options
 		network = options[0].StringValue()
 		client  *string
+		guildID = i.GuildID // Get the guild ID from the interaction
 	)
 
 	if len(options) > 1 {
@@ -36,10 +37,11 @@ func (c *ChecksCommand) handleDeregister(
 	c.log.WithFields(logrus.Fields{
 		"command": "/checks deregister",
 		"network": network,
+		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
-	if err := c.deregisterAlert(context.Background(), network, client); err != nil {
+	if err := c.deregisterAlert(context.Background(), network, guildID, client); err != nil {
 		if notRegistered, ok := err.(*store.AlertNotRegisteredError); ok {
 			msg := fmt.Sprintf(msgClientNotRegistered, notRegistered.Client, network)
 
@@ -75,19 +77,29 @@ func (c *ChecksCommand) handleDeregister(
 }
 
 // deregisterAlert deregisters an alert for a given network and client.
-func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, client *string) error {
+func (c *ChecksCommand) deregisterAlert(ctx context.Context, network, guildID string, client *string) error {
 	// First, list all alerts.
 	alerts, err := c.bot.GetMonitorRepo().List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
+	// Filter alerts for this guild
+	guildAlerts := make([]*store.MonitorAlert, 0)
+
+	for _, alert := range alerts {
+		if alert.DiscordGuildID == guildID {
+			guildAlerts = append(guildAlerts, alert)
+		}
+	}
+
 	// If client is specified, only remove that client's alert.
 	if client != nil {
-		alert := c.getExistingAlert(alerts, network, *client)
+		alert := c.getExistingAlert(guildAlerts, network, *client)
 		if alert == nil {
 			return &store.AlertNotRegisteredError{
 				Network: network,
+				Guild:   guildID,
 				Client:  *client,
 			}
 		}
@@ -102,7 +114,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 	// Otherwise, remove all clients for this network.
 	var found bool
 
-	for _, alert := range alerts {
+	for _, alert := range guildAlerts {
 		if alert.Network == network {
 			found = true
 
@@ -115,6 +127,7 @@ func (c *ChecksCommand) deregisterAlert(ctx context.Context, network string, cli
 	if !found {
 		return &store.AlertNotRegisteredError{
 			Network: network,
+			Guild:   guildID,
 			Client:  "any",
 		}
 	}

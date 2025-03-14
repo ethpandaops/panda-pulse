@@ -27,6 +27,8 @@ func (c *MentionsCommand) handleList(
 ) error {
 	var network *string
 
+	guildID := i.GuildID
+
 	if len(data.Options) > 0 {
 		n := data.Options[0].StringValue()
 		network = &n
@@ -34,10 +36,11 @@ func (c *MentionsCommand) handleList(
 
 	c.log.WithFields(logrus.Fields{
 		"command": "/mentions list",
+		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
-	mentions, err := c.listMentions(context.Background(), network)
+	mentions, err := c.listMentions(context.Background(), guildID, network)
 	if err != nil {
 		return fmt.Errorf("failed to list mentions: %w", err)
 	}
@@ -102,21 +105,30 @@ func (c *MentionsCommand) handleList(
 	return nil
 }
 
-// listMentions lists all mentions for a given network.
-func (c *MentionsCommand) listMentions(ctx context.Context, network *string) ([]*store.ClientMention, error) {
+// listMentions lists all mentions for a given guild and optionally filtered by network.
+func (c *MentionsCommand) listMentions(ctx context.Context, guildID string, network *string) ([]*store.ClientMention, error) {
 	mentions, err := c.bot.GetMentionsRepo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list mentions: %w", err)
 	}
 
-	if network == nil {
-		return mentions, nil
-	}
-
-	// Filter mentions for specific network.
-	filtered := make([]*store.ClientMention, 0)
+	// Filter mentions for the specific guild
+	guildMentions := make([]*store.ClientMention, 0)
 
 	for _, mention := range mentions {
+		if mention.DiscordGuildID == guildID {
+			guildMentions = append(guildMentions, mention)
+		}
+	}
+
+	if network == nil {
+		return guildMentions, nil
+	}
+
+	// Further filter mentions for specific network.
+	filtered := make([]*store.ClientMention, 0)
+
+	for _, mention := range guildMentions {
 		if mention.Network == *network {
 			filtered = append(filtered, mention)
 		}

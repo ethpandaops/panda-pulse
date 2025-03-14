@@ -17,12 +17,13 @@ import (
 
 // ClientMention represents a set of mentions for a client on a network.
 type ClientMention struct {
-	Network   string    `json:"network"`
-	Client    string    `json:"client"`
-	Mentions  []string  `json:"mentions"` // List of role/user IDs to mention
-	Enabled   bool      `json:"enabled"`  // Whether mentions are enabled
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Network        string    `json:"network"`
+	Client         string    `json:"client"`
+	DiscordGuildID string    `json:"discordGuildId"` // Added field to store the guild/server ID
+	Mentions       []string  `json:"mentions"`       // List of role/user IDs to mention
+	Enabled        bool      `json:"enabled"`        // Whether mentions are enabled
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // MentionsRepo implements Repository[*ClientMention].
@@ -82,11 +83,14 @@ func (s *MentionsRepo) List(ctx context.Context) ([]*ClientMention, error) {
 	return mentions, nil
 }
 
-// Get retrieves a specific mention by network and client.
-func (s *MentionsRepo) Get(ctx context.Context, network, client string) (*ClientMention, error) {
+// Get retrieves a specific mention by network, client, and guild ID.
+func (s *MentionsRepo) Get(ctx context.Context, network, client, guildID string) (*ClientMention, error) {
 	defer s.trackDuration("get", "mentions")()
 
-	mention, err := s.getMention(ctx, s.Key(&ClientMention{Network: network, Client: client}))
+	// First try to get the mention with the guild ID
+	key := s.Key(&ClientMention{Network: network, Client: client, DiscordGuildID: guildID})
+
+	mention, err := s.getMention(ctx, key)
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
 
@@ -94,12 +98,13 @@ func (s *MentionsRepo) Get(ctx context.Context, network, client string) (*Client
 			s.observeOperation("get", "mentions", nil) // Not really an error in this case
 
 			return &ClientMention{
-				Network:   network,
-				Client:    client,
-				Mentions:  []string{},
-				Enabled:   false,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
+				Network:        network,
+				Client:         client,
+				DiscordGuildID: guildID,
+				Mentions:       []string{},
+				Enabled:        false,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
 			}, nil
 		}
 
@@ -145,15 +150,15 @@ func (s *MentionsRepo) Persist(ctx context.Context, mention *ClientMention) erro
 func (s *MentionsRepo) Purge(ctx context.Context, identifiers ...string) error {
 	defer s.trackDuration("purge", "mentions")()
 
-	if len(identifiers) != 2 {
-		return fmt.Errorf("expected network and client identifiers, got %d identifiers", len(identifiers))
+	if len(identifiers) != 3 {
+		return fmt.Errorf("expected network, client, and guildID identifiers, got %d identifiers", len(identifiers))
 	}
 
-	network, client := identifiers[0], identifiers[1]
+	network, client, guildID := identifiers[0], identifiers[1], identifiers[2]
 
 	if _, err := s.store.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(s.Key(&ClientMention{Network: network, Client: client})),
+		Key:    aws.String(s.Key(&ClientMention{Network: network, Client: client, DiscordGuildID: guildID})),
 	}); err != nil {
 		s.observeOperation("purge", "mentions", err)
 
@@ -171,7 +176,11 @@ func (s *MentionsRepo) Key(mention *ClientMention) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/networks/%s/mentions/%s.json", s.prefix, mention.Network, mention.Client)
+	return fmt.Sprintf("%s/networks/%s/mentions/%s/%s.json",
+		s.prefix,
+		mention.Network,
+		mention.DiscordGuildID,
+		mention.Client)
 }
 
 func (s *MentionsRepo) getMention(ctx context.Context, key string) (*ClientMention, error) {

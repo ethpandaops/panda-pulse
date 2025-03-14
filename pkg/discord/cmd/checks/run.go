@@ -24,10 +24,13 @@ func (c *ChecksCommand) handleRun(
 ) error {
 	network, client := extractOptions(data)
 
+	guildID := i.GuildID
+
 	c.log.WithFields(logrus.Fields{
 		"command": "/checks run",
 		"network": network,
 		"client":  client,
+		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
@@ -47,6 +50,7 @@ func (c *ChecksCommand) handleRun(
 		Network:        network,
 		Client:         client,
 		DiscordChannel: i.ChannelID,
+		DiscordGuildID: guildID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to run checks: %w", err)

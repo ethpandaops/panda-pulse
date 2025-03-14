@@ -29,6 +29,7 @@ func (c *ChecksCommand) handleRegister(
 		network = options[0].StringValue()
 		channel = options[1].ChannelValue(s)
 		client  *string
+		guildID = i.GuildID // Get the guild ID from the interaction
 	)
 
 	// Check if it's a text channel.
@@ -43,11 +44,11 @@ func (c *ChecksCommand) handleRegister(
 
 	// Check if channel is in the 'bots' category.
 	if parentChannel, err := s.Channel(channel.ParentID); err == nil {
-		if !strings.EqualFold(parentChannel.Name, "bots") {
+		if !strings.EqualFold(parentChannel.Name, "bots") && !strings.EqualFold(parentChannel.Name, "monitoring") {
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "🚫 Alerts can only be registered in channels under the `bots` category",
+					Content: "🚫 Alerts can only be registered in channels under the `bots` or `monitoring` category",
 				},
 			})
 		}
@@ -62,10 +63,11 @@ func (c *ChecksCommand) handleRegister(
 		"command": "/checks register",
 		"network": network,
 		"channel": channel.Name,
+		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
-	if err := c.registerAlert(context.Background(), network, channel.ID, client); err != nil {
+	if err := c.registerAlert(context.Background(), network, channel.ID, guildID, client); err != nil {
 		if alreadyRegistered, ok := err.(*store.AlertAlreadyRegisteredError); ok {
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -94,9 +96,9 @@ func (c *ChecksCommand) handleRegister(
 	})
 }
 
-func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID string, specificClient *string) error {
+func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, guildID string, specificClient *string) error {
 	if specificClient == nil {
-		return c.registerAllClients(ctx, network, channelID)
+		return c.registerAllClients(ctx, network, channelID, guildID)
 	}
 
 	// Check if this specific client is already registered.
@@ -106,10 +108,11 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 	}
 
 	for _, alert := range alerts {
-		if alert.Network == network && alert.Client == *specificClient && alert.DiscordChannel == channelID {
+		if alert.Network == network && alert.Client == *specificClient && alert.DiscordChannel == channelID && alert.DiscordGuildID == guildID {
 			return &store.AlertAlreadyRegisteredError{
 				Network: network,
 				Channel: channelID,
+				Guild:   guildID,
 				Client:  *specificClient,
 			}
 		}
@@ -120,7 +123,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 		return fmt.Errorf("unknown client: %s", *specificClient)
 	}
 
-	alert := newMonitorAlert(network, *specificClient, clientType, channelID)
+	alert := newMonitorAlert(network, *specificClient, clientType, channelID, guildID)
 	if err := c.scheduleAlert(ctx, alert); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}
@@ -129,10 +132,10 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID st
 }
 
 // registerAllClients registers a monitor alert for all clients for a given network.
-func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID string) error {
+func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID, guildID string) error {
 	// Register CL clients.
 	for _, client := range clients.CLClients {
-		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID)
+		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID, guildID)
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule CL alert: %w", err)
 		}
@@ -140,7 +143,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 
 	// Register EL clients.
 	for _, client := range clients.ELClients {
-		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID)
+		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID, guildID)
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule EL alert: %w", err)
 		}
@@ -189,7 +192,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 }
 
 // newMonitorAlert creates a new monitor alert with the given parameters.
-func newMonitorAlert(network, client string, clientType clients.ClientType, channelID string) *store.MonitorAlert {
+func newMonitorAlert(network, client string, clientType clients.ClientType, channelID, guildID string) *store.MonitorAlert {
 	now := time.Now()
 
 	return &store.MonitorAlert{
@@ -197,6 +200,7 @@ func newMonitorAlert(network, client string, clientType clients.ClientType, chan
 		Client:         client,
 		ClientType:     clientType,
 		DiscordChannel: channelID,
+		DiscordGuildID: guildID,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

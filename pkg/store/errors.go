@@ -6,6 +6,7 @@ import "fmt"
 type AlertAlreadyRegisteredError struct {
 	Network string
 	Channel string
+	Guild   string
 	Client  string
 }
 
@@ -17,6 +18,7 @@ func (e *AlertAlreadyRegisteredError) Error() string {
 // AlertNotRegisteredError represents an error when trying to deregister an alert that doesn't exist.
 type AlertNotRegisteredError struct {
 	Network string
+	Guild   string
 	Client  string
 }
 
