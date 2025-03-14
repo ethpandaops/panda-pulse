@@ -89,6 +89,7 @@ func (s *MentionsRepo) Get(ctx context.Context, network, client, guildID string)
 
 	// First try to get the mention with the guild ID
 	key := s.Key(&ClientMention{Network: network, Client: client, DiscordGuildID: guildID})
+
 	mention, err := s.getMention(ctx, key)
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
