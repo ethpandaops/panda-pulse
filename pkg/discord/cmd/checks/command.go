@@ -392,7 +392,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 	}
 
 	// Get mentions for this client/network.
-	mentions, err := c.bot.GetMentionsRepo().Get(context.Background(), alert.Network, alert.Client)
+	mentions, err := c.bot.GetMentionsRepo().Get(context.Background(), alert.Network, alert.Client, alert.DiscordGuildID)
 	if err != nil {
 		c.log.WithError(err).Error("Failed to get mentions")
 	}

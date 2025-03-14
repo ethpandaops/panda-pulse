@@ -26,25 +26,22 @@ func (c *MentionsCommand) handleRemove(
 		network  = options[0].StringValue()
 		client   = options[1].StringValue()
 		mentions = strings.Fields(options[2].StringValue()) // Split on whitespace
+		guildID  = i.GuildID                                // Get the guild ID from the interaction
 	)
 
 	c.log.WithFields(logrus.Fields{
 		"command":  "/mentions remove",
 		"network":  network,
 		"client":   client,
+		"guild":    guildID,
 		"mentions": mentions,
 		"user":     i.Member.User.Username,
 	}).Info("Received command")
 
 	// Get existing mentions.
-	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client)
+	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client, guildID)
 	if err != nil {
-		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf(msgNoMentionsFound, client, network),
-			},
-		})
+		return fmt.Errorf("failed to get mentions: %w", err)
 	}
 
 	// Remove mentions.

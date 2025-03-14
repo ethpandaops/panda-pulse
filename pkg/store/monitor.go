@@ -26,6 +26,7 @@ type MonitorAlert struct {
 	CheckID        string             `json:"checkId"`
 	Enabled        bool               `json:"enabled"`
 	DiscordChannel string             `json:"discordChannel"`
+	DiscordGuildID string             `json:"discordGuildId"`
 	Interval       time.Duration      `json:"interval"`
 	ClientType     clients.ClientType `json:"clientType"`
 	CreatedAt      time.Time          `json:"createdAt"`

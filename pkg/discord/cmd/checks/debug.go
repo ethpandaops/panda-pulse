@@ -12,6 +12,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -31,7 +32,17 @@ func (c *ChecksCommand) handleDebug(
 		return fmt.Errorf("failed to acknowledge interaction: %w", err)
 	}
 
-	checkID := opt.Options[0].StringValue()
+	var (
+		checkID = opt.Options[0].StringValue()
+		guildID = i.GuildID
+	)
+
+	c.log.WithFields(logrus.Fields{
+		"command": "/checks debug",
+		"checkID": checkID,
+		"guild":   guildID,
+		"user":    i.Member.User.Username,
+	}).Info("Received command")
 
 	// List all artifacts and find the one with matching ID.
 	artifacts, err := c.bot.GetChecksRepo().List(context.Background())
@@ -41,11 +52,29 @@ func (c *ChecksCommand) handleDebug(
 
 	var matchingArtifact *store.CheckArtifact
 
+	// Get all alerts to check if the check ID belongs to this guild
+	alerts, err := c.bot.GetMonitorRepo().List(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to list alerts: %w", err)
+	}
+
+	// Create a map of check IDs that belong to this guild
+	guildCheckIDs := make(map[string]bool)
+
+	for _, alert := range alerts {
+		if alert.DiscordGuildID == guildID && alert.CheckID != "" {
+			guildCheckIDs[alert.CheckID] = true
+		}
+	}
+
 	for _, artifact := range artifacts {
 		if artifact.CheckID == checkID {
-			matchingArtifact = artifact
+			// Only show artifacts for checks that belong to this guild
+			if guildCheckIDs[checkID] {
+				matchingArtifact = artifact
 
-			break
+				break
+			}
 		}
 	}
 
