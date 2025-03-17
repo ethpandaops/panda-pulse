@@ -28,15 +28,16 @@ const (
 
 // Service is the main service for the panda-pulse application.
 type Service struct {
-	config       *Config
-	log          *logrus.Logger
-	scheduler    *scheduler.Scheduler
-	bot          discord.Bot
-	monitorRepo  *store.MonitorRepo
-	checksRepo   *store.ChecksRepo
-	mentionsRepo *store.MentionsRepo
-	healthSrv    *http.Server
-	metricsSrv   *http.Server
+	config          *Config
+	log             *logrus.Logger
+	scheduler       *scheduler.Scheduler
+	bot             discord.Bot
+	monitorRepo     *store.MonitorRepo
+	checksRepo      *store.ChecksRepo
+	mentionsRepo    *store.MentionsRepo
+	hiveSummaryRepo *store.HiveSummaryRepo
+	healthSrv       *http.Server
+	metricsSrv      *http.Server
 }
 
 // NewService creates a new Service.
@@ -63,6 +64,11 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		return nil, fmt.Errorf("failed to create mentions repo: %w", err)
 	}
 
+	hiveSummaryRepo, err := store.NewHiveSummaryRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hive summary repo: %w", err)
+	}
+
 	// Create Grafana client.
 	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), &http.Client{Timeout: defaultHTTPTimeout})
 
@@ -85,6 +91,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		monitorRepo,
 		checksRepo,
 		mentionsRepo,
+		hiveSummaryRepo,
 		grafanaClient,
 		hive,
 	)
@@ -99,13 +106,14 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	})
 
 	return &Service{
-		config:       cfg,
-		log:          log,
-		bot:          bot,
-		scheduler:    scheduler,
-		monitorRepo:  monitorRepo,
-		checksRepo:   checksRepo,
-		mentionsRepo: mentionsRepo,
+		config:          cfg,
+		log:             log,
+		bot:             bot,
+		scheduler:       scheduler,
+		monitorRepo:     monitorRepo,
+		checksRepo:      checksRepo,
+		mentionsRepo:    mentionsRepo,
+		hiveSummaryRepo: hiveSummaryRepo,
 	}, nil
 }
 

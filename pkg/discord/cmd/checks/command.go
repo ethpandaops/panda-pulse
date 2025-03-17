@@ -169,6 +169,57 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 					},
 				},
 			},
+			{
+				Name:        "hive-register",
+				Description: "Register Hive test summary notifications",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:        "network",
+						Description: "Network to monitor Hive tests for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     networkChoices,
+					},
+					{
+						Name:        "channel",
+						Description: "Channel to send Hive summaries to",
+						Type:        discordgo.ApplicationCommandOptionChannel,
+						Required:    true,
+						ChannelTypes: []discordgo.ChannelType{
+							discordgo.ChannelTypeGuildText,
+						},
+					},
+				},
+			},
+			{
+				Name:        "hive-deregister",
+				Description: "Deregister Hive test summary notifications",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:        "network",
+						Description: "Network to stop monitoring Hive tests for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     networkChoices,
+					},
+				},
+			},
+			{
+				Name:        "hive-run",
+				Description: "Run a Hive test summary on demand",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:        "network",
+						Description: "Network to generate Hive summary for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     networkChoices,
+					},
+				},
+			},
 		},
 	}); err != nil {
 		return fmt.Errorf("failed to register checks command: %w", err)
@@ -201,6 +252,12 @@ func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCre
 		err = c.handleList(s, i, data.Options[0])
 	case "debug":
 		err = c.handleDebug(s, i, data.Options[0])
+	case "hive-register":
+		err = c.handleHiveRegister(s, i, data.Options[0])
+	case "hive-deregister":
+		err = c.handleHiveDeregister(s, i, data.Options[0])
+	case "hive-run":
+		err = c.handleHiveRun(s, i, data.Options[0])
 	}
 
 	if err != nil {

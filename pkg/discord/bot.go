@@ -30,6 +30,7 @@ type BotServices interface {
 	GetMonitorRepo() *store.MonitorRepo
 	GetChecksRepo() *store.ChecksRepo
 	GetMentionsRepo() *store.MentionsRepo
+	GetHiveSummaryRepo() *store.HiveSummaryRepo
 	GetGrafana() grafana.Client
 	GetHive() hive.Hive
 }
@@ -45,16 +46,17 @@ type Bot interface {
 
 // DiscordBot represents the Discord bot implementation.
 type DiscordBot struct {
-	log          *logrus.Logger
-	config       *Config
-	session      *discordgo.Session
-	scheduler    *scheduler.Scheduler
-	monitorRepo  *store.MonitorRepo
-	checksRepo   *store.ChecksRepo
-	mentionsRepo *store.MentionsRepo
-	grafana      grafana.Client
-	hive         hive.Hive
-	commands     []common.Command
+	log             *logrus.Logger
+	config          *Config
+	session         *discordgo.Session
+	scheduler       *scheduler.Scheduler
+	monitorRepo     *store.MonitorRepo
+	checksRepo      *store.ChecksRepo
+	mentionsRepo    *store.MentionsRepo
+	hiveSummaryRepo *store.HiveSummaryRepo
+	grafana         grafana.Client
+	hive            hive.Hive
+	commands        []common.Command
 }
 
 // NewBot creates a new Discord bot.
@@ -65,6 +67,7 @@ func NewBot(
 	monitorRepo *store.MonitorRepo,
 	checksRepo *store.ChecksRepo,
 	mentionsRepo *store.MentionsRepo,
+	hiveSummaryRepo *store.HiveSummaryRepo,
 	grafana grafana.Client,
 	hive hive.Hive,
 ) (Bot, error) {
@@ -75,16 +78,17 @@ func NewBot(
 	}
 
 	bot := &DiscordBot{
-		log:          log,
-		config:       cfg,
-		session:      session,
-		scheduler:    scheduler,
-		monitorRepo:  monitorRepo,
-		checksRepo:   checksRepo,
-		mentionsRepo: mentionsRepo,
-		grafana:      grafana,
-		hive:         hive,
-		commands:     make([]common.Command, 0),
+		log:             log,
+		config:          cfg,
+		session:         session,
+		scheduler:       scheduler,
+		monitorRepo:     monitorRepo,
+		checksRepo:      checksRepo,
+		mentionsRepo:    mentionsRepo,
+		hiveSummaryRepo: hiveSummaryRepo,
+		grafana:         grafana,
+		hive:            hive,
+		commands:        make([]common.Command, 0),
 	}
 
 	// Register event handlers.
@@ -159,6 +163,11 @@ func (b *DiscordBot) GetMentionsRepo() *store.MentionsRepo {
 	return b.mentionsRepo
 }
 
+// GetHiveSummaryRepo returns the Hive summary repository.
+func (b *DiscordBot) GetHiveSummaryRepo() *store.HiveSummaryRepo {
+	return b.hiveSummaryRepo
+}
+
 // GetGrafana returns the Grafana client.
 func (b *DiscordBot) GetGrafana() grafana.Client {
 	return b.grafana
@@ -199,33 +208,29 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 	}
 }
 
-// scheduleExistingAlerts schedules existing monitor alerts.
+// scheduleExistingAlerts schedules all existing alerts.
 func (b *DiscordBot) scheduleExistingAlerts() error {
-	alerts, err := b.monitorRepo.List(context.Background())
+	ctx := context.Background()
+
+	// Schedule monitor alerts.
+	alerts, err := b.monitorRepo.List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
-	b.log.WithFields(logrus.Fields{
-		"count": len(alerts),
-	}).Info("Existing monitor alerts requiring scheduling")
-
-	if len(alerts) == 0 {
-		return nil
-	}
-
-	checksCmd := b.GetChecksCmd()
-	if checksCmd == nil {
-		return fmt.Errorf("checks command not found")
-	}
-
 	for _, alert := range alerts {
+		if !alert.Enabled {
+			continue
+		}
+
 		jobName := b.monitorRepo.Key(alert)
 
-		// Create a copy of the alert for the closure.
-		alertCopy := alert
+		b.log.WithFields(logrus.Fields{
+			"network": alert.Network,
+			"client":  alert.Client,
+			"key":     jobName,
+		}).Info("Scheduling existing monitor alert")
 
-		// Add it to the scheduler.
 		if err := b.scheduler.AddJob(jobName, cmdchecks.DefaultCheckSchedule, func(ctx context.Context) error {
 			b.log.WithFields(logrus.Fields{
 				"network": alert.Network,
@@ -233,26 +238,59 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 				"key":     jobName,
 			}).Info("Queueing registered check")
 
-			checksCmd.Queue().Enqueue(alertCopy)
+			// Find the checks command.
+			for _, cmd := range b.commands {
+				if checksCmd, ok := cmd.(*cmdchecks.ChecksCommand); ok {
+					checksCmd.Queue().Enqueue(alert)
+					break
+				}
+			}
 
 			return nil
 		}); err != nil {
-			// Don't return an error here, just log it and continue scheduling the rest.
-			b.log.WithError(err).WithFields(logrus.Fields{
-				"network": alert.Network,
-				"client":  alert.Client,
-			}).Error("Failed to schedule alert")
+			return fmt.Errorf("failed to schedule alert: %w", err)
+		}
+	}
 
+	// Schedule Hive summary alerts.
+	hiveAlerts, err := b.hiveSummaryRepo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list Hive summary alerts: %w", err)
+	}
+
+	for _, alert := range hiveAlerts {
+		if !alert.Enabled {
 			continue
 		}
 
+		jobName := fmt.Sprintf("hive_summary_%s", alert.Network)
+
 		b.log.WithFields(logrus.Fields{
-			"network":  alert.Network,
-			"channel":  alert.DiscordChannel,
-			"client":   alert.Client,
-			"schedule": cmdchecks.DefaultCheckSchedule,
-			"key":      jobName,
-		}).Info("Scheduled monitor alert")
+			"network": alert.Network,
+			"channel": alert.DiscordChannel,
+			"key":     jobName,
+		}).Info("Scheduling existing Hive summary alert")
+
+		if err := b.scheduler.AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
+			b.log.WithFields(logrus.Fields{
+				"network": alert.Network,
+				"key":     jobName,
+			}).Info("Running Hive summary check")
+
+			// Find the checks command.
+			for _, cmd := range b.commands {
+				if checksCmd, ok := cmd.(*cmdchecks.ChecksCommand); ok {
+					if err := checksCmd.RunHiveSummary(ctx, alert); err != nil {
+						b.log.WithError(err).Error("Failed to run Hive summary check")
+					}
+					break
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to schedule Hive summary alert: %w", err)
+		}
 	}
 
 	return nil
