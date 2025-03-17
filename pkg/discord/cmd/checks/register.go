@@ -9,6 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -54,20 +55,44 @@ func (c *ChecksCommand) handleRegister(
 		}
 	}
 
-	if len(options) > 2 {
-		c := options[2].StringValue()
-		client = &c
+	// Get client if provided
+	for _, opt := range options {
+		if opt.Name == "client" {
+			c := opt.StringValue()
+			client = &c
+			break
+		}
+	}
+
+	// Get schedule if provided
+	schedule := DefaultCheckSchedule
+	for _, opt := range options {
+		if opt.Name == "schedule" {
+			schedule = opt.StringValue()
+
+			// Validate the cron schedule
+			if _, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(schedule); err != nil {
+				return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: fmt.Sprintf("🚫 Invalid cron schedule: %v", err),
+					},
+				})
+			}
+			break
+		}
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"command": "/checks register",
-		"network": network,
-		"channel": channel.Name,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
+		"command":  "/checks register",
+		"network":  network,
+		"channel":  channel.Name,
+		"guild":    guildID,
+		"user":     i.Member.User.Username,
+		"schedule": schedule,
 	}).Info("Received command")
 
-	if err := c.registerAlert(context.Background(), network, channel.ID, guildID, client); err != nil {
+	if err := c.registerAlert(context.Background(), network, channel.ID, guildID, client, schedule); err != nil {
 		if alreadyRegistered, ok := err.(*store.AlertAlreadyRegisteredError); ok {
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -96,9 +121,9 @@ func (c *ChecksCommand) handleRegister(
 	})
 }
 
-func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, guildID string, specificClient *string) error {
+func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, guildID string, specificClient *string, schedule string) error {
 	if specificClient == nil {
-		return c.registerAllClients(ctx, network, channelID, guildID)
+		return c.registerAllClients(ctx, network, channelID, guildID, schedule)
 	}
 
 	// Check if this specific client is already registered.
@@ -124,6 +149,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 	}
 
 	alert := newMonitorAlert(network, *specificClient, clientType, channelID, guildID)
+	alert.Schedule = schedule
 	if err := c.scheduleAlert(ctx, alert); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}
@@ -132,10 +158,11 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 }
 
 // registerAllClients registers a monitor alert for all clients for a given network.
-func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID, guildID string) error {
+func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID, guildID string, schedule string) error {
 	// Register CL clients.
 	for _, client := range clients.CLClients {
 		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID, guildID)
+		alert.Schedule = schedule
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule CL alert: %w", err)
 		}
@@ -144,6 +171,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 	// Register EL clients.
 	for _, client := range clients.ELClients {
 		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID, guildID)
+		alert.Schedule = schedule
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule EL alert: %w", err)
 		}
@@ -169,7 +197,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}).Info("Registered monitor")
 
 	// And secondly, schedule the alert to run on our schedule.
-	if err := c.bot.GetScheduler().AddJob(jobName, DefaultCheckSchedule, func(ctx context.Context) error {
+	if err := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
@@ -184,7 +212,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"schedule": DefaultCheckSchedule,
+		"schedule": alert.Schedule,
 		"key":      jobName,
 	}).Info("Scheduled monitor alert")
 
@@ -201,6 +229,7 @@ func newMonitorAlert(network, client string, clientType clients.ClientType, chan
 		ClientType:     clientType,
 		DiscordChannel: channelID,
 		DiscordGuildID: guildID,
+		Schedule:       DefaultCheckSchedule,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}

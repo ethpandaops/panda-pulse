@@ -1,4 +1,4 @@
-package checks
+package hive
 
 import (
 	"context"
@@ -9,30 +9,41 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// handleHiveRun handles the '/checks hive-run' command.
-func (c *ChecksCommand) handleHiveRun(
-	s *discordgo.Session,
-	i *discordgo.InteractionCreate,
-	data *discordgo.ApplicationCommandInteractionDataOption,
-) error {
-	network := data.Options[0].StringValue()
-	guildID := i.GuildID
+// handleRun handles the run subcommand.
+func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCreate, cmd *discordgo.ApplicationCommandInteractionDataOption) {
+	var (
+		network = cmd.Options[0].StringValue()
+		guildID = i.GuildID
+	)
 
 	c.log.WithFields(logrus.Fields{
-		"command": "/checks hive-run",
+		"command": "/hive run",
 		"network": network,
 		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
 
-	// First respond that we're working on it.
+	// Check if Hive is available for this network.
+	available, err := c.bot.GetHive().IsAvailable(context.Background(), network)
+	if err != nil {
+		c.respondWithError(s, i, fmt.Sprintf("Failed to check Hive availability: %v", err))
+		return
+	}
+
+	if !available {
+		c.respondWithError(s, i, fmt.Sprintf("🚫 Hive is not available for network **%s**", network))
+		return
+	}
+
+	// Now, respond that we're working on it.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf("🔄 Running Hive summary for **%s**...", network),
 		},
 	}); err != nil {
-		return fmt.Errorf("failed to send initial response: %w", err)
+		c.log.WithError(err).Error("Failed to send initial response")
+		return
 	}
 
 	// Create a temporary alert for this run
@@ -43,24 +54,24 @@ func (c *ChecksCommand) handleHiveRun(
 		Enabled:        true,
 	}
 
-	// Run the Hive summary check
-	err := c.RunHiveSummary(context.Background(), alert)
-	if err != nil {
-		// Edit the response to show the error
+	// Run the Hive summary check.
+	if err := c.RunHiveSummary(context.Background(), alert); err != nil {
+		// Edit the response to show the error.
 		if _, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: stringPtr(fmt.Sprintf("❌ Failed to run Hive summary for **%s**: %v", network, err)),
 		}); editErr != nil {
-			c.log.Errorf("Failed to edit initial response: %v", editErr)
+			c.log.WithError(editErr).Error("Failed to edit initial response")
 		}
-		return fmt.Errorf("failed to run Hive summary: %w", err)
+
+		c.log.WithError(err).Error("Failed to run Hive summary")
+
+		return
 	}
 
-	// Edit the response to show success
+	// Edit the response to show success.
 	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: stringPtr(fmt.Sprintf("✅ Hive summary for **%s** completed successfully", network)),
 	}); err != nil {
-		c.log.Errorf("Failed to edit initial response: %v", err)
+		c.log.WithError(err).Error("Failed to edit initial response")
 	}
-
-	return nil
 }

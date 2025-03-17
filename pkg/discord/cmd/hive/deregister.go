@@ -1,4 +1,4 @@
-package checks
+package hive
 
 import (
 	"context"
@@ -14,20 +14,16 @@ const (
 	msgHiveDeregistered  = "✅ Successfully deregistered Hive summary for **%s**"
 )
 
-// handleHiveDeregister handles the '/checks hive-deregister' command.
-func (c *ChecksCommand) handleHiveDeregister(
-	s *discordgo.Session,
-	i *discordgo.InteractionCreate,
-	data *discordgo.ApplicationCommandInteractionDataOption,
-) error {
+// handleDeregister handles the deregister subcommand.
+func (c *HiveCommand) handleDeregister(s *discordgo.Session, i *discordgo.InteractionCreate, cmd *discordgo.ApplicationCommandInteractionDataOption) {
 	var (
-		options = data.Options
+		options = cmd.Options
 		network = options[0].StringValue()
 		guildID = i.GuildID // Get the guild ID from the interaction
 	)
 
 	c.log.WithFields(logrus.Fields{
-		"command": "/checks hive-deregister",
+		"command": "/hive deregister",
 		"network": network,
 		"guild":   guildID,
 		"user":    i.Member.User.Username,
@@ -35,27 +31,35 @@ func (c *ChecksCommand) handleHiveDeregister(
 
 	if err := c.deregisterHiveAlert(context.Background(), network, guildID); err != nil {
 		if notRegistered, ok := err.(*hiveNotRegisteredError); ok {
-			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: fmt.Sprintf(msgHiveNotRegistered, notRegistered.Network),
 				},
 			})
+			if err != nil {
+				c.log.WithError(err).Error("Failed to respond to interaction")
+			}
+			return
 		}
 
-		return fmt.Errorf("failed to deregister Hive alert: %w", err)
+		c.respondWithError(s, i, fmt.Sprintf("Failed to deregister Hive alert: %v", err))
+		return
 	}
 
-	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgHiveDeregistered, network),
 		},
 	})
+	if err != nil {
+		c.log.WithError(err).Error("Failed to respond to interaction")
+	}
 }
 
 // deregisterHiveAlert deregisters a Hive summary alert for a given network.
-func (c *ChecksCommand) deregisterHiveAlert(ctx context.Context, network, guildID string) error {
+func (c *HiveCommand) deregisterHiveAlert(ctx context.Context, network, guildID string) error {
 	// First, list all alerts.
 	alerts, err := c.bot.GetHiveSummaryRepo().List(ctx)
 	if err != nil {
@@ -92,7 +96,7 @@ func (c *ChecksCommand) deregisterHiveAlert(ctx context.Context, network, guildI
 	}).Info("Deregistered Hive summary")
 
 	// Remove from scheduler
-	jobName := fmt.Sprintf("hive_summary_%s", network)
+	jobName := fmt.Sprintf("hive-summary-%s", network)
 	c.bot.GetScheduler().RemoveJob(jobName)
 
 	c.log.WithField("key", jobName).Info("Unscheduled Hive summary alert")

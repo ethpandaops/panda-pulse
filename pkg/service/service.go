@@ -9,6 +9,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
@@ -103,6 +104,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	bot.SetCommands([]common.Command{
 		checks.NewChecksCommand(log, bot),
 		mentions.NewMentionsCommand(log, bot),
+		cmdhive.NewHiveCommand(log, bot),
 	})
 
 	return &Service{

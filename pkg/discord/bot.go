@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/queue"
@@ -263,7 +264,7 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 			continue
 		}
 
-		jobName := fmt.Sprintf("hive_summary_%s", alert.Network)
+		jobName := fmt.Sprintf("hive-summary-%s", alert.Network)
 
 		b.log.WithFields(logrus.Fields{
 			"network": alert.Network,
@@ -277,10 +278,10 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 				"key":     jobName,
 			}).Info("Running Hive summary check")
 
-			// Find the checks command.
+			// Find the hive command
 			for _, cmd := range b.commands {
-				if checksCmd, ok := cmd.(*cmdchecks.ChecksCommand); ok {
-					if err := checksCmd.RunHiveSummary(ctx, alert); err != nil {
+				if hiveCmd, ok := cmd.(*cmdhive.HiveCommand); ok {
+					if err := hiveCmd.RunHiveSummary(ctx, alert); err != nil {
 						b.log.WithError(err).Error("Failed to run Hive summary check")
 					}
 					break
