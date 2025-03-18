@@ -39,6 +39,8 @@ type BotContext interface {
 	GetChecksRepo() *store.ChecksRepo
 	// GetMentionsRepo returns the mentions repository.
 	GetMentionsRepo() *store.MentionsRepo
+	// GetHiveSummaryRepo returns the Hive summary repository.
+	GetHiveSummaryRepo() *store.HiveSummaryRepo
 	// GetGrafana returns the Grafana client.
 	GetGrafana() grafana.Client
 	// GetHive returns the Hive client.

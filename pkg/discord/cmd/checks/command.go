@@ -119,6 +119,12 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 						Required:    false,
 						Choices:     clientChoices,
 					},
+					{
+						Name:        "schedule",
+						Description: "The schedule to run the check (cron format)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    false,
+					},
 				},
 			},
 			{
@@ -280,59 +286,6 @@ func (c *ChecksCommand) persistCheckResults(ctx context.Context, alert *store.Mo
 	})
 }
 
-// isHiveAvailable checks if Hive is available for the given network.
-func (c *ChecksCommand) isHiveAvailable(network string) bool {
-	available, _ := c.bot.GetHive().IsAvailable(context.Background(), network)
-
-	return available
-}
-
-// handleHiveResults handles capturing and persisting Hive results.
-func (c *ChecksCommand) handleHiveResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) error {
-	var consensusNode, executionNode string
-
-	if clients.IsELClient(alert.Client) {
-		executionNode = alert.Client
-	} else {
-		consensusNode = alert.Client
-	}
-
-	content, err := c.bot.GetHive().Snapshot(ctx, hive.SnapshotConfig{
-		Network:       alert.Network,
-		ConsensusNode: consensusNode,
-		ExecutionNode: executionNode,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "context deadline exceeded") {
-			c.log.WithFields(logrus.Fields{
-				"network":       alert.Network,
-				"consensusNode": consensusNode,
-				"executionNode": executionNode,
-			}).WithError(err).Error("hive screenshot timed out")
-
-			return nil
-		}
-
-		return fmt.Errorf("failed to snapshot test coverage: %w", err)
-	}
-
-	if len(content) == 0 {
-		return nil
-	}
-
-	now := time.Now()
-
-	return c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
-		Network:   alert.Network,
-		Client:    alert.Client,
-		CheckID:   runner.GetID(),
-		Type:      "png",
-		CreatedAt: now,
-		UpdatedAt: now,
-		Content:   content,
-	})
-}
-
 // sendResults sends the analysis results to Discord.
 func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAlert, runner checks.Runner) (bool, error) {
 	var (
@@ -342,8 +295,10 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		checkID              = runner.GetID()
 		analysis             = runner.GetAnalysis()
 		results              = runner.GetResults()
-		isHiveAvailable      = c.isHiveAvailable(alert.Network)
 	)
+
+	// Check if Hive is available for this network
+	isHiveAvailable, _ := c.bot.GetHive().IsAvailable(context.Background(), alert.Network)
 
 	// Check if this client is a root cause.
 	for _, rootCause := range analysis.RootCause {
@@ -426,13 +381,49 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 
 	// If hive is available, pop a screenshot of the test coverage into the thread.
 	if isHiveAvailable {
-		// Ignoring error, as it's not critical to include hive screenshot.
-		err := c.handleHiveResults(ctx, alert, runner)
-		if err == nil {
-			screenshot, err := c.bot.GetChecksRepo().GetArtifact(context.Background(), alert.Network, alert.Client, checkID, "png")
-			if err == nil && screenshot != nil && len(screenshot.Content) > 0 {
-				if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(screenshot.Content)); err != nil {
-					return true, fmt.Errorf("failed to send hive screenshot: %w", err)
+		// Get a screenshot of the test coverage
+		var consensusNode, executionNode string
+
+		if clients.IsELClient(alert.Client) {
+			executionNode = alert.Client
+		} else {
+			consensusNode = alert.Client
+		}
+
+		content, err := c.bot.GetHive().Snapshot(ctx, hive.SnapshotConfig{
+			Network:       alert.Network,
+			ConsensusNode: consensusNode,
+			ExecutionNode: executionNode,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "context deadline exceeded") {
+				c.log.WithFields(logrus.Fields{
+					"network":       alert.Network,
+					"consensusNode": consensusNode,
+					"executionNode": executionNode,
+				}).WithError(err).Error("hive screenshot timed out")
+			} else {
+				c.log.WithError(err).Error("Failed to get Hive screenshot")
+			}
+		} else if len(content) > 0 {
+			// Store the screenshot.
+			now := time.Now()
+
+			err = c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
+				Network:   alert.Network,
+				Client:    alert.Client,
+				CheckID:   checkID,
+				Type:      "png",
+				CreatedAt: now,
+				UpdatedAt: now,
+				Content:   content,
+			})
+			if err != nil {
+				c.log.WithError(err).Error("Failed to persist Hive screenshot")
+			} else {
+				// Send the screenshot to the thread.
+				if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(content)); err != nil {
+					c.log.WithError(err).Error("Failed to send Hive screenshot")
 				}
 			}
 		}
