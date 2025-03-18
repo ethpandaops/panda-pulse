@@ -151,6 +151,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 
 	alert := newMonitorAlert(network, *specificClient, clientType, channelID, guildID)
 	alert.Schedule = schedule
+
 	if err := c.scheduleAlert(ctx, alert); err != nil {
 		return fmt.Errorf("failed to schedule alert: %w", err)
 	}
@@ -164,6 +165,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 	for _, client := range clients.CLClients {
 		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID, guildID)
 		alert.Schedule = schedule
+
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule CL alert: %w", err)
 		}
@@ -173,6 +175,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 	for _, client := range clients.ELClients {
 		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID, guildID)
 		alert.Schedule = schedule
+
 		if err := c.scheduleAlert(ctx, alert); err != nil {
 			return fmt.Errorf("failed to schedule EL alert: %w", err)
 		}

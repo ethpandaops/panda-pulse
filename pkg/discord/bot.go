@@ -232,7 +232,7 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 			"key":     jobName,
 		}).Info("Scheduling existing monitor alert")
 
-		if err := b.scheduler.AddJob(jobName, cmdchecks.DefaultCheckSchedule, func(ctx context.Context) error {
+		if addErr := b.scheduler.AddJob(jobName, cmdchecks.DefaultCheckSchedule, func(ctx context.Context) error {
 			b.log.WithFields(logrus.Fields{
 				"network": alert.Network,
 				"client":  alert.Client,
@@ -249,8 +249,8 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 			}
 
 			return nil
-		}); err != nil {
-			return fmt.Errorf("failed to schedule alert: %w", err)
+		}); addErr != nil {
+			return fmt.Errorf("failed to schedule alert: %w", addErr)
 		}
 	}
 
