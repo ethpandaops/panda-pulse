@@ -40,10 +40,12 @@ func (c *HiveCommand) handleDeregister(s *discordgo.Session, i *discordgo.Intera
 			if err != nil {
 				c.log.WithError(err).Error("Failed to respond to interaction")
 			}
+
 			return
 		}
 
 		c.respondWithError(s, i, fmt.Sprintf("Failed to deregister Hive alert: %v", err))
+
 		return
 	}
 
@@ -66,14 +68,17 @@ func (c *HiveCommand) deregisterHiveAlert(ctx context.Context, network, guildID 
 		return fmt.Errorf("failed to list alerts: %w", err)
 	}
 
-	// Filter alerts for this guild and network
-	var found bool
-	var alert *hive.HiveSummaryAlert
+	// Filter alerts for this guild and network.
+	var (
+		found bool
+		alert *hive.HiveSummaryAlert
+	)
 
 	for _, a := range alerts {
 		if a.Network == network && a.DiscordGuildID == guildID {
 			found = true
 			alert = a
+
 			break
 		}
 	}

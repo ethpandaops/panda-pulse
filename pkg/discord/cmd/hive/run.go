@@ -27,22 +27,25 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 	available, err := c.bot.GetHive().IsAvailable(context.Background(), network)
 	if err != nil {
 		c.respondWithError(s, i, fmt.Sprintf("Failed to check Hive availability: %v", err))
+
 		return
 	}
 
 	if !available {
 		c.respondWithError(s, i, fmt.Sprintf("🚫 Hive is not available for network **%s**", network))
+
 		return
 	}
 
 	// Now, respond that we're working on it.
-	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if respondErr := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf("🔄 Running Hive summary for **%s**...", network),
 		},
-	}); err != nil {
-		c.log.WithError(err).Error("Failed to send initial response")
+	}); respondErr != nil {
+		c.log.WithError(respondErr).Error("Failed to send initial response")
+
 		return
 	}
 
@@ -55,7 +58,7 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 	}
 
 	// Run the Hive summary check.
-	if err := c.RunHiveSummary(context.Background(), alert); err != nil {
+	if runErr := c.RunHiveSummary(context.Background(), alert); runErr != nil {
 		// Edit the response to show the error.
 		if _, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: stringPtr(fmt.Sprintf("❌ Failed to run Hive summary for **%s**: %v", network, err)),
@@ -63,7 +66,7 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 			c.log.WithError(editErr).Error("Failed to edit initial response")
 		}
 
-		c.log.WithError(err).Error("Failed to run Hive summary")
+		c.log.WithError(runErr).Error("Failed to run Hive summary")
 
 		return
 	}

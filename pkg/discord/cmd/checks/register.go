@@ -26,11 +26,12 @@ func (c *ChecksCommand) handleRegister(
 	data *discordgo.ApplicationCommandInteractionDataOption,
 ) error {
 	var (
-		options = data.Options
-		network = options[0].StringValue()
-		channel = options[1].ChannelValue(s)
-		client  *string
-		guildID = i.GuildID // Get the guild ID from the interaction
+		options  = data.Options
+		network  = options[0].StringValue()
+		channel  = options[1].ChannelValue(s)
+		client   *string
+		guildID  = i.GuildID // Get the guild ID from the interaction
+		schedule = DefaultCheckSchedule
 	)
 
 	// Check if it's a text channel.
@@ -55,17 +56,16 @@ func (c *ChecksCommand) handleRegister(
 		}
 	}
 
-	// Get client if provided
 	for _, opt := range options {
 		if opt.Name == "client" {
 			c := opt.StringValue()
 			client = &c
+
 			break
 		}
 	}
 
-	// Get schedule if provided
-	schedule := DefaultCheckSchedule
+	// Get schedule if provided, and ensure its valid.
 	for _, opt := range options {
 		if opt.Name == "schedule" {
 			schedule = opt.StringValue()
@@ -79,6 +79,7 @@ func (c *ChecksCommand) handleRegister(
 					},
 				})
 			}
+
 			break
 		}
 	}
@@ -197,7 +198,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	}).Info("Registered monitor")
 
 	// And secondly, schedule the alert to run on our schedule.
-	if err := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
+	if addErr := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
@@ -207,8 +208,8 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 		c.Queue().Enqueue(alert)
 
 		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to schedule alert: %w", err)
+	}); addErr != nil {
+		return fmt.Errorf("failed to schedule alert: %w", addErr)
 	}
 
 	c.log.WithFields(logrus.Fields{

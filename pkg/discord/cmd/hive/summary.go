@@ -54,7 +54,8 @@ func (c *HiveCommand) sendHiveSummary(
 	}
 
 	// Create a thread for the client details.
-	threadName := fmt.Sprintf("Hive Test Results - %s", summary.Timestamp.Format(threadDateFormat))
+	threadName := fmt.Sprintf("Hive Summary - %s", summary.Timestamp.Format(threadDateFormat))
+
 	thread, err := session.MessageThreadStartComplex(alert.DiscordChannel, mainMessage.ID, &discordgo.ThreadStart{
 		Name:                threadName,
 		AutoArchiveDuration: threadAutoArchiveDuration,
@@ -71,7 +72,7 @@ func (c *HiveCommand) sendHiveSummary(
 	return nil
 }
 
-// sendClientBreakdownMessages sends each client as a separate message in the thread
+// sendClientBreakdownMessages sends each client as a separate message in the thread.
 func sendClientBreakdownMessages(
 	ctx context.Context,
 	session *discordgo.Session,
@@ -93,12 +94,14 @@ func sendClientBreakdownMessages(
 	// If we have no clients, send a default message.
 	if len(clients) == 0 {
 		_, err := session.ChannelMessageSend(threadID, "No client results available.")
+
 		return err
 	}
 
 	// Send a message for each client.
 	for _, clientKey := range clients {
 		embed := createClientEmbed(clientKey, summary.ClientResults[clientKey], prevSummary, results, summary.Network)
+
 		_, err := session.ChannelMessageSendEmbed(threadID, embed)
 		if err != nil {
 			return fmt.Errorf("failed to send client embed for %s: %w", clientKey, err)
@@ -108,7 +111,7 @@ func sendClientBreakdownMessages(
 	return nil
 }
 
-// createClientEmbed creates an embed for a single client
+// createClientEmbed creates an embed for a single client.
 func createClientEmbed(
 	clientKey string,
 	result *hive.ClientSummary,
@@ -137,8 +140,9 @@ func createClientEmbed(
 
 	// Add pass rate info.
 	var passRateValue string
+
+	// Calculate more precise pass rate for near-100% with failures.
 	if result.PassRate >= 99.95 && result.FailedTests > 0 {
-		// Calculate more precise pass rate for near-100% with failures.
 		exactPassRate := float64(result.PassedTests) / float64(result.TotalTests) * 100
 		passRateValue = fmt.Sprintf("✅ %.2f%% (%d/%d)", exactPassRate, result.PassedTests, result.TotalTests)
 	} else {
@@ -255,7 +259,7 @@ func createClientEmbed(
 // createCombinedOverviewEmbed creates an embed with the summary overview and test type breakdown.
 func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.SummaryResult, results []hive.TestResult) *discordgo.MessageEmbed {
 	// Format the timestamp in a user-friendly way.
-	lastUpdated := summary.Timestamp.Format("Mon, 2 Jan 2006 15:04:05 MST")
+	lastUpdated := summary.Timestamp.Format("Mon, 2 Jan 2006")
 
 	// Create the overview fields.
 	fields := []*discordgo.MessageEmbedField{
@@ -277,7 +281,7 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 		{
 			Name:   "Test Date",
 			Value:  lastUpdated,
-			Inline: false,
+			Inline: true,
 		},
 	}
 
@@ -291,6 +295,7 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	// Process each test result and aggregate by test type.
 	for _, result := range results {
 		testType := result.Name
+
 		stats, exists := testTypeResults[testType]
 		if !exists {
 			stats = struct {
@@ -312,18 +317,22 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	for testType := range testTypeResults {
 		testTypes = append(testTypes, testType)
 	}
+
 	sort.Strings(testTypes)
 
 	// Add a separator field.
 	fields = append(fields, &discordgo.MessageEmbedField{
-		Value:  "📊 **Test Type Breakdown**",
+		Value:  "📊 **Suite Breakdown**",
 		Inline: false,
 	})
 
 	// Add test type fields.
 	for _, testType := range testTypes {
-		stats := testTypeResults[testType]
-		passRate := 0.0
+		var (
+			stats    = testTypeResults[testType]
+			passRate = 0.0
+		)
+
 		if stats.Total > 0 {
 			passRate = float64(stats.Passes) / float64(stats.Total) * 100
 		}
@@ -345,173 +354,10 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	}
 
 	return &discordgo.MessageEmbed{
-		Title:  "🐝 **Hive Test Results**",
+		Title:  "🐝 **Hive Summary**",
 		Color:  0x3498DB,
 		Fields: fields,
 	}
-}
-
-// detectRegressions identifies tests that were previously passing but are now failing.
-func detectRegressions(current *hive.SummaryResult, previous *hive.SummaryResult, results []hive.TestResult) map[string][]string {
-	// Map of client -> list of regression descriptions.
-	regressions := make(map[string][]string)
-
-	// First, group current results by client and test type.
-	currentTestResults := groupResultsByClientAndTestType(results)
-
-	// Compare client results.
-	for clientName, currentResult := range current.ClientResults {
-		// Skip if client has no failures.
-		if currentResult.FailedTests == 0 {
-			continue
-		}
-
-		// Check if client existed in previous results.
-		prevResult, exists := previous.ClientResults[clientName]
-		if !exists {
-			// New client, can't determine regressions.
-			continue
-		}
-
-		// Check if failures increased.
-		if currentResult.FailedTests > prevResult.FailedTests {
-			// This client has more failures than before.
-			increase := currentResult.FailedTests - prevResult.FailedTests
-
-			// Find which test types have increased failures.
-			testTypeRegressions := findTestTypeRegressions(clientName, currentTestResults, previous, results)
-
-			// Add overall regression info.
-			regressionMsg := fmt.Sprintf("%d new failures (from %d to %d)",
-				increase, prevResult.FailedTests, currentResult.FailedTests)
-
-			// Add test type details if available.
-			if len(testTypeRegressions) > 0 {
-				regressionMsg += fmt.Sprintf("\n  Affected tests: %s", strings.Join(testTypeRegressions, ", "))
-			}
-
-			regressions[clientName] = append(regressions[clientName], regressionMsg)
-		}
-	}
-
-	return regressions
-}
-
-// groupResultsByClientAndTestType groups test results by client and test type.
-func groupResultsByClientAndTestType(results []hive.TestResult) map[string]map[string]hive.TestResult {
-	// Map of client -> test type -> result.
-	grouped := make(map[string]map[string]hive.TestResult)
-
-	for _, result := range results {
-		// Skip results with no tests.
-		if result.NTests == 0 {
-			continue
-		}
-
-		// Initialize client map if needed.
-		if _, exists := grouped[result.Client]; !exists {
-			grouped[result.Client] = make(map[string]hive.TestResult)
-		}
-
-		// Store the result by test type.
-		// If we already have a result for this test type, use the one with the most recent timestamp.
-		existingResult, exists := grouped[result.Client][result.Name]
-		if !exists || result.Timestamp.After(existingResult.Timestamp) {
-			grouped[result.Client][result.Name] = result
-		}
-	}
-
-	return grouped
-}
-
-// findTestTypeRegressions identifies which test types have increased failures.
-func findTestTypeRegressions(clientName string, currentResults map[string]map[string]hive.TestResult,
-	prevSummary *hive.SummaryResult, prevResults []hive.TestResult) []string {
-
-	// Group previous results by client and test type.
-	prevTestResults := groupResultsByClientAndTestType(prevResults)
-
-	// Check if we have current results for this client.
-	clientResults, exists := currentResults[clientName]
-	if !exists {
-		return nil
-	}
-
-	// Check if we have previous results for this client.
-	prevClientResults, exists := prevTestResults[clientName]
-	if !exists {
-		return nil
-	}
-
-	// Find test types with increased failures.
-	var regressions []string
-
-	for testType, currentResult := range clientResults {
-		// Skip if no failures in current result.
-		if currentResult.Fails == 0 {
-			continue
-		}
-
-		// Check if we have previous results for this test type.
-		prevResult, exists := prevClientResults[testType]
-		if !exists {
-			// New test type, can't determine regression.
-			continue
-		}
-
-		// Check if failures increased
-		if currentResult.Fails > prevResult.Fails {
-			increase := currentResult.Fails - prevResult.Fails
-			failRate := 0.0
-			if currentResult.NTests > 0 {
-				failRate = float64(currentResult.Fails) / float64(currentResult.NTests) * 100
-			}
-
-			regressions = append(regressions, fmt.Sprintf("`%s` (+%d, %.1f%% fail rate)",
-				testType, increase, failRate))
-		}
-	}
-
-	// Sort regressions for consistent output.
-	sort.Strings(regressions)
-
-	return regressions
-}
-
-// formatRegressions formats the regression information for display.
-func formatRegressions(regressions map[string][]string) string {
-	if len(regressions) == 0 {
-		return "No regressions detected"
-	}
-
-	// Sort clients by name for consistent output.
-	clients := make([]string, 0, len(regressions))
-	for client := range regressions {
-		clients = append(clients, client)
-	}
-	sort.Strings(clients)
-
-	// Build the output.
-	var lines []string
-	for _, client := range clients {
-		clientRegressions := regressions[client]
-		for _, regression := range clientRegressions {
-			lines = append(lines, fmt.Sprintf("• **%s**: %s", client, regression))
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-// formatTestTypesList formats a list of test types with code formatting.
-func formatTestTypesList(testTypes []string) string {
-	formattedTypes := make([]string, len(testTypes))
-
-	for i, testType := range testTypes {
-		formattedTypes[i] = fmt.Sprintf("`%s`", testType)
-	}
-
-	return strings.Join(formattedTypes, ", ")
 }
 
 // formatPassRate formats a pass rate with appropriate precision.
@@ -559,24 +405,24 @@ func buildTestSuiteLinks(clientName string, results []hive.TestResult, network s
 		return ""
 	}
 
-	// Use the provided network name, default to "pectra" if empty.
 	networkName := network
 	if networkName == "" {
-		networkName = "pectra"
+		return ""
 	}
 
 	// Build links for each test type.
-	var links []string
+	links := make([]string, 0)
+
 	for testType, suiteInfo := range latestSuites {
 		// Use fileName if available, otherwise fallback to suiteID.json.
-		suitePath := suiteInfo.suiteID + ".json"
+		suitePath := fmt.Sprintf("%s.json", suiteInfo.suiteID)
 		if suiteInfo.fileName != "" {
 			suitePath = suiteInfo.fileName
 		}
 
 		// Create a hyperlink that Discord can display.
-		url := fmt.Sprintf("https://hive.ethpandaops.io/%s/suite.html?suiteid=%s", networkName, suitePath)
-		links = append(links, fmt.Sprintf("[%s](%s)", testType, url))
+		suiteURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/suite.html?suiteid=%s", networkName, suitePath)
+		links = append(links, fmt.Sprintf("[%s](%s)", testType, suiteURL))
 	}
 
 	// Sort links alphabetically.
@@ -653,14 +499,15 @@ func detectAnomalies(clientKey string, result *hive.ClientSummary, prevSummary *
 		}
 
 		// Check if this test type was previously passing for a long time.
-		var consecutivelyPassing bool
-		var oldestPassingResult time.Time
+		var (
+			consecutivelyPassing bool
+			oldestPassingResult  time.Time
+		)
 
 		for _, prevResult := range results {
 			if prevResult.Client == clientKey && prevResult.Name == testType &&
 				prevResult.Timestamp.Before(currentResult.Timestamp) &&
 				prevResult.Fails == 0 && prevResult.NTests > 0 {
-
 				if oldestPassingResult.IsZero() || prevResult.Timestamp.Before(oldestPassingResult) {
 					oldestPassingResult = prevResult.Timestamp
 				}
@@ -688,17 +535,7 @@ func detectAnomalies(clientKey string, result *hive.ClientSummary, prevSummary *
 	return anomalies
 }
 
-// containsDigit checks if a string contains at least one digit
-func containsDigit(s string) bool {
-	for _, c := range s {
-		if c >= '0' && c <= '9' {
-			return true
-		}
-	}
-	return false
-}
-
-// cleanVersionString cleans up version strings to make them more readable
+// cleanVersionString cleans up version strings to make them more readable.
 func cleanVersionString(version string) string {
 	if version == "" || version == "unknown" {
 		return ""
@@ -745,4 +582,15 @@ func cleanVersionString(version string) string {
 	}
 
 	return strings.TrimSpace(version)
+}
+
+// containsDigit checks if a string contains at least one digit.
+func containsDigit(s string) bool {
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			return true
+		}
+	}
+
+	return false
 }

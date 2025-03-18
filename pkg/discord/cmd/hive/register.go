@@ -20,20 +20,21 @@ const (
 // handleRegister handles the register subcommand.
 func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.InteractionCreate, cmd *discordgo.ApplicationCommandInteractionDataOption) {
 	var (
-		options = cmd.Options
-		network = options[0].StringValue()
-		channel = options[1].ChannelValue(s)
-		guildID = i.GuildID // Get the guild ID from the interaction
+		options  = cmd.Options
+		network  = options[0].StringValue()
+		channel  = options[1].ChannelValue(s)
+		guildID  = i.GuildID // Get the guild ID from the interaction
+		schedule = defaultHiveSchedule
 	)
 
-	// Get schedule if provided. If its provided, validate its a valid cron schedule.
-	schedule := defaultHiveSchedule
+	// If a schedule is provided, ensure its valid.
 	for _, opt := range options {
 		if opt.Name == "schedule" {
 			schedule = opt.StringValue()
 
 			if _, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(schedule); err != nil {
 				c.respondWithError(s, i, fmt.Sprintf("🚫 Invalid cron schedule: %v", err))
+
 				return
 			}
 
@@ -44,6 +45,7 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	// Check if it's a text channel.
 	if channel.Type != discordgo.ChannelTypeGuildText {
 		c.respondWithError(s, i, "🚫 Alerts can only be registered in text channels")
+
 		return
 	}
 
@@ -59,29 +61,33 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	available, err := c.bot.GetHive().IsAvailable(context.Background(), network)
 	if err != nil {
 		c.respondWithError(s, i, fmt.Sprintf("Failed to check Hive availability: %v", err))
+
 		return
 	}
 
 	if !available {
 		c.respondWithError(s, i, fmt.Sprintf("🚫 Hive is not available for network **%s**", network))
+
 		return
 	}
 
-	// Check if this network is already registered
+	// Check if this network is already registered.
 	alerts, err := c.bot.GetHiveSummaryRepo().List(context.Background())
 	if err != nil {
 		c.respondWithError(s, i, fmt.Sprintf("Failed to list alerts: %v", err))
+
 		return
 	}
 
 	for _, alert := range alerts {
 		if alert.Network == network && alert.DiscordChannel == channel.ID && alert.DiscordGuildID == guildID {
 			c.respondWithError(s, i, fmt.Sprintf(msgHiveAlreadyRegistered, network, channel.ID))
+
 			return
 		}
 	}
 
-	// Create a new alert
+	// Create a new alert.
 	alert := &hive.HiveSummaryAlert{
 		Network:        network,
 		DiscordChannel: channel.ID,
@@ -92,13 +98,14 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		UpdatedAt:      time.Now(),
 	}
 
-	// Persist the alert
-	if err := c.bot.GetHiveSummaryRepo().Persist(context.Background(), alert); err != nil {
-		c.respondWithError(s, i, fmt.Sprintf("Failed to persist alert: %v", err))
+	// Persist the alert.
+	if persistErr := c.bot.GetHiveSummaryRepo().Persist(context.Background(), alert); persistErr != nil {
+		c.respondWithError(s, i, fmt.Sprintf("Failed to persist alert: %v", persistErr))
+
 		return
 	}
 
-	// Schedule the alert
+	// Schedule the alert.
 	jobName := fmt.Sprintf("hive-summary-%s", network)
 
 	c.log.WithFields(logrus.Fields{
@@ -107,16 +114,17 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		"key":     jobName,
 	}).Info("Registered Hive summary")
 
-	// Schedule the alert to run on our schedule
-	if err := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
+	// Schedule the alert to run on our schedule.
+	if addErr := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
 		c.log.WithFields(logrus.Fields{
 			"network": network,
 			"key":     jobName,
 		}).Info("Running Hive summary check")
 
 		return c.RunHiveSummary(ctx, alert)
-	}); err != nil {
-		c.respondWithError(s, i, fmt.Sprintf("Failed to schedule alert: %v", err))
+	}); addErr != nil {
+		c.respondWithError(s, i, fmt.Sprintf("Failed to schedule alert: %v", addErr))
+
 		return
 	}
 
@@ -125,7 +133,7 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		"key":      jobName,
 	}).Info("Scheduled Hive summary alert")
 
-	// Respond with success
+	// Respond with success.
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{

@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	unknown               = "unknown"
 	BaseURL               = "https://hive.ethpandaops.io"
 	defaultViewportWidth  = 500
 	defaultViewportHeight = 800
@@ -33,9 +34,9 @@ type Hive interface {
 	IsAvailable(ctx context.Context, network string) (bool, error)
 	// GetBaseURL returns the base URL of the Hive instance.
 	GetBaseURL() string
-	// FetchTestResults fetches the latest test results for a network
+	// FetchTestResults fetches the latest test results for a network.
 	FetchTestResults(ctx context.Context, network string) ([]TestResult, error)
-	// ProcessSummary processes test results into a summary
+	// ProcessSummary processes test results into a summary.
 	ProcessSummary(results []TestResult) *SummaryResult
 }
 
@@ -155,7 +156,7 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 	return resp.StatusCode == http.StatusOK, nil
 }
 
-// FetchTestResults fetches the latest test results for a network
+// FetchTestResults fetches the latest test results for a network.
 func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResult, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network cannot be empty")
@@ -163,6 +164,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 
 	// Fetch the listing.jsonl file which contains all test results
 	listingURL := fmt.Sprintf("%s/%s/listing.jsonl", h.baseURL, network)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listingURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -233,12 +235,12 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 
 		// If client is still empty, use a default value
 		if result.Client == "" {
-			result.Client = "unknown"
+			result.Client = unknown
 		}
 
 		// If version is empty, use a default value
 		if result.Version == "" {
-			result.Version = "unknown"
+			result.Version = unknown
 		}
 
 		// If testSuiteID is empty, use the network name
@@ -256,38 +258,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 	return latestResults, nil
 }
 
-// filterLatestResults filters the results to only keep the most recent ones for each client and test type
-func filterLatestResults(results []TestResult) []TestResult {
-	// Group results by client and test type
-	latestByClientAndType := make(map[string]map[string]TestResult)
-
-	for _, result := range results {
-		clientName := result.Client
-		testType := result.Name
-
-		// Initialize the map for this client if it doesn't exist
-		if _, exists := latestByClientAndType[clientName]; !exists {
-			latestByClientAndType[clientName] = make(map[string]TestResult)
-		}
-
-		// Check if we already have a result for this client and test type
-		if existing, exists := latestByClientAndType[clientName][testType]; !exists || result.Timestamp.After(existing.Timestamp) {
-			latestByClientAndType[clientName][testType] = result
-		}
-	}
-
-	// Flatten the map back to a slice
-	filtered := make([]TestResult, 0)
-	for _, testTypes := range latestByClientAndType {
-		for _, result := range testTypes {
-			filtered = append(filtered, result)
-		}
-	}
-
-	return filtered
-}
-
-// ProcessSummary processes test results into a summary
+// ProcessSummary processes test results into a summary.
 func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 	if len(results) == 0 {
 		return nil
@@ -301,33 +272,34 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 		}
 	}
 
-	// If we couldn't find a valid timestamp, use the current time
+	// If we couldn't find a valid timestamp, use the current time.
 	if latestTimestamp.IsZero() {
 		latestTimestamp = time.Now()
 	}
 
 	summary := &SummaryResult{
-		Network:       results[0].TestSuiteID, // Use the first result's test suite ID as network
-		Timestamp:     latestTimestamp,        // Use the most recent timestamp from the results
+		Network:       results[0].TestSuiteID, // Use the first result's test suite ID as network.
+		Timestamp:     latestTimestamp,        // Use the most recent timestamp from the results.
 		ClientResults: make(map[string]*ClientSummary),
 		TestTypes:     make(map[string]struct{}),
 	}
 
-	// First, collect all unique test types
+	// First, collect all unique test types.
 	for _, result := range results {
 		summary.TestTypes[result.Name] = struct{}{}
 	}
 
-	// Group results by client
+	// Group results by client.
 	clientResults := make(map[string][]TestResult)
+
 	for _, result := range results {
 		clientName := result.Client
 		clientResults[clientName] = append(clientResults[clientName], result)
 	}
 
-	// Process each client's results
+	// Process each client's results.
 	for clientName, clientTestResults := range clientResults {
-		// Find the latest result for each test type
+		// Find the latest result for each test type.
 		latestByTestType := make(map[string]TestResult)
 		testTypes := make(map[string]struct{})
 
@@ -335,46 +307,46 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 			testType := result.Name
 			testTypes[testType] = struct{}{}
 
-			// If we haven't seen this test type yet, or this result is newer
+			// If we haven't seen this test type yet, or this result is newer.
 			if existing, exists := latestByTestType[testType]; !exists || result.Timestamp.After(existing.Timestamp) {
 				latestByTestType[testType] = result
 			}
 		}
 
-		// Create client summary using only the latest results
+		// Create client summary using only the latest results.
 		clientSummary := &ClientSummary{
 			ClientName:    clientName,
-			ClientVersion: "unknown", // Default value
+			ClientVersion: "unknown",
 			TestTypes:     make([]string, 0, len(testTypes)),
 			TotalTests:    0,
 			PassedTests:   0,
 			FailedTests:   0,
 		}
 
-		// Add all test types this client was tested with
+		// Add all test types this client was tested with.
 		for testType := range testTypes {
 			clientSummary.TestTypes = append(clientSummary.TestTypes, testType)
 		}
 
-		// Process the latest result for each test type
+		// Process the latest result for each test type.
 		for _, result := range latestByTestType {
-			// Use the version from the first result we process
+			// Use the version from the first result we process.
 			if clientSummary.ClientVersion == "unknown" && result.Version != "" {
 				clientSummary.ClientVersion = result.Version
 			}
 
-			// Add the test counts from this test type
+			// Add the test counts from this test type.
 			clientSummary.TotalTests += result.NTests
 			clientSummary.PassedTests += result.Passes
 			clientSummary.FailedTests += result.Fails
 
-			// Update overall counts
+			// Update overall counts.
 			summary.TotalTests += result.NTests
 			summary.TotalPasses += result.Passes
 			summary.TotalFails += result.Fails
 		}
 
-		// Calculate pass rate
+		// Calculate pass rate.
 		if clientSummary.TotalTests > 0 {
 			clientSummary.PassRate = float64(clientSummary.PassedTests) / float64(clientSummary.TotalTests) * 100
 		}
@@ -382,12 +354,44 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 		summary.ClientResults[clientName] = clientSummary
 	}
 
-	// Calculate overall pass rate
+	// Calculate overall pass rate.
 	if summary.TotalTests > 0 {
 		summary.OverallPassRate = float64(summary.TotalPasses) / float64(summary.TotalTests) * 100
 	}
 
 	return summary
+}
+
+// filterLatestResults filters the results to only keep the most recent ones for each client and test type.
+func filterLatestResults(results []TestResult) []TestResult {
+	// Group results by client and test type.
+	latestByClientAndType := make(map[string]map[string]TestResult)
+
+	for _, result := range results {
+		clientName := result.Client
+		testType := result.Name
+
+		// Initialize the map for this client if it doesn't exist.
+		if _, exists := latestByClientAndType[clientName]; !exists {
+			latestByClientAndType[clientName] = make(map[string]TestResult)
+		}
+
+		// Check if we already have a result for this client and test type.
+		if existing, exists := latestByClientAndType[clientName][testType]; !exists || result.Timestamp.After(existing.Timestamp) {
+			latestByClientAndType[clientName][testType] = result
+		}
+	}
+
+	// Flatten the map back to a slice.
+	filtered := make([]TestResult, 0)
+
+	for _, testTypes := range latestByClientAndType {
+		for _, result := range testTypes {
+			filtered = append(filtered, result)
+		}
+	}
+
+	return filtered
 }
 
 // mapClientName maps our internal client name to Hive's client name.

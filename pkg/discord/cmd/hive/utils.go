@@ -11,6 +11,7 @@ func (c *HiveCommand) getNetworkChoices() []*discordgo.ApplicationCommandOptionC
 	networks, err := c.bot.GetGrafana().GetNetworks(context.Background())
 	if err != nil {
 		c.log.WithError(err).Error("Failed to get networks from Grafana")
+
 		return nil
 	}
 

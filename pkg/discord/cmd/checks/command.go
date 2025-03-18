@@ -406,8 +406,9 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 				c.log.WithError(err).Error("Failed to get Hive screenshot")
 			}
 		} else if len(content) > 0 {
-			// Store the screenshot
+			// Store the screenshot.
 			now := time.Now()
+
 			err = c.bot.GetChecksRepo().Persist(ctx, &store.CheckArtifact{
 				Network:   alert.Network,
 				Client:    alert.Client,
@@ -420,7 +421,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 			if err != nil {
 				c.log.WithError(err).Error("Failed to persist Hive screenshot")
 			} else {
-				// Send the screenshot to the thread
+				// Send the screenshot to the thread.
 				if _, err := c.bot.GetSession().ChannelMessageSendComplex(thread.ID, builder.BuildHiveMessage(content)); err != nil {
 					c.log.WithError(err).Error("Failed to send Hive screenshot")
 				}

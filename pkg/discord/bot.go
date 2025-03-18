@@ -243,6 +243,7 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 			for _, cmd := range b.commands {
 				if checksCmd, ok := cmd.(*cmdchecks.ChecksCommand); ok {
 					checksCmd.Queue().Enqueue(alert)
+
 					break
 				}
 			}
@@ -278,12 +279,13 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 				"key":     jobName,
 			}).Info("Running Hive summary check")
 
-			// Find the hive command
+			// Find the hive command.
 			for _, cmd := range b.commands {
 				if hiveCmd, ok := cmd.(*cmdhive.HiveCommand); ok {
 					if err := hiveCmd.RunHiveSummary(ctx, alert); err != nil {
 						b.log.WithError(err).Error("Failed to run Hive summary check")
 					}
+
 					break
 				}
 			}

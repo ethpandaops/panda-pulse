@@ -218,6 +218,7 @@ func (s *HiveSummaryRepo) GetPreviousSummaryResult(ctx context.Context, network 
 	})
 	if err != nil {
 		s.observeOperation("get", "hive_summary_result", err)
+
 		return nil, fmt.Errorf("failed to list summary results: %w", err)
 	}
 
@@ -225,14 +226,16 @@ func (s *HiveSummaryRepo) GetPreviousSummaryResult(ctx context.Context, network 
 		return nil, fmt.Errorf("no previous summary results found")
 	}
 
-	// Map to store date -> key for sorting
-	dateKeys := make(map[string]string)
-	var dates []string
+	// Map to store date -> key for sorting.
+	var (
+		dateKeys = make(map[string]string)
+		dates    = make([]string, 0)
+	)
 
-	// Extract dates from filenames
+	// Extract dates from filenames.
 	for _, obj := range output.Contents {
 		key := *obj.Key
-		// Extract date from key (format: prefix/YYYY-MM-DD.json)
+
 		parts := strings.Split(key, "/")
 		if len(parts) == 0 {
 			continue
@@ -244,13 +247,12 @@ func (s *HiveSummaryRepo) GetPreviousSummaryResult(ctx context.Context, network 
 		}
 
 		date := strings.TrimSuffix(filename, ".json")
-		// Validate date format
-		if _, err := time.Parse("2006-01-02", date); err != nil {
-			s.log.WithField("filename", filename).Debug("Skipping file with invalid date format")
+		if _, parseErr := time.Parse("2006-01-02", date); parseErr != nil {
 			continue
 		}
 
 		dateKeys[date] = key
+
 		dates = append(dates, date)
 	}
 
@@ -285,6 +287,7 @@ func (s *HiveSummaryRepo) GetPreviousSummaryResult(ctx context.Context, network 
 	})
 	if err != nil {
 		s.observeOperation("get", "hive_summary_result", err)
+
 		return nil, fmt.Errorf("failed to get previous result: %w", err)
 	}
 

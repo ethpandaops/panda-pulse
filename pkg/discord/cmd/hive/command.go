@@ -3,7 +3,6 @@ package hive
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
@@ -135,6 +134,7 @@ func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreat
 	// Get the subcommand
 	if len(data.Options) == 0 {
 		c.respondWithError(s, i, "No subcommand provided")
+
 		return
 	}
 
@@ -165,80 +165,43 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 		return fmt.Errorf("failed to fetch test results: %w", err)
 	}
 
-	c.log.WithFields(logrus.Fields{
-		"network":     alert.Network,
-		"resultCount": len(results),
-	}).Info("Fetched test results")
-
-	// Debug: Print out the first few results to see what we're getting
-	if len(results) > 0 {
-		for i := 0; i < min(5, len(results)); i++ {
-			c.log.WithFields(logrus.Fields{
-				"index":       i,
-				"name":        results[i].Name,
-				"client":      results[i].Client,
-				"version":     cleanVersionString(results[i].Version),
-				"testCount":   results[i].NTests,
-				"passCount":   results[i].Passes,
-				"failCount":   results[i].Fails,
-				"testSuiteID": results[i].TestSuiteID,
-				"fileName":    results[i].FileName,
-				"timestamp":   results[i].Timestamp.Format(time.RFC3339),
-			}).Info("Sample test result")
-		}
-	}
-
 	// Process results into a summary
 	summary := c.bot.GetHive().ProcessSummary(results)
 	if summary == nil {
 		return fmt.Errorf("failed to process summary: no results available")
 	}
 
-	// Debug: Print out the client results
-	c.log.WithFields(logrus.Fields{
-		"clientCount": len(summary.ClientResults),
-		"clients":     fmt.Sprintf("%v", getClientNames(summary)),
-	}).Info("Processed client results")
-
-	// Get previous summary for comparison
+	// Get previous summary for comparison.
 	prevSummary, err := c.bot.GetHiveSummaryRepo().GetPreviousSummaryResult(ctx, alert.Network)
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to get previous summary, continuing without comparison")
 	} else if prevSummary != nil {
-		c.log.WithFields(logrus.Fields{
-			"currentDate":  summary.Timestamp.Format("2006-01-02"),
-			"previousDate": prevSummary.Timestamp.Format("2006-01-02"),
-		}).Info("Comparing with previous summary")
-
-		// Skip if we're comparing with the same summary
+		// Skip if we're comparing with the same summary.
 		if summary.Timestamp.Equal(prevSummary.Timestamp) {
-			c.log.Warn("Current and previous summaries have the same timestamp, skipping comparison")
 			prevSummary = nil
 		}
 	}
 
-	// Store the new summary
+	// Store the new summary.
 	if err := c.bot.GetHiveSummaryRepo().StoreSummaryResult(ctx, summary); err != nil {
 		c.log.WithError(err).Warn("Failed to store summary, continuing")
 	}
 
-	// Send the summary to Discord
+	// Send the summary to Discord.
 	if err := c.sendHiveSummary(ctx, alert, summary, prevSummary, results); err != nil {
 		return fmt.Errorf("failed to send summary: %w", err)
 	}
 
+	c.log.WithFields(logrus.Fields{
+		"resultCount": len(results),
+		"clientCount": len(summary.ClientResults),
+		"clients":     fmt.Sprintf("%v", getClientNames(summary)),
+	}).Info("Processed Hive client test results, sent notification")
+
 	return nil
 }
 
-// Helper function for min since Go <1.21 doesn't have it in the standard library
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// Helper functions
+// respondWithError responds to the interaction with an error message.
 func (c *HiveCommand) respondWithError(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -252,10 +215,13 @@ func (c *HiveCommand) respondWithError(s *discordgo.Session, i *discordgo.Intera
 	}
 }
 
+// getClientNames returns the names of the clients in the summary.
 func getClientNames(summary *hive.SummaryResult) []string {
 	names := make([]string, 0, len(summary.ClientResults))
+
 	for name := range summary.ClientResults {
 		names = append(names, name)
 	}
+
 	return names
 }
