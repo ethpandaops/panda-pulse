@@ -52,29 +52,11 @@ func (c *ChecksCommand) handleDebug(
 
 	var matchingArtifact *store.CheckArtifact
 
-	// Get all alerts to check if the check ID belongs to this guild
-	alerts, err := c.bot.GetMonitorRepo().List(context.Background())
-	if err != nil {
-		return fmt.Errorf("failed to list alerts: %w", err)
-	}
-
-	// Create a map of check IDs that belong to this guild
-	guildCheckIDs := make(map[string]bool)
-
-	for _, alert := range alerts {
-		if alert.DiscordGuildID == guildID && alert.CheckID != "" {
-			guildCheckIDs[alert.CheckID] = true
-		}
-	}
-
 	for _, artifact := range artifacts {
 		if artifact.CheckID == checkID {
-			// Only show artifacts for checks that belong to this guild
-			if guildCheckIDs[checkID] {
-				matchingArtifact = artifact
+			matchingArtifact = artifact
 
-				break
-			}
+			break
 		}
 	}
 

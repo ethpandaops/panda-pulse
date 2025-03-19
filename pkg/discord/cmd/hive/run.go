@@ -42,6 +42,7 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf("🔄 Running Hive summary for **%s**...", network),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	}); respondErr != nil {
 		c.log.WithError(respondErr).Error("Failed to send initial response")

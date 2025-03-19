@@ -227,12 +227,19 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 		jobName := b.monitorRepo.Key(alert)
 
 		b.log.WithFields(logrus.Fields{
-			"network": alert.Network,
-			"client":  alert.Client,
-			"key":     jobName,
+			"network":  alert.Network,
+			"client":   alert.Client,
+			"key":      jobName,
+			"schedule": alert.Schedule,
 		}).Info("Scheduling existing monitor alert")
 
-		if addErr := b.scheduler.AddJob(jobName, cmdchecks.DefaultCheckSchedule, func(ctx context.Context) error {
+		// Use the alert's schedule if available, otherwise fall back to default
+		schedule := cmdchecks.DefaultCheckSchedule
+		if alert.Schedule != "" {
+			schedule = alert.Schedule
+		}
+
+		if addErr := b.scheduler.AddJob(jobName, schedule, func(ctx context.Context) error {
 			b.log.WithFields(logrus.Fields{
 				"network": alert.Network,
 				"client":  alert.Client,
@@ -268,17 +275,13 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 		jobName := fmt.Sprintf("hive-summary-%s", alert.Network)
 
 		b.log.WithFields(logrus.Fields{
-			"network": alert.Network,
-			"channel": alert.DiscordChannel,
-			"key":     jobName,
+			"network":  alert.Network,
+			"channel":  alert.DiscordChannel,
+			"key":      jobName,
+			"schedule": alert.Schedule,
 		}).Info("Scheduling existing Hive summary alert")
 
 		if err := b.scheduler.AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
-			b.log.WithFields(logrus.Fields{
-				"network": alert.Network,
-				"key":     jobName,
-			}).Info("Running Hive summary check")
-
 			// Find the hive command.
 			for _, cmd := range b.commands {
 				if hiveCmd, ok := cmd.(*cmdhive.HiveCommand); ok {

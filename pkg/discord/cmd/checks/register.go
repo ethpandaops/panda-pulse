@@ -40,6 +40,7 @@ func (c *ChecksCommand) handleRegister(
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "🚫 Alerts can only be registered in text channels",
+				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
 	}
@@ -51,6 +52,7 @@ func (c *ChecksCommand) handleRegister(
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: "🚫 Alerts can only be registered in channels under the `bots` or `monitoring` category",
+					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
 		}
@@ -76,6 +78,7 @@ func (c *ChecksCommand) handleRegister(
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
 						Content: fmt.Sprintf("🚫 Invalid cron schedule: %v", err),
+						Flags:   discordgo.MessageFlagsEphemeral,
 					},
 				})
 			}
@@ -99,6 +102,7 @@ func (c *ChecksCommand) handleRegister(
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: fmt.Sprintf(msgAlreadyRegistered, alreadyRegistered.Client, network, channel.ID),
+					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
 		}
@@ -118,6 +122,7 @@ func (c *ChecksCommand) handleRegister(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: msg,
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }
@@ -236,6 +241,7 @@ func newMonitorAlert(network, client string, clientType clients.ClientType, chan
 		Schedule:       DefaultCheckSchedule,
 		CreatedAt:      now,
 		UpdatedAt:      now,
+		Enabled:        true,
 	}
 }
 

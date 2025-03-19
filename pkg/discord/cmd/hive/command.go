@@ -99,6 +99,20 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 					},
 				},
 				{
+					Name:        "list",
+					Description: "List all Hive summary alerts",
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Name:        "network",
+							Description: "Filter by network (optional)",
+							Type:        discordgo.ApplicationCommandOptionString,
+							Required:    false,
+							Choices:     networkChoices,
+						},
+					},
+				},
+				{
 					Name:        "run",
 					Description: "Run a Hive summary check",
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
@@ -144,6 +158,10 @@ func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreat
 		c.handleRegister(s, i, subCmd)
 	case "deregister":
 		c.handleDeregister(s, i, subCmd)
+	case "list":
+		if err := c.handleList(s, i, subCmd); err != nil {
+			c.respondWithError(s, i, err.Error())
+		}
 	case "run":
 		c.handleRun(s, i, subCmd)
 	default:
@@ -193,9 +211,9 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"resultCount": len(results),
-		"clientCount": len(summary.ClientResults),
-		"clients":     fmt.Sprintf("%v", getClientNames(summary)),
+		"result_count": len(results),
+		"client_count": len(summary.ClientResults),
+		"clients":      fmt.Sprintf("%v", getClientNames(summary)),
 	}).Info("Processed Hive client test results, sent notification")
 
 	return nil

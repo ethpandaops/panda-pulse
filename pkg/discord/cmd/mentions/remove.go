@@ -60,6 +60,7 @@ func (c *MentionsCommand) handleRemove(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgRemovingMentions, client, network, strings.Join(mentions, " ")),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }
