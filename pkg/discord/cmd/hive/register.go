@@ -116,11 +116,6 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 
 	// Schedule the alert to run on our schedule.
 	if addErr := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
-		c.log.WithFields(logrus.Fields{
-			"network": network,
-			"key":     jobName,
-		}).Info("Running Hive summary check")
-
 		return c.RunHiveSummary(ctx, alert)
 	}); addErr != nil {
 		c.respondWithError(s, i, fmt.Sprintf("Failed to schedule alert: %v", addErr))
@@ -138,6 +133,7 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgHiveRegistered, network, channel.ID),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 	if err != nil {

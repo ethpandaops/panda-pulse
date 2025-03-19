@@ -53,6 +53,7 @@ func (c *ChecksCommand) handleDeregister(
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Content: msg,
+					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
 		}
@@ -72,6 +73,7 @@ func (c *ChecksCommand) handleDeregister(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: msg,
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }

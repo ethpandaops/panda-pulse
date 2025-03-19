@@ -53,6 +53,7 @@ func (c *MentionsCommand) handleDisable(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgDisablingMentions, client, network),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }

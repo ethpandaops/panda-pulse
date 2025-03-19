@@ -71,6 +71,7 @@ func (c *MentionsCommand) handleAdd(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgAddingMentions, client, network, strings.Join(mentions, " ")),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }

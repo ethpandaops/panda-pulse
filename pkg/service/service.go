@@ -126,17 +126,17 @@ func (s *Service) Start(ctx context.Context) error {
 	// Start metrics server.
 	s.metricsSrv = s.startMetricsServer()
 
+	// Start the scheduler first
+	s.log.Info("Starting scheduler")
+
+	s.scheduler.Start()
+
 	// Start the discord bot.
 	s.log.Info("Starting discord bot")
 
 	if err := s.bot.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start discord bot: %w", err)
 	}
-
-	// Start the scheduler.
-	s.log.Info("Starting scheduler")
-
-	s.scheduler.Start()
 
 	// Start the queues.
 	s.log.Info("Starting queues")

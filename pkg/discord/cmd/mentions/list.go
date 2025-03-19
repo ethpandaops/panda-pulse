@@ -63,21 +63,12 @@ func (c *MentionsCommand) handleList(
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: fmt.Sprintf(msgNoMentionsRegistered, suffix),
+				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
 	}
 
-	// First, respond to the interaction to acknowledge it.
-	if err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "Listing mentions...",
-		},
-	}); err != nil {
-		return fmt.Errorf("failed to respond to interaction: %w", err)
-	}
-
-	// Then send each network's table as a separate message, we do this to get around the 2000 message limit.
+	// Send each network's table as a separate message, we do this to get around the 2000 message limit.
 	for networkName := range networks {
 		if network != nil && networkName != *network {
 			continue
@@ -97,8 +88,14 @@ func (c *MentionsCommand) handleList(
 
 		msg := fmt.Sprintf(msgNetworkMentions, networkName) + buildMentionsTable(clientMentions)
 
-		if _, err := s.ChannelMessageSend(i.ChannelID, msg); err != nil {
-			c.log.WithError(err).WithField("network", networkName).Error("Failed to send network mentions table")
+		if respondErr := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: msg,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		}); respondErr != nil {
+			c.log.WithError(respondErr).WithField("network", networkName).Error("Failed to send network mentions table")
 		}
 	}
 

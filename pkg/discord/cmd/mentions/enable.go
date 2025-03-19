@@ -53,6 +53,7 @@ func (c *MentionsCommand) handleEnable(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgEnablingMentions, client, network),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 }

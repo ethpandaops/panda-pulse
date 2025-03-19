@@ -53,6 +53,7 @@ func (c *HiveCommand) handleDeregister(s *discordgo.Session, i *discordgo.Intera
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgHiveDeregistered, network),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 	if err != nil {

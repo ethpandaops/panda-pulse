@@ -39,6 +39,7 @@ func (c *ChecksCommand) handleRun(
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgRunningCheck, client, network),
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	}); err != nil {
 		return fmt.Errorf("failed to send initial response: %w", err)

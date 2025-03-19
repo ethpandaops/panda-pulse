@@ -1,4 +1,4 @@
-package checks
+package hive
 
 import (
 	"context"
@@ -7,30 +7,21 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
-	"github.com/ethpandaops/panda-pulse/pkg/store"
+	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
 const (
-	msgNoChecksRegistered = "ℹ️ No checks are currently registered%s\n"
-	msgNoChecksForNetwork = " for the network **%s**"
-	msgNoChecksAnyNetwork = " for any network"
-	msgNetworkClients     = "🌐 Clients registered for **%s** notifications\n"
-	msgAlertsSentTo       = "Alerts are sent to "
+	msgNoHiveSummariesRegistered = "ℹ️ No Hive summaries are currently registered%s\n"
+	msgNoHiveSummariesForNetwork = " for the network **%s**"
+	msgNoHiveSummariesAnyNetwork = " for any network"
+	msgNetworkHiveSummary        = "🌐 Hive summary registered for **%s**\n"
+	msgAlertsSentTo              = "Alerts are sent to "
 )
 
-// clientInfo represents registration status and channel for a client.
-type clientInfo struct {
-	registered bool
-	channelID  string
-	schedule   string
-	nextRun    time.Time
-}
-
-// handleList handles the '/checks list' command.
-func (c *ChecksCommand) handleList(
+// handleList handles the '/hive list' command.
+func (c *HiveCommand) handleList(
 	s *discordgo.Session,
 	i *discordgo.InteractionCreate,
 	data *discordgo.ApplicationCommandInteractionDataOption,
@@ -46,7 +37,7 @@ func (c *ChecksCommand) handleList(
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"command": "/checks list",
+		"command": "/hive list",
 		"guild":   guildID,
 		"user":    i.Member.User.Username,
 	}).Info("Received command")
@@ -65,16 +56,16 @@ func (c *ChecksCommand) handleList(
 
 	// If no alerts found.
 	if len(networks) == 0 {
-		suffix := msgNoChecksAnyNetwork
+		suffix := msgNoHiveSummariesAnyNetwork
 
 		if network != nil {
-			suffix = fmt.Sprintf(msgNoChecksForNetwork, *network)
+			suffix = fmt.Sprintf(msgNoHiveSummariesForNetwork, *network)
 		}
 
 		return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf(msgNoChecksRegistered, suffix),
+				Content: fmt.Sprintf(msgNoHiveSummariesRegistered, suffix),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
@@ -94,42 +85,17 @@ func (c *ChecksCommand) handleList(
 	// Process each network and send as follow-up messages
 	var firstMessage = true
 
-	// Then send each network's table as a separate message, we do this to get around the 2000 message limit.
 	for networkName := range networks {
 		if network != nil && networkName != *network {
 			continue
 		}
 
-		// Create a map of registered clients for this network.
-		var (
-			registered = make(map[string]clientInfo)
-			allClients = append(clients.CLClients, clients.ELClients...)
-		)
-
-		// Initialize all clients as unregistered.
-		for _, client := range allClients {
-			registered[client] = clientInfo{registered: false}
-		}
-
-		// Update with registered clients and their channels.
-		for _, alert := range alerts {
-			if alert.Network == networkName {
-				nextRun := calculateNextRun(alert.Schedule)
-				registered[alert.Client] = clientInfo{
-					registered: true,
-					channelID:  alert.DiscordChannel,
-					schedule:   alert.Schedule,
-					nextRun:    nextRun,
-				}
-			}
-		}
-
 		var msg strings.Builder
 
-		msg.WriteString(fmt.Sprintf(msgNetworkClients, networkName))
-		msg.WriteString(buildClientTable(allClients, registered))
+		msg.WriteString(fmt.Sprintf(msgNetworkHiveSummary, networkName))
+		msg.WriteString(buildSummaryTable(alerts, networkName))
 
-		// Collect all unique channels.
+		// Find the channel for this network
 		channels := make(map[string]bool)
 
 		for _, alert := range alerts {
@@ -183,15 +149,15 @@ func (c *ChecksCommand) handleList(
 	return nil
 }
 
-// listAlerts lists all alerts for a given guild and optionally filtered by network.
-func (c *ChecksCommand) listAlerts(ctx context.Context, guildID string, network *string) ([]*store.MonitorAlert, error) {
-	alerts, err := c.bot.GetMonitorRepo().List(ctx)
+// listAlerts lists all Hive summary alerts for a given guild and optionally filtered by network.
+func (c *HiveCommand) listAlerts(ctx context.Context, guildID string, network *string) ([]*hive.HiveSummaryAlert, error) {
+	alerts, err := c.bot.GetHiveSummaryRepo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list alerts: %w", err)
 	}
 
 	// Filter alerts for the specific guild
-	guildAlerts := make([]*store.MonitorAlert, 0)
+	guildAlerts := make([]*hive.HiveSummaryAlert, 0)
 
 	for _, alert := range alerts {
 		if alert.DiscordGuildID == guildID {
@@ -204,7 +170,7 @@ func (c *ChecksCommand) listAlerts(ctx context.Context, guildID string, network 
 	}
 
 	// Further filter alerts for specific network.
-	filtered := make([]*store.MonitorAlert, 0)
+	filtered := make([]*hive.HiveSummaryAlert, 0)
 
 	for _, alert := range guildAlerts {
 		if alert.Network == *network {
@@ -213,6 +179,40 @@ func (c *ChecksCommand) listAlerts(ctx context.Context, guildID string, network 
 	}
 
 	return filtered, nil
+}
+
+// buildSummaryTable creates an ASCII table of Hive summary status.
+func buildSummaryTable(alerts []*hive.HiveSummaryAlert, networkName string) string {
+	var msg strings.Builder
+
+	msg.WriteString("```\n")
+	msg.WriteString("┌──────────────────┬────────┬────────────────────┐\n")
+	msg.WriteString("│ Network          │ Status │ Next Run           │\n")
+	msg.WriteString("├──────────────────┼────────┼────────────────────┤\n")
+
+	for _, alert := range alerts {
+		if alert.Network != networkName {
+			continue
+		}
+
+		status := "❌"
+		nextRun := "N/A"
+
+		if alert.Enabled {
+			status = "✅"
+
+			nextRunTime := calculateNextRun(alert.Schedule)
+			if !nextRunTime.IsZero() {
+				nextRun = formatNextRun(nextRunTime)
+			}
+		}
+
+		msg.WriteString(fmt.Sprintf("│ %-16s │   %s   │ %-18s │\n", alert.Network, status, nextRun))
+	}
+
+	msg.WriteString("└──────────────────┴────────┴────────────────────┘\n```")
+
+	return msg.String()
 }
 
 // calculateNextRun calculates the next run time based on the cron schedule.
@@ -238,36 +238,6 @@ func calculateNextRun(schedule string) time.Time {
 	}
 
 	return sched.Next(time.Now())
-}
-
-// buildClientTable creates an ASCII table of client statuses.
-func buildClientTable(clients []string, registered map[string]clientInfo) string {
-	var msg strings.Builder
-
-	msg.WriteString("```\n")
-	msg.WriteString("┌──────────────┬────────┬────────────────────┐\n")
-	msg.WriteString("│ Client       │ Status │ Next Run           │\n")
-	msg.WriteString("├──────────────┼────────┼────────────────────┤\n")
-
-	for _, client := range clients {
-		info := registered[client]
-		status := "❌"
-		nextRun := "N/A"
-
-		if info.registered {
-			status = "✅"
-
-			if !info.nextRun.IsZero() {
-				nextRun = formatNextRun(info.nextRun)
-			}
-		}
-
-		msg.WriteString(fmt.Sprintf("│ %-12s │   %s   │ %-18s │\n", client, status, nextRun))
-	}
-
-	msg.WriteString("└──────────────┴────────┴────────────────────┘\n```")
-
-	return msg.String()
 }
 
 // formatNextRun formats the next run time in a human-readable way.
