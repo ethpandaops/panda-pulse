@@ -33,7 +33,9 @@ func (c *HiveCommand) sendHiveSummary(
 	// Add button that links to the Hive dashboard only if network name is available.
 	networkName := summary.Network
 	if networkName != "" {
-		hiveURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/index.html", networkName)
+		// Use the mapped network name for the Hive URL
+		hiveNetworkName := c.bot.GetHive().MapNetworkName(networkName)
+		hiveURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/index.html", hiveNetworkName)
 
 		messageSend.Components = []discordgo.MessageComponent{
 			discordgo.ActionsRow{
@@ -65,7 +67,7 @@ func (c *HiveCommand) sendHiveSummary(
 	}
 
 	// Send client breakdown as individual messages in the thread.
-	if err := sendClientBreakdownMessages(ctx, session, thread.ID, summary, prevSummary, results); err != nil {
+	if err := sendClientBreakdownMessages(ctx, session, thread.ID, summary, prevSummary, results, c.bot.GetHive()); err != nil {
 		return fmt.Errorf("failed to send client breakdown messages: %w", err)
 	}
 
@@ -80,6 +82,7 @@ func sendClientBreakdownMessages(
 	summary *hive.SummaryResult,
 	prevSummary *hive.SummaryResult,
 	results []hive.TestResult,
+	hiveClient hive.Hive,
 ) error {
 	// Sort clients by failures (descending).
 	clients := make([]string, 0, len(summary.ClientResults))
@@ -100,7 +103,7 @@ func sendClientBreakdownMessages(
 
 	// Send a message for each client.
 	for _, clientKey := range clients {
-		embed := createClientEmbed(clientKey, summary.ClientResults[clientKey], prevSummary, results, summary.Network)
+		embed := createClientEmbed(clientKey, summary.ClientResults[clientKey], prevSummary, results, summary.Network, hiveClient)
 
 		_, err := session.ChannelMessageSendEmbed(threadID, embed)
 		if err != nil {
@@ -118,6 +121,7 @@ func createClientEmbed(
 	prevSummary *hive.SummaryResult,
 	results []hive.TestResult,
 	network string,
+	hiveClient hive.Hive,
 ) *discordgo.MessageEmbed {
 	// Use a default name if ClientName is empty.
 	clientName := result.ClientName
@@ -224,7 +228,7 @@ func createClientEmbed(
 	}
 
 	// Add links to specific test suites if available.
-	testSuiteLinks := buildTestSuiteLinks(clientKey, results, network)
+	testSuiteLinks := buildTestSuiteLinks(clientKey, results, network, hiveClient)
 	if testSuiteLinks != "" {
 		if changeValue != "" {
 			changeValue = fmt.Sprintf("%s\n%s", changeValue, testSuiteLinks)
@@ -258,8 +262,8 @@ func createClientEmbed(
 
 // createCombinedOverviewEmbed creates an embed with the summary overview and test type breakdown.
 func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.SummaryResult, results []hive.TestResult) *discordgo.MessageEmbed {
-	// Format the timestamp in a user-friendly way.
-	lastUpdated := summary.Timestamp.Format("Mon, 2 Jan 2006")
+	// Format the timestamp in a user-friendly way using UTC.
+	lastUpdated := summary.Timestamp.UTC().Format("Mon, 2 Jan 2006")
 
 	// Create the overview fields.
 	fields := []*discordgo.MessageEmbedField{
@@ -371,7 +375,7 @@ func formatPassRate(passRate float64, failures int) string {
 }
 
 // buildTestSuiteLinks creates links to specific test suites for a client.
-func buildTestSuiteLinks(clientName string, results []hive.TestResult, network string) string {
+func buildTestSuiteLinks(clientName string, results []hive.TestResult, network string, hiveClient hive.Hive) string {
 	// Map to store the latest test suite ID and file name for each test type.
 	latestSuites := make(map[string]struct {
 		suiteID  string
@@ -410,6 +414,9 @@ func buildTestSuiteLinks(clientName string, results []hive.TestResult, network s
 		return ""
 	}
 
+	// Use the mapped network name for the Hive URL
+	mappedNetworkName := hiveClient.MapNetworkName(networkName)
+
 	// Build links for each test type.
 	links := make([]string, 0)
 
@@ -421,7 +428,7 @@ func buildTestSuiteLinks(clientName string, results []hive.TestResult, network s
 		}
 
 		// Create a hyperlink that Discord can display.
-		suiteURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/suite.html?suiteid=%s", networkName, suitePath)
+		suiteURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/suite.html?suiteid=%s", mappedNetworkName, suitePath)
 		links = append(links, fmt.Sprintf("[%s](%s)", testType, suiteURL))
 	}
 
