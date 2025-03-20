@@ -38,6 +38,8 @@ type Hive interface {
 	FetchTestResults(ctx context.Context, network string) ([]TestResult, error)
 	// ProcessSummary processes test results into a summary.
 	ProcessSummary(results []TestResult) *SummaryResult
+	// MapNetworkName maps the network name to the corresponding Hive network name.
+	MapNetworkName(network string) string
 }
 
 // hive is a Hive client implementation of Hive.
@@ -51,11 +53,22 @@ var clientNameMap = map[string]string{
 	"nimbusel": "nimbus-el",
 }
 
+// networkNameMap maps fully qualified network names to Hive's simpler network names.
+var networkNameMap = map[string]string{
+	"pectra-devnet-6": "pectra",
+	// Add other mappings as needed
+}
+
 // NewHive creates a new Hive client.
 func NewHive(cfg *Config) Hive {
 	return &hive{
 		baseURL: cfg.BaseURL,
 	}
+}
+
+// MapNetworkName maps our fully qualified network name to Hive's simpler network name.
+func (h *hive) MapNetworkName(network string) string {
+	return mapNetworkName(network)
 }
 
 // GetBaseURL returns the base URL of the Hive instance.
@@ -89,9 +102,12 @@ func (h *hive) Snapshot(ctx context.Context, cfg SnapshotConfig) ([]byte, error)
 		clientName = mapClientName(cfg.ExecutionNode)
 	}
 
+	// Map network name for Hive
+	hiveNetwork := mapNetworkName(cfg.Network)
+
 	// Build the URL + build a selector for both boxes (consume-engine and consume-rlp).
 	var (
-		pageURL  = fmt.Sprintf("%s/%s/index.html#summary-sort=name&group-by=client", h.baseURL, cfg.Network)
+		pageURL  = fmt.Sprintf("%s/%s/index.html#summary-sort=name&group-by=client", h.baseURL, hiveNetwork)
 		selector = fmt.Sprintf(`div[data-client="%s_default"][class*="client-box"]`, clientName)
 		buf      []byte
 		exists   bool
@@ -136,10 +152,13 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 		return false, fmt.Errorf("network cannot be empty")
 	}
 
+	// Map network name for Hive
+	hiveNetwork := mapNetworkName(network)
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodHead,
-		fmt.Sprintf("%s/%s/index.html", h.baseURL, network),
+		fmt.Sprintf("%s/%s/index.html", h.baseURL, hiveNetwork),
 		nil,
 	)
 	if err != nil {
@@ -162,8 +181,12 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 		return nil, fmt.Errorf("network cannot be empty")
 	}
 
+	// Map network name for Hive
+	hiveNetwork := mapNetworkName(network)
+
 	// Fetch the listing.jsonl file which contains all test results
-	listingURL := fmt.Sprintf("%s/%s/listing.jsonl", h.baseURL, network)
+	listingURL := fmt.Sprintf("%s/%s/listing.jsonl", h.baseURL, hiveNetwork)
+	fmt.Println("Fetching test results from:", listingURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listingURL, nil)
 	if err != nil {
@@ -207,7 +230,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 			parts := strings.Split(result.FileName, "-")
 			if len(parts) > 0 {
 				if ts, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
-					result.Timestamp = time.Unix(ts, 0)
+					result.Timestamp = time.Unix(ts, 0).UTC()
 				}
 			}
 		}
@@ -245,7 +268,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 
 		// If testSuiteID is empty, use the network name
 		if result.TestSuiteID == "" {
-			result.TestSuiteID = network
+			result.TestSuiteID = network // Use original network name, not the mapped one
 		}
 
 		allResults = append(allResults, result)
@@ -274,12 +297,16 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 
 	// If we couldn't find a valid timestamp, use the current time.
 	if latestTimestamp.IsZero() {
-		latestTimestamp = time.Now()
+		latestTimestamp = time.Now().UTC()
 	}
 
+	// Use the original network name from the TestSuiteID for display purposes
+	// This will be the fully qualified name that our system expects
+	originalNetwork := results[0].TestSuiteID
+
 	summary := &SummaryResult{
-		Network:       results[0].TestSuiteID, // Use the first result's test suite ID as network.
-		Timestamp:     latestTimestamp,        // Use the most recent timestamp from the results.
+		Network:       originalNetwork,
+		Timestamp:     latestTimestamp, // Use the most recent timestamp from the results.
 		ClientResults: make(map[string]*ClientSummary),
 		TestTypes:     make(map[string]struct{}),
 	}
@@ -401,6 +428,15 @@ func mapClientName(client string) string {
 	}
 
 	return client
+}
+
+// mapNetworkName maps our fully qualified network name to Hive's simpler network name.
+func mapNetworkName(network string) string {
+	if mapped, ok := networkNameMap[network]; ok {
+		return mapped
+	}
+
+	return network
 }
 
 func getDefaultChromeOptions() []chromedp.ExecAllocatorOption {
