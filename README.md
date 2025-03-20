@@ -1,6 +1,6 @@
 # panda-pulse 🐼
 
-A monitoring tool for Ethereum networks that checks node health and reports issues to Discord.
+A good monitoring tool for Ethereum networks that checks node health and reports issues to Discord.
 
 The checks are run against a Grafana instance, which is configured with a Prometheus datasource. The checks themselves are rather specific to the custom Prometheus metrics ethPandaOps has setup, so your mileage may vary as a public user.
 
