@@ -71,7 +71,7 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, log *logger.CheckLogger, c
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					nodeName := strings.Replace(labels["instance"], labels["ingress_user"]+"-", "", -1)
+					nodeName := strings.ReplaceAll(labels["instance"], labels["ingress_user"]+"-", "")
 					stuckNodes = append(stuckNodes, nodeName)
 					log.Printf("  - Not advancing block height: %s", nodeName)
 				}

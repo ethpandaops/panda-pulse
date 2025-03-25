@@ -461,7 +461,7 @@ func detectAnomalies(clientKey string, result *hive.ClientSummary, prevSummary *
 
 			// If pass rate dropped by more than 5 percentage points, flag it
 			// But only if it's not already obvious from the failure count.
-			if passRateDrop > 5 && !(result.FailedTests > prevClient.FailedTests) {
+			if passRateDrop > 5 && result.FailedTests <= prevClient.FailedTests {
 				anomalies = append(anomalies, fmt.Sprintf("⚠️ Unusual: Pass rate dropped by %.1f%% since last check", passRateDrop))
 			}
 
