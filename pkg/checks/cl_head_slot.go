@@ -62,7 +62,7 @@ func (c *HeadSlotCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Co
 		for _, field := range frame.Schema.Fields {
 			if labels := field.Labels; labels != nil {
 				if labels["instance"] != "" {
-					nodeName := strings.Replace(labels["instance"], labels["network"]+"-", "", -1)
+					nodeName := strings.ReplaceAll(labels["instance"], labels["network"]+"-", "")
 					stuckNodes = append(stuckNodes, nodeName)
 					log.Printf("  - Not advancing head slot: %s", nodeName)
 				}
