@@ -260,6 +260,50 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantRootCause:   []string{},
 			wantUnexplained: []string{"grandine-besu-1"},
 		},
+		{
+			name:         "pre-production client exception - not removed as false positive",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// ethereumjs is already in PreProductionClients map
+				// Failing with exactly MinFailuresForRootCause peers (which happen to be major root causes)
+				"lighthouse-ethereumjs-1": false,
+				"prysm-ethereumjs-1":      false,
+				// These are major root causes (failing with many peers)
+				"lighthouse-geth-1":       false,
+				"lighthouse-besu-1":       false,
+				"lighthouse-nethermind-1": false,
+				"lighthouse-erigon-1":     false,
+				"prysm-geth-1":            false,
+				"prysm-besu-1":            false,
+				"prysm-nethermind-1":      false,
+				"prysm-erigon-1":          false,
+				// Some healthy pairs
+				"teku-geth-1":   true,
+				"nimbus-besu-1": true,
+			},
+			// ethereumjs would normally be removed as a false positive (only failing with major root causes),
+			// but it should be kept due to being a pre-production client with ≥ MinFailuresForRootCause failures
+			wantRootCause:   []string{"ethereumjs", "lighthouse", "prysm"},
+			wantUnexplained: []string{},
+		},
+		{
+			name:         "pre-production client skipped in unexplained issues",
+			targetClient: "lighthouse",
+			clientType:   ClientTypeCL,
+			nodes: map[string]bool{
+				// A failing node with pre-production client (ethereumjs)
+				"lighthouse-ethereumjs-1": false,
+				// Some other healthy nodes
+				"lighthouse-geth-1":  true,
+				"lighthouse-besu-1":  true,
+				"prysm-ethereumjs-1": true,
+			},
+			// Even though lighthouse-ethereumjs is failing, it shouldn't be included in unexplained issues
+			// because it's a pre-production client pair
+			wantRootCause:   []string{},
+			wantUnexplained: []string{},
+		},
 	}
 
 	for _, tt := range tests {

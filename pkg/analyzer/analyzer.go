@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
 
@@ -297,29 +298,34 @@ func (a *Analyzer) removeFalsePositives(state *AnalysisState) {
 			}
 		}
 
-		// Count failures with non-major-root-cause peers.
+		// Count failures with non-major-root-cause and non-pre-production peers.
 		nonMajorRootCauseFailures := 0
 
 		for _, peer := range failure.FailedWith {
-			if !majorRootCauses[peer] {
+			if !majorRootCauses[peer] && !clients.IsPreProductionClient(peer) {
 				nonMajorRootCauseFailures++
 			}
 		}
 
 		// Remove if:
-		// 1. Only failing with major root causes, OR
-		// 2. Not failing with enough non-major-root-cause peers.
+		// 1. Only failing with major root causes or pre-production clients, OR
+		// 2. Not failing with enough non-major-root-cause and non-pre-production peers.
 		if nonMajorRootCauseFailures < MinFailuresForRootCause {
+			// Exception: Don't remove pre-production clients from root causes if they have multiple failures.
+			if clients.IsPreProductionClient(client) && len(failure.FailedWith) >= MinFailuresForRootCause {
+				continue
+			}
+
 			toRemove = append(toRemove, client)
 
 			if nonMajorRootCauseFailures == 0 {
 				a.log.Printf(
-					"  - Removing false positive: %s (only failing with major root causes)",
+					"  - Removing false positive: %s (only failing with major root causes or pre-production clients)",
 					client,
 				)
 			} else {
 				a.log.Printf(
-					"  - Removing false positive: %s (only failing with %d non-major-root-cause peers)",
+					"  - Removing false positive: %s (only failing with %d non-major-root-cause and non-pre-production peers)",
 					client,
 					nonMajorRootCauseFailures,
 				)
@@ -350,6 +356,13 @@ func (a *Analyzer) findUnexplainedIssues(state *AnalysisState) {
 		}
 
 		if len(failingNodes) == 0 {
+			continue
+		}
+
+		// Skip if either client is a pre-production client.
+		if clients.IsPreProductionClient(pair.CLClient) || clients.IsPreProductionClient(pair.ELClient) {
+			a.log.Printf("  - Skipping pre-production client pair: %s-%s", pair.CLClient, pair.ELClient)
+
 			continue
 		}
 

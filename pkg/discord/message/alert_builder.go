@@ -3,6 +3,7 @@ package message
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -16,10 +17,12 @@ import (
 )
 
 const (
-	affectedInstancesHeader = "\n**Affected instances**\n```bash\n"
-	sshCommandsHeader       = "\n**SSH commands**\n"
-	codeBlockEnd            = "```"
-	defaultCategoryEmoji    = "ℹ️"
+	affectedInstancesHeader                = "\n**Affected instances**\n```bash\n"
+	affectedInstancesLikelyUnrelatedHeader = "\n**Affected instances (likely unrelated)**\n```bash\n"
+	infrastructureIssuesHeader             = "\n**Potential infrastructure issues**\n```bash\n"
+	sshCommandsHeader                      = "\n**SSH commands**\n"
+	codeBlockEnd                           = "```"
+	defaultCategoryEmoji                   = "ℹ️"
 )
 
 var (
@@ -34,12 +37,14 @@ var (
 
 // AlertMessageBuilder builds the alert message.
 type AlertMessageBuilder struct {
-	alert          *store.MonitorAlert
-	checkID        string
-	results        []*checks.Result
-	hiveAvailable  bool
-	grafanaBaseURL string
-	hiveBaseURL    string
+	alert                      *store.MonitorAlert
+	checkID                    string
+	results                    []*checks.Result
+	hiveAvailable              bool
+	grafanaBaseURL             string
+	hiveBaseURL                string
+	rootCauses                 []string // List of clients determined to be root causes
+	onlyInfraOrUnrelatedIssues bool     // Flag to indicate if only infrastructure or unrelated issues were detected
 }
 
 type Config struct {
@@ -49,6 +54,7 @@ type Config struct {
 	HiveAvailable  bool
 	GrafanaBaseURL string
 	HiveBaseURL    string
+	RootCauses     []string // List of clients determined to be root causes
 }
 
 // NewAlertMessageBuilder creates a new AlertMessageBuilder.
@@ -60,6 +66,7 @@ func NewAlertMessageBuilder(cfg *Config) *AlertMessageBuilder {
 		hiveAvailable:  cfg.HiveAvailable,
 		grafanaBaseURL: cfg.GrafanaBaseURL,
 		hiveBaseURL:    cfg.HiveBaseURL,
+		rootCauses:     cfg.RootCauses,
 	}
 }
 
@@ -94,7 +101,8 @@ func (b *AlertMessageBuilder) BuildThreadMessages(category checks.Category, fail
 
 	instances := b.extractInstances(failedChecks)
 	if len(instances) > 0 {
-		messages = append(messages, b.buildInstanceList(instances))
+		instanceList := b.buildInstanceList(instances)
+		messages = append(messages, instanceList)
 		messages = append(messages, b.buildSSHCommands(instances))
 	}
 
@@ -219,16 +227,110 @@ func (b *AlertMessageBuilder) parseInstanceFromLine(line string) string {
 func (b *AlertMessageBuilder) buildInstanceList(instances map[string]bool) string {
 	sortedInstances := b.getSortedInstances(instances)
 
-	var sb strings.Builder
-
-	sb.WriteString(affectedInstancesHeader)
-
-	for _, inst := range sortedInstances {
-		sb.WriteString(inst.name)
-		sb.WriteString("\n")
+	// Create a map of root causes for faster lookups.
+	rootCauseMap := make(map[string]bool)
+	for _, client := range b.rootCauses {
+		rootCauseMap[client] = true
 	}
 
-	sb.WriteString(codeBlockEnd)
+	// Check if the current client is itself a root cause.
+	isClientRootCause := rootCauseMap[b.alert.Client]
+
+	// Categorise instances.
+	regularInstances := make([]instance, 0)
+	unrelatedInstances := make([]instance, 0)
+	infrastructureIssues := make([]instance, 0)
+
+	for _, inst := range sortedInstances {
+		// Check if we might classify this as an infrastructure issue.
+		if !b.checkInfrastructureHealth(inst.name) {
+			infrastructureIssues = append(infrastructureIssues, inst)
+
+			continue
+		}
+
+		// If the client itself is a root cause, all instances are related.
+		if isClientRootCause {
+			regularInstances = append(regularInstances, inst)
+
+			continue
+		}
+
+		// Extract client parts from instance name.
+		parts := strings.Split(inst.name, "-")
+		if len(parts) < 2 {
+			regularInstances = append(regularInstances, inst)
+
+			continue
+		}
+
+		// Check if either component is a pre-production client or a root cause.
+		var (
+			clClient = parts[0]
+			elClient string
+		)
+
+		if len(parts) > 1 {
+			elClient = parts[1]
+		}
+
+		if clients.IsPreProductionClient(clClient) || clients.IsPreProductionClient(elClient) ||
+			rootCauseMap[clClient] || rootCauseMap[elClient] {
+			unrelatedInstances = append(unrelatedInstances, inst)
+		} else {
+			regularInstances = append(regularInstances, inst)
+		}
+	}
+
+	var sb strings.Builder
+
+	// Infrastructure issues.
+	if len(infrastructureIssues) > 0 {
+		sb.WriteString(infrastructureIssuesHeader)
+
+		for _, inst := range infrastructureIssues {
+			sb.WriteString(inst.name)
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(codeBlockEnd)
+	}
+
+	// Regular instances.
+	if len(regularInstances) > 0 {
+		sb.WriteString(affectedInstancesHeader)
+
+		for _, inst := range regularInstances {
+			sb.WriteString(inst.name)
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(codeBlockEnd)
+	}
+
+	// Likely unrelated instances (eg, ethereumjs the root cause, failing for everyone).
+	if len(unrelatedInstances) > 0 {
+		sb.WriteString(affectedInstancesLikelyUnrelatedHeader)
+
+		for _, inst := range unrelatedInstances {
+			sb.WriteString(inst.name)
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(codeBlockEnd)
+	}
+
+	// If all issues can be classified as infrastructure issues, set the flag.
+	if len(infrastructureIssues) > 0 &&
+		len(regularInstances) == 0 &&
+		len(unrelatedInstances) == 0 {
+		b.onlyInfraOrUnrelatedIssues = true
+	}
+
+	// If issues are infrastructure, or classed as unrelated (not-likely root-cause), we won't alert either.
+	if len(infrastructureIssues) > 0 && len(regularInstances) == 0 && len(unrelatedInstances) > 0 {
+		b.onlyInfraOrUnrelatedIssues = true
+	}
 
 	return sb.String()
 }
@@ -384,4 +486,51 @@ func (b *AlertMessageBuilder) getTitle() string {
 	}
 
 	return b.alert.Network
+}
+
+// checkInfrastructureHealth checks if a machine is responsive by attempting to connect to SSH port
+// and validating the SSH handshake starts successfully. A good indicator of a machine being unresponsive
+// hinting at a potential infrastructure issue over a client issue.
+func (b *AlertMessageBuilder) checkInfrastructureHealth(instanceName string) bool {
+	// Build the hostname.
+	hostname := fmt.Sprintf("%s.%s.ethpandaops.io", instanceName, b.alert.Network)
+	fullHostPort := fmt.Sprintf("%s:22", hostname)
+
+	// First try a basic TCP connection with a short timeout (2 seconds).
+	conn, err := net.DialTimeout("tcp", fullHostPort, 2*time.Second)
+	if err != nil {
+		// Failed to connect - machine has shat the bed?
+		return false
+	}
+
+	// Set a read deadline to detect hung services. This is blocking.
+	if deadlineErr := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); deadlineErr != nil {
+		return false
+	}
+
+	// Read just a few bytes - SSH server should immediately send identification string
+	// We don't need to send anything first for the initial banner.
+	buf := make([]byte, 8)
+	_, err = conn.Read(buf)
+
+	// Close the connection regardless of result.
+	conn.Close()
+
+	// If we couldn't read the SSH banner, the service is hung.
+	if err != nil {
+		return false
+	}
+
+	// Check if the first bytes look like an SSH banner (typically starts with "SSH-").
+	if len(buf) >= 4 && string(buf[:4]) == "SSH-" {
+		return true
+	}
+
+	// If we got data but it doesn't look like SSH, then fail.
+	return false
+}
+
+// HasOnlyInfraOrUnrelatedIssues returns true if all issues detected are infrastructure or unrelated.
+func (b *AlertMessageBuilder) HasOnlyInfraOrUnrelatedIssues() bool {
+	return b.onlyInfraOrUnrelatedIssues
 }
