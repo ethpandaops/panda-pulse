@@ -67,6 +67,12 @@ var (
 		"admin": "admin",
 		"mod":   "mod",
 	}
+	// Pre-production clients.
+	PreProductionClients = map[string]bool{
+		ELEthereumJS: true,
+		ELNimbusel:   true,
+		"erigonTwo":  true, // Not in standard client list but tracked for pre-production.
+	}
 )
 
 // IsCLClient returns true if the client is a consensus client.
@@ -125,4 +131,9 @@ func GetClientLogo(client string) string {
 	default:
 		return ""
 	}
+}
+
+// IsPreProductionClient returns true if the client is considered pre-production.
+func IsPreProductionClient(client string) bool {
+	return PreProductionClients[client]
 }

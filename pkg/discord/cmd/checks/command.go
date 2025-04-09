@@ -360,7 +360,31 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		HiveAvailable:  isHiveAvailable,
 		GrafanaBaseURL: c.bot.GetGrafana().GetBaseURL(),
 		HiveBaseURL:    c.bot.GetHive().GetBaseURL(),
+		RootCauses:     analysis.RootCause,
 	})
+
+	// Process the data to detect infrastructure issues.
+	// We need to populate this field by calling the category-specific methods.
+	categories := groupResultsByCategory(results)
+
+	for _, category := range orderedCategories {
+		cat, exists := categories[category]
+		if !exists || !cat.hasFailed {
+			continue
+		}
+
+		builder.BuildThreadMessages(category, cat.failedChecks)
+	}
+
+	// Check if all issues are infrastructure or unrelated only.
+	if builder.HasOnlyInfraOrUnrelatedIssues() {
+		c.log.WithFields(logrus.Fields{
+			"network": alert.Network,
+			"client":  alert.Client,
+		}).Info("Only infrastructure or unrelated issues detected, not sending notification")
+
+		return false, nil
+	}
 
 	// Create the main message.
 	msg, err := c.createMainMessage(alert, builder)
@@ -381,7 +405,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 
 	// If hive is available, pop a screenshot of the test coverage into the thread.
 	if isHiveAvailable {
-		// Get a screenshot of the test coverage
+		// Get a screenshot of the test coverage.
 		var consensusNode, executionNode string
 
 		if clients.IsELClient(alert.Client) {
