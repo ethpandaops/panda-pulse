@@ -93,6 +93,21 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 		return
 	}
 
+	// Check permissions before executing command.
+	if !c.hasPermission(i.Member, s, i.GuildID, c.bot.GetRoleConfig()) {
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: common.NoPermissionError(fmt.Sprintf("%s %s", c.Name(), data.Options[0].Name)).Error(),
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		}); err != nil {
+			c.log.WithError(err).Error("Failed to respond with permission error")
+		}
+
+		return
+	}
+
 	var err error
 
 	switch data.Options[0].Name {
