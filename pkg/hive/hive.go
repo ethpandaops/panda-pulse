@@ -186,7 +186,6 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 
 	// Fetch the listing.jsonl file which contains all test results
 	listingURL := fmt.Sprintf("%s/%s/listing.jsonl", h.baseURL, hiveNetwork)
-	fmt.Println("Fetching test results from:", listingURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listingURL, nil)
 	if err != nil {

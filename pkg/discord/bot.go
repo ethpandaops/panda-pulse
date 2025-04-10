@@ -188,6 +188,13 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 	data := i.ApplicationCommandData()
 	for _, cmd := range b.commands {
 		if cmd.Name() == data.Name {
+			// Skip permission check for /build trigger as it has its own permission handling
+			if cmd.Name() == "build" && len(data.Options) > 0 && data.Options[0].Name == "trigger" {
+				cmd.Handle(s, i)
+
+				return
+			}
+
 			// Check permissions before executing command.
 			if !common.HasPermission(i.Member, s, i.GuildID, b.config.AsRoleConfig(), &data) {
 				if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
