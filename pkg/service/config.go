@@ -84,5 +84,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("S3_BUCKET environment variable is required")
 	}
 
+	if c.GithubToken == "" {
+		return fmt.Errorf("GITHUB_TOKEN environment variable is required")
+	}
+
 	return nil
 }
