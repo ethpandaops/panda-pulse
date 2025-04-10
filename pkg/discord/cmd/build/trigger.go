@@ -151,9 +151,20 @@ func (c *BuildCommand) triggerWorkflow(clientName, repository, ref, dockerTag st
 		return "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
+	// Map client names to their workflow names
+	workflowClientName := clientName
+
+	switch clientName {
+	case clients.CLNimbus:
+		workflowClientName = "nimbus-eth1"
+	case clients.ELNimbusel:
+		workflowClientName = "nimbus-eth2"
+	default:
+	}
+
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("https://api.github.com/repos/%s/actions/workflows/build-push-%s.yml/dispatches", DefaultRepository, clientName),
+		fmt.Sprintf("https://api.github.com/repos/%s/actions/workflows/build-push-%s.yml/dispatches", DefaultRepository, workflowClientName),
 		strings.NewReader(string(jsonBody)),
 	)
 	if err != nil {
@@ -177,5 +188,5 @@ func (c *BuildCommand) triggerWorkflow(clientName, repository, ref, dockerTag st
 		return "", fmt.Errorf("workflow trigger failed with status: %d", resp.StatusCode)
 	}
 
-	return fmt.Sprintf("https://github.com/%s/actions/workflows/build-push-%s.yml", DefaultRepository, clientName), nil
+	return fmt.Sprintf("https://github.com/%s/actions/workflows/build-push-%s.yml", DefaultRepository, workflowClientName), nil
 }
