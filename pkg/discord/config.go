@@ -10,6 +10,7 @@ import (
 // Config represents the configuration for the Discord bot.
 type Config struct {
 	DiscordToken string `yaml:"discordToken"`
+	GithubToken  string `yaml:"githubToken"`
 }
 
 // AsRoleConfig returns the role configuration.

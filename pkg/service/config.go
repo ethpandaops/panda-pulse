@@ -17,6 +17,7 @@ type Config struct {
 	PromDatasourceID   string
 	AccessKeyID        string
 	SecretAccessKey    string
+	GithubToken        string
 	S3Bucket           string
 	S3BucketPrefix     string
 	S3Region           string
@@ -41,6 +42,7 @@ func (c *Config) AsS3Config() *store.S3Config {
 func (c *Config) AsDiscordConfig() *discord.Config {
 	return &discord.Config{
 		DiscordToken: c.DiscordToken,
+		GithubToken:  c.GithubToken,
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -132,11 +131,6 @@ func (c *BuildCommand) handleTrigger(s *discordgo.Session, i *discordgo.Interact
 
 // triggerWorkflow triggers the GitHub workflow for the given client.
 func (c *BuildCommand) triggerWorkflow(clientName, repository, ref, dockerTag string) (string, error) {
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return "", fmt.Errorf("GITHUB_TOKEN environment variable not set")
-	}
-
 	// Prepare the workflow inputs.
 	inputs := map[string]interface{}{
 		"repository": repository,
@@ -167,7 +161,7 @@ func (c *BuildCommand) triggerWorkflow(clientName, repository, ref, dockerTag st
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+c.githubToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	httpClient := &http.Client{}

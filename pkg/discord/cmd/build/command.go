@@ -15,15 +15,17 @@ const (
 
 // BuildCommand handles the /build command.
 type BuildCommand struct {
-	log *logrus.Logger
-	bot common.BotContext
+	log         *logrus.Logger
+	bot         common.BotContext
+	githubToken string
 }
 
 // NewBuildCommand creates a new build command.
-func NewBuildCommand(log *logrus.Logger, bot common.BotContext) *BuildCommand {
+func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string) *BuildCommand {
 	return &BuildCommand{
-		log: log,
-		bot: bot,
+		log:         log,
+		bot:         bot,
+		githubToken: githubToken,
 	}
 }
 
