@@ -95,10 +95,6 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 		return
 	}
 
-	c.log.Infof("i.Member: %v", i.Member)
-	c.log.Infof("i.Member.Roles: %v", i.Member.Roles)
-	c.log.Infof("c.bot.GetRoleConfig(): %v", c.bot.GetRoleConfig())
-
 	// Check permissions before executing command.
 	if !c.hasPermission(i.Member, s, i.GuildID, c.bot.GetRoleConfig()) {
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
