@@ -73,6 +73,38 @@ var (
 		ELNimbusel:   true,
 		"erigonTwo":  true, // Not in standard client list but tracked for pre-production.
 	}
+	// DefaultRepositories maps clients to their default source repositories.
+	DefaultRepositories = map[string]string{
+		CLLighthouse: "sigp/lighthouse",
+		CLPrysm:      "prysmaticlabs/prysm",
+		CLLodestar:   "chainsafe/lodestar",
+		CLNimbus:     "status-im/nimbus-eth2",
+		CLTeku:       "ConsenSys/teku",
+		CLGrandine:   "paradigmxyz/grandine",
+		ELNethermind: "NethermindEth/nethermind",
+		ELNimbusel:   "status-im/nimbus",
+		ELBesu:       "hyperledger/besu",
+		ELGeth:       "ethereum/go-ethereum",
+		ELReth:       "paradigmxyz/reth",
+		ELErigon:     "ledgerwatch/erigon",
+		ELEthereumJS: "ethereumjs/ethereumjs-monorepo",
+	}
+	// DefaultBranches maps clients to their default branches.
+	DefaultBranches = map[string]string{
+		CLLighthouse: "master",
+		CLPrysm:      "develop",
+		CLLodestar:   "main",
+		CLNimbus:     "unstable",
+		CLTeku:       "master",
+		CLGrandine:   "main",
+		ELNethermind: "master",
+		ELNimbusel:   "unstable",
+		ELBesu:       "main",
+		ELGeth:       "master",
+		ELReth:       "main",
+		ELErigon:     "devel",
+		ELEthereumJS: "master",
+	}
 )
 
 // IsCLClient returns true if the client is a consensus client.

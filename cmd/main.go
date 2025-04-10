@@ -86,6 +86,7 @@ func setConfig(cfg *service.Config) {
 	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
 	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
 	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
+	cfg.GithubToken = os.Getenv("GITHUB_TOKEN")
 	cfg.S3Bucket = os.Getenv("S3_BUCKET")
 	cfg.S3BucketPrefix = os.Getenv("S3_BUCKET_PREFIX")
 	cfg.S3Region = os.Getenv("AWS_REGION")

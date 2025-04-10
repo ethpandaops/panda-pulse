@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/build"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
@@ -105,6 +106,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		checks.NewChecksCommand(log, bot),
 		mentions.NewMentionsCommand(log, bot),
 		cmdhive.NewHiveCommand(log, bot),
+		build.NewBuildCommand(log, bot, cfg.GithubToken),
 	})
 
 	return &Service{
