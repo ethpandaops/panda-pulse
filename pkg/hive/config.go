@@ -1,6 +1,8 @@
 package hive
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Config contains configuration for Hive.
 type Config struct {

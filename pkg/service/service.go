@@ -14,6 +14,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
+	httpclient "github.com/ethpandaops/panda-pulse/pkg/http"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -49,6 +50,28 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	// Create metrics.
 	storeMetrics := store.NewMetrics("panda_pulse")
 	schedulerMetrics := scheduler.NewMetrics("panda_pulse")
+	discordMetrics := discord.NewMetrics("panda_pulse")
+	httpMetrics := httpclient.NewMetrics("panda_pulse")
+
+	// Create a function to generate service-specific HTTP clients with metrics
+	createServiceClient := func(serviceName string) *http.Client {
+		return &http.Client{
+			Timeout: defaultHTTPTimeout,
+			Transport: httpclient.NewMetricsRoundTripper(
+				http.DefaultTransport,
+				httpMetrics,
+				log,
+				httpclient.WithService(serviceName),
+			),
+		}
+	}
+
+	// Create specific HTTP clients for each external service
+	grafanaHTTPClient := createServiceClient("grafana")
+	hiveHTTPClient := createServiceClient("hive")
+
+	// We don't need a separate client wrapper since we're using the transport-based metrics
+	// but we'll keep it around for other usages
 
 	// Create store repositories.
 	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
@@ -71,11 +94,11 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		return nil, fmt.Errorf("failed to create hive summary repo: %w", err)
 	}
 
-	// Create Grafana client.
-	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), &http.Client{Timeout: defaultHTTPTimeout})
+	// Create Grafana client with service-specific HTTP client.
+	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), grafanaHTTPClient)
 
-	// Create Hive client.
-	hive := hive.NewHive(cfg.AsHiveConfig())
+	// Create Hive client with service-specific HTTP client.
+	hiveClient := hive.NewHive(cfg.AsHiveConfig(), hiveHTTPClient)
 
 	// Check S3 connection health, no point in continuing if we can't access the store.
 	if verr := monitorRepo.VerifyConnection(ctx); verr != nil {
@@ -95,7 +118,8 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		mentionsRepo,
 		hiveSummaryRepo,
 		grafanaClient,
-		hive,
+		hiveClient,
+		discordMetrics,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bot: %w", err)
