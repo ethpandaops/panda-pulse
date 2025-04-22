@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
@@ -58,6 +59,7 @@ type DiscordBot struct {
 	grafana         grafana.Client
 	hive            hive.Hive
 	commands        []common.Command
+	metrics         *Metrics
 }
 
 // NewBot creates a new Discord bot.
@@ -71,6 +73,7 @@ func NewBot(
 	hiveSummaryRepo *store.HiveSummaryRepo,
 	grafana grafana.Client,
 	hive hive.Hive,
+	metrics *Metrics,
 ) (Bot, error) {
 	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -90,6 +93,7 @@ func NewBot(
 		grafana:         grafana,
 		hive:            hive,
 		commands:        make([]common.Command, 0),
+		metrics:         metrics,
 	}
 
 	// Register event handlers.
@@ -179,7 +183,7 @@ func (b *DiscordBot) GetHive() hive.Hive {
 	return b.hive
 }
 
-// handleInteraction handles interactions from the Discord client.
+// handleInteraction handles Discord command interactions.
 func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
@@ -188,9 +192,37 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 	data := i.ApplicationCommandData()
 	for _, cmd := range b.commands {
 		if cmd.Name() == data.Name {
+			startTime := time.Now()
+
+			// Get username
+			username := "unknown"
+			if i.Member != nil && i.Member.User != nil {
+				username = i.Member.User.Username
+			} else if i.User != nil {
+				username = i.User.Username
+			}
+
+			// Get subcommand name
+			var subcommand string
+			if len(data.Options) > 0 {
+				subcommand = data.Options[0].Name
+			} else {
+				subcommand = "none"
+			}
+
+			// Record command execution
+			b.metrics.RecordCommandExecution(cmd.Name(), subcommand, username)
+
+			// Set last execution timestamp
+			b.metrics.SetLastCommandTimestamp(cmd.Name(), subcommand, float64(time.Now().Unix()))
+
 			// Skip permission check for /build trigger as it has its own permission handling
 			if cmd.Name() == "build" && len(data.Options) > 0 && data.Options[0].Name == "trigger" {
 				cmd.Handle(s, i)
+
+				// Record command execution time
+				executionTime := time.Since(startTime).Seconds()
+				b.metrics.ObserveCommandDuration(cmd.Name(), subcommand, executionTime)
 
 				return
 			}
@@ -200,16 +232,24 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 				if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
-						Content: common.NoPermissionError(fmt.Sprintf("%s %s", cmd.Name(), data.Options[0].Name)).Error(),
+						Content: common.NoPermissionError(fmt.Sprintf("%s %s", cmd.Name(), subcommand)).Error(),
 					},
 				}); err != nil {
 					b.log.WithError(err).Error("Failed to respond with permission error")
 				}
 
+				// Record permission error
+				b.metrics.RecordCommandError(cmd.Name(), subcommand, "permission_denied")
+
 				return
 			}
 
+			// Handle the command
 			cmd.Handle(s, i)
+
+			// Record command execution time
+			executionTime := time.Since(startTime).Seconds()
+			b.metrics.ObserveCommandDuration(cmd.Name(), subcommand, executionTime)
 
 			return
 		}

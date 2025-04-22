@@ -52,6 +52,7 @@ func (c *CLSyncCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Conf
 
 	response, err := c.grafanaClient.Query(ctx, query)
 	if err != nil {
+		log.Printf("  - ERROR: Failed to execute query: %v", err)
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 

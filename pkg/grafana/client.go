@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 //go:generate mockgen -package mock -destination mock/client.mock.go github.com/ethpandaops/panda-pulse/pkg/grafana Client
@@ -42,7 +43,14 @@ type client struct {
 }
 
 // NewClient creates a new Grafana client.
+// For metrics tracking, pass an HTTP client that is wrapped by http.ClientWrapper.
 func NewClient(cfg *Config, httpClient *http.Client) Client {
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Timeout: 30 * time.Second,
+		}
+	}
+
 	return &client{
 		baseURL:      cfg.BaseURL,
 		dataSourceID: cfg.PromDatasourceID,
@@ -143,6 +151,7 @@ func (c *client) doRequest(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
+
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)

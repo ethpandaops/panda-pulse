@@ -22,10 +22,6 @@ const (
 	httpTimeout           = 30 * time.Second
 )
 
-var httpClient = &http.Client{
-	Timeout: httpTimeout,
-}
-
 // Hive is the interface for Hive operations.
 type Hive interface {
 	// Snapshot takes a screenshot of the test coverage for a specific client.
@@ -44,7 +40,8 @@ type Hive interface {
 
 // hive is a Hive client implementation of Hive.
 type hive struct {
-	baseURL string
+	baseURL    string
+	httpClient *http.Client
 }
 
 // clientNameMap maps our internal client names to Hive's client names, some of them differ slightly.
@@ -60,9 +57,17 @@ var networkNameMap = map[string]string{
 }
 
 // NewHive creates a new Hive client.
-func NewHive(cfg *Config) Hive {
+func NewHive(cfg *Config, httpClient *http.Client) Hive {
+	// Use provided HTTP client or create a default one
+	if httpClient == nil {
+		httpClient = &http.Client{
+			Timeout: httpTimeout,
+		}
+	}
+
 	return &hive{
-		baseURL: cfg.BaseURL,
+		baseURL:    cfg.BaseURL,
+		httpClient: httpClient,
 	}
 }
 
@@ -165,7 +170,7 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("failed to check hive availability: %w", err)
 	}
@@ -192,7 +197,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch test results: %w", err)
 	}
