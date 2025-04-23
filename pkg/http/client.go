@@ -3,7 +3,6 @@ package http
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -54,7 +53,7 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 			"url":       req.URL.String(),
 			"method":    req.Method,
 			"duration":  duration,
-		}).Error("API request failed")
+		}).Error("API request error")
 
 		c.metrics.RecordAPIError(service, operation, "network_error")
 
@@ -65,6 +64,12 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 	if resp.StatusCode >= 400 {
 		errType := fmt.Sprintf("http_%d", resp.StatusCode)
 
+		// Reduce logging noise. We attempt to hit hive to see if it's available for the given
+		// network, it'll 404 if it's not and we don't need to log each time for that.
+		if resp.StatusCode == 404 && service == "hive" {
+			return nil, nil //nolint:nilnil // This is a special case.
+		}
+
 		c.log.WithFields(logrus.Fields{
 			"service":     service,
 			"operation":   operation,
@@ -72,16 +77,9 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 			"url":         req.URL.String(),
 			"method":      req.Method,
 			"duration":    duration,
-		}).Error("API request returned error status")
+		}).Error("API response error")
 
 		c.metrics.RecordAPIError(service, operation, errType)
-	}
-
-	// Check for rate limit headers.
-	if rateLimit := resp.Header.Get("X-RateLimit-Remaining"); rateLimit != "" {
-		if remaining, err := strconv.ParseFloat(rateLimit, 64); err == nil {
-			c.metrics.SetRateLimitRemaining(service, remaining)
-		}
 	}
 
 	return resp, nil
@@ -165,7 +163,7 @@ func (t *MetricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 			"url":       req.URL.String(),
 			"method":    req.Method,
 			"duration":  duration,
-		}).Error("API request failed")
+		}).Error("API request error")
 
 		t.metrics.RecordAPIError(t.service, operation, "network_error")
 
@@ -176,6 +174,12 @@ func (t *MetricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if resp.StatusCode >= 400 {
 		errType := fmt.Sprintf("http_%d", resp.StatusCode)
 
+		// Reduce logging noise. We attempt to hit hive to see if it's available for the given
+		// network, it'll 404 if it's not and we don't need to log each time for that.
+		if resp.StatusCode == 404 && t.service == "hive" {
+			return nil, nil //nolint:nilnil // This is a special case.
+		}
+
 		t.log.WithFields(logrus.Fields{
 			"service":     t.service,
 			"operation":   operation,
@@ -183,16 +187,9 @@ func (t *MetricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 			"url":         req.URL.String(),
 			"method":      req.Method,
 			"duration":    duration,
-		}).Error("API request returned error status")
+		}).Error("API response error")
 
 		t.metrics.RecordAPIError(t.service, operation, errType)
-	}
-
-	// Check for rate limit headers.
-	if rateLimit := resp.Header.Get("X-RateLimit-Remaining"); rateLimit != "" {
-		if remaining, err := strconv.ParseFloat(rateLimit, 64); err == nil {
-			t.metrics.SetRateLimitRemaining(t.service, remaining)
-		}
 	}
 
 	return resp, nil

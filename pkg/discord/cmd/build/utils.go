@@ -35,28 +35,16 @@ func (c *BuildCommand) getClientChoices() []*discordgo.ApplicationCommandOptionC
 // For the build command, any user with any team role or admin role can trigger builds.
 func (c *BuildCommand) hasPermission(member *discordgo.Member, session *discordgo.Session, guildID string, config *common.RoleConfig) bool {
 	// Check admin roles first.
-	for _, roleID := range member.Roles {
-		role, err := session.State.Role(guildID, roleID)
-		if err != nil {
-			continue
-		}
-
-		roleName := strings.ToLower(role.Name)
-		if config.AdminRoles[roleName] {
+	for _, roleName := range common.GetRoleNames(member, session, guildID) {
+		if config.AdminRoles[strings.ToLower(roleName)] {
 			return true
 		}
 	}
 
 	// Check if user has any team role.
-	for _, roleID := range member.Roles {
-		role, err := session.State.Role(guildID, roleID)
-		if err != nil {
-			continue
-		}
-
-		roleName := strings.ToLower(role.Name)
+	for _, roleName := range common.GetRoleNames(member, session, guildID) {
 		for _, teamRole := range config.ClientRoles {
-			if strings.EqualFold(teamRole, roleName) {
+			if strings.EqualFold(teamRole, strings.ToLower(roleName)) {
 				return true
 			}
 		}

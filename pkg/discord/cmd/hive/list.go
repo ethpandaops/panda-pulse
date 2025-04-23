@@ -9,7 +9,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/robfig/cron/v3"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -35,12 +34,6 @@ func (c *HiveCommand) handleList(
 		n := data.Options[0].StringValue()
 		network = &n
 	}
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/hive list",
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
 
 	alerts, err := c.listAlerts(context.Background(), guildID, network)
 	if err != nil {

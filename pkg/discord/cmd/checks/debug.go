@@ -5,14 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -27,22 +24,16 @@ func (c *ChecksCommand) handleDebug(
 ) error {
 	// Acknowledge the interaction first.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "🔍 Debugging check...",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
 	}); err != nil {
 		return fmt.Errorf("failed to acknowledge interaction: %w", err)
 	}
 
-	var (
-		checkID = opt.Options[0].StringValue()
-		guildID = i.GuildID
-	)
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/checks debug",
-		"checkID": checkID,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
+	checkID := opt.Options[0].StringValue()
 
 	// List all artifacts and find the one with matching ID.
 	artifacts, err := c.bot.GetChecksRepo().List(context.Background())
@@ -87,10 +78,9 @@ func (c *ChecksCommand) handleDebug(
 		return fmt.Errorf("failed to read log content: %w", err)
 	}
 
-	// Send the embed first.
-	embed := buildDebugEmbed(matchingArtifact)
+	// Send the response.
 	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Embeds: &[]*discordgo.MessageEmbed{embed},
+		Content: stringPtr(fmt.Sprintf("✅ Debug logs found for **`%s`**", matchingArtifact.CheckID)),
 	}); err != nil {
 		return fmt.Errorf("failed to send embed: %w", err)
 	}
@@ -104,45 +94,12 @@ func (c *ChecksCommand) handleDebug(
 				Reader:      bytes.NewReader(logContent),
 			},
 		},
+		Flags: discordgo.MessageFlagsEphemeral,
 	}); err != nil {
 		return fmt.Errorf("failed to send log file: %w", err)
 	}
 
 	return nil
-}
-
-// buildDebugEmbed creates the debug log embed.
-func buildDebugEmbed(artifact *store.CheckArtifact) *discordgo.MessageEmbed {
-	embed := &discordgo.MessageEmbed{
-		Title: "Debug Log",
-		Color: debugEmbedColor,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "ID",
-				Value:  fmt.Sprintf("`%s`", artifact.CheckID),
-				Inline: false,
-			},
-			{
-				Name:   "Network",
-				Value:  fmt.Sprintf("🌐 `%s`", artifact.Network),
-				Inline: true,
-			},
-			{
-				Name:   "Client",
-				Value:  fmt.Sprintf("`%s`", artifact.Client),
-				Inline: true,
-			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	if logo := clients.GetClientLogo(artifact.Client); logo != "" {
-		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
-			URL: logo,
-		}
-	}
-
-	return embed
 }
 
 // getLogPath returns the S3 path for a check's log file.

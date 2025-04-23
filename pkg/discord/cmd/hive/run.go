@@ -6,7 +6,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
-	"github.com/sirupsen/logrus"
 )
 
 // handleRun handles the run subcommand.
@@ -15,13 +14,6 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 		network = cmd.Options[0].StringValue()
 		guildID = i.GuildID
 	)
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/hive run",
-		"network": network,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
 
 	// Check if Hive is available for this network.
 	available, err := c.bot.GetHive().IsAvailable(context.Background(), network)

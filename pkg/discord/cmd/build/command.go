@@ -95,6 +95,14 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 		return
 	}
 
+	logCtx := logrus.Fields{
+		"subcommand": data.Options[0].Name,
+		"command":    c.Name(),
+		"guild":      i.GuildID,
+		"user":       i.Member.User.Username,
+		"roles":      common.GetRoleNames(i.Member, s, i.GuildID),
+	}
+
 	// Check permissions before executing command.
 	if !c.hasPermission(i.Member, s, i.GuildID, c.bot.GetRoleConfig()) {
 		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -106,6 +114,8 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 		}); err != nil {
 			c.log.WithError(err).Error("Failed to respond with permission error")
 		}
+
+		c.log.WithFields(logCtx).Error("Permission denied")
 
 		return
 	}

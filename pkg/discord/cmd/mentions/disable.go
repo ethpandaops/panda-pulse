@@ -26,14 +26,6 @@ func (c *MentionsCommand) handleDisable(
 		guildID = i.GuildID // Get the guild ID from the interaction
 	)
 
-	c.log.WithFields(logrus.Fields{
-		"command": "/mentions disable",
-		"network": network,
-		"client":  client,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
-
 	// Get existing mentions.
 	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client, guildID)
 	if err != nil {
@@ -48,6 +40,12 @@ func (c *MentionsCommand) handleDisable(
 	if err := c.bot.GetMentionsRepo().Persist(context.Background(), mention); err != nil {
 		return fmt.Errorf("failed to persist mentions: %w", err)
 	}
+
+	c.log.WithFields(logrus.Fields{
+		"network": network,
+		"client":  client,
+		"guild":   guildID,
+	}).Info("Mentions disabled successfully")
 
 	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
