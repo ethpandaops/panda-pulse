@@ -156,9 +156,11 @@ func (c *BuildCommand) triggerWorkflow(clientName, repository, ref, dockerTag st
 
 	switch clientName {
 	case clients.CLNimbus:
-		workflowClientName = "nimbus-eth1"
-	case clients.ELNimbusel:
+		// See: https://github.com/status-im/nimbus-eth2
 		workflowClientName = "nimbus-eth2"
+	case clients.ELNimbusel:
+		// See: https://github.com/status-im/nimbus-eth1
+		workflowClientName = "nimbus-eth1"
 	default:
 	}
 
