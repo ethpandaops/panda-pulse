@@ -87,15 +87,6 @@ func (c *ChecksCommand) handleRegister(
 		}
 	}
 
-	c.log.WithFields(logrus.Fields{
-		"command":  "/checks register",
-		"network":  network,
-		"channel":  channel.Name,
-		"guild":    guildID,
-		"user":     i.Member.User.Username,
-		"schedule": schedule,
-	}).Info("Received command")
-
 	if err := c.registerAlert(context.Background(), network, channel.ID, guildID, client, schedule); err != nil {
 		if alreadyRegistered, ok := err.(*store.AlertAlreadyRegisteredError); ok {
 			return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -199,19 +190,16 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	jobName := c.bot.GetMonitorRepo().Key(alert)
 
 	c.log.WithFields(logrus.Fields{
-		"network": alert.Network,
 		"channel": alert.DiscordChannel,
 		"client":  alert.Client,
-		"key":     jobName,
-	}).Info("Registered monitor")
+	}).Info("Registered alert")
 
 	// And secondly, schedule the alert to run on our schedule.
 	if addErr := c.bot.GetScheduler().AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
 		c.log.WithFields(logrus.Fields{
-			"network": alert.Network,
-			"client":  alert.Client,
-			"key":     jobName,
-		}).Info("Queueing registered check")
+			"client": alert.Client,
+			"key":    jobName,
+		}).Info("Queueing alert")
 
 		c.Queue().Enqueue(alert)
 
@@ -223,7 +211,7 @@ func (c *ChecksCommand) scheduleAlert(ctx context.Context, alert *store.MonitorA
 	c.log.WithFields(logrus.Fields{
 		"schedule": alert.Schedule,
 		"key":      jobName,
-	}).Info("Scheduled monitor alert")
+	}).Info("Scheduled alert")
 
 	return nil
 }

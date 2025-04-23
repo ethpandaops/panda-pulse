@@ -9,7 +9,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,12 +32,6 @@ func (c *MentionsCommand) handleList(
 		n := data.Options[0].StringValue()
 		network = &n
 	}
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/mentions list",
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
 
 	mentions, err := c.listMentions(context.Background(), guildID, network)
 	if err != nil {

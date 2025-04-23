@@ -7,7 +7,6 @@ type Metrics struct {
 	apiRequestsTotal   *prometheus.CounterVec
 	apiRequestsErrors  *prometheus.CounterVec
 	apiRequestDuration *prometheus.HistogramVec
-	apiRateLimitRemain *prometheus.GaugeVec
 }
 
 // NewMetrics creates a new API metrics instance.
@@ -34,20 +33,12 @@ func NewMetrics(namespace string) *Metrics {
 			Help:      "Duration of API requests in seconds",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}, []string{"service", "operation"}),
-
-		apiRateLimitRemain: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: namespace,
-			Subsystem: "api",
-			Name:      "rate_limit_remaining",
-			Help:      "Remaining API rate limit",
-		}, []string{"service"}),
 	}
 
 	prometheus.MustRegister(
 		m.apiRequestsTotal,
 		m.apiRequestsErrors,
 		m.apiRequestDuration,
-		m.apiRateLimitRemain,
 	)
 
 	return m
@@ -66,9 +57,4 @@ func (m *Metrics) RecordAPIError(service, operation, errorType string) {
 // ObserveAPIRequestDuration records the duration of an API request.
 func (m *Metrics) ObserveAPIRequestDuration(service, operation string, duration float64) {
 	m.apiRequestDuration.WithLabelValues(service, operation).Observe(duration)
-}
-
-// SetRateLimitRemaining sets the remaining rate limit for a service.
-func (m *Metrics) SetRateLimitRemaining(service string, remaining float64) {
-	m.apiRateLimitRemain.WithLabelValues(service).Set(remaining)
 }

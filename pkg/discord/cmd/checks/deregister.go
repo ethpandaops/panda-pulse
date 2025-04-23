@@ -34,13 +34,6 @@ func (c *ChecksCommand) handleDeregister(
 		client = &c
 	}
 
-	c.log.WithFields(logrus.Fields{
-		"command": "/checks deregister",
-		"network": network,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
-
 	if err := c.deregisterAlert(context.Background(), network, guildID, client); err != nil {
 		if notRegistered, ok := err.(*store.AlertNotRegisteredError); ok {
 			msg := fmt.Sprintf(msgClientNotRegistered, notRegistered.Client, network)
@@ -146,16 +139,13 @@ func (c *ChecksCommand) unscheduleAlert(ctx context.Context, alert *store.Monito
 	}
 
 	c.log.WithFields(logrus.Fields{
-		"network": alert.Network,
 		"channel": alert.DiscordChannel,
 		"client":  alert.Client,
 		"key":     key,
-	}).Info("Deregistered monitor")
+	}).Info("Deregistered alert")
 
 	// Remove from scheduler
 	c.bot.GetScheduler().RemoveJob(key)
-
-	c.log.WithField("key", key).Info("Unscheduled monitor alert")
 
 	return nil
 }

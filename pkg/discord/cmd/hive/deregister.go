@@ -22,13 +22,6 @@ func (c *HiveCommand) handleDeregister(s *discordgo.Session, i *discordgo.Intera
 		guildID = i.GuildID // Get the guild ID from the interaction
 	)
 
-	c.log.WithFields(logrus.Fields{
-		"command": "/hive deregister",
-		"network": network,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
-
 	if err := c.deregisterHiveAlert(context.Background(), network, guildID); err != nil {
 		if notRegistered, ok := err.(*hiveNotRegisteredError); ok {
 			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -49,14 +42,13 @@ func (c *HiveCommand) handleDeregister(s *discordgo.Session, i *discordgo.Intera
 		return
 	}
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf(msgHiveDeregistered, network),
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		c.log.WithError(err).Error("Failed to respond to interaction")
 	}
 }
@@ -96,16 +88,14 @@ func (c *HiveCommand) deregisterHiveAlert(ctx context.Context, network, guildID 
 		return fmt.Errorf("failed to delete alert: %w", err)
 	}
 
-	c.log.WithFields(logrus.Fields{
-		"network": network,
-		"channel": alert.DiscordChannel,
-	}).Info("Deregistered Hive summary")
-
 	// Remove from scheduler
 	jobName := fmt.Sprintf("hive-summary-%s", network)
 	c.bot.GetScheduler().RemoveJob(jobName)
 
-	c.log.WithField("key", jobName).Info("Unscheduled Hive summary alert")
+	c.log.WithFields(logrus.Fields{
+		"network": network,
+		"channel": alert.DiscordChannel,
+	}).Info("Deregistered Hive summary")
 
 	return nil
 }

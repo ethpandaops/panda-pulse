@@ -10,7 +10,6 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/robfig/cron/v3"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -44,12 +43,6 @@ func (c *ChecksCommand) handleList(
 		n := data.Options[0].StringValue()
 		network = &n
 	}
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/checks list",
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
 
 	alerts, err := c.listAlerts(context.Background(), guildID, network)
 	if err != nil {

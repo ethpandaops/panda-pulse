@@ -6,7 +6,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
-	"github.com/sirupsen/logrus"
 )
 
 //nolint:gosec // false positive, no hardcoded credentials.
@@ -25,14 +24,6 @@ func (c *ChecksCommand) handleRun(
 	network, client := extractOptions(data)
 
 	guildID := i.GuildID
-
-	c.log.WithFields(logrus.Fields{
-		"command": "/checks run",
-		"network": network,
-		"client":  client,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
 
 	// First respond that we're working on it.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

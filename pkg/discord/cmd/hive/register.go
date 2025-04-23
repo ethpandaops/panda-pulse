@@ -49,14 +49,6 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		return
 	}
 
-	c.log.WithFields(logrus.Fields{
-		"command": "/hive register",
-		"network": network,
-		"channel": channel.Name,
-		"guild":   guildID,
-		"user":    i.Member.User.Username,
-	}).Info("Received command")
-
 	// Check if Hive is available for this network.
 	available, err := c.bot.GetHive().IsAvailable(context.Background(), network)
 	if err != nil {
@@ -126,7 +118,7 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	c.log.WithFields(logrus.Fields{
 		"schedule": alert.Schedule,
 		"key":      jobName,
-	}).Info("Scheduled Hive summary alert")
+	}).Info("Scheduled Hive summary")
 
 	// Respond with success.
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

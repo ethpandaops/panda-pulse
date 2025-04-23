@@ -29,15 +29,6 @@ func (c *MentionsCommand) handleAdd(
 		guildID  = i.GuildID                                // Get the guild ID from the interaction
 	)
 
-	c.log.WithFields(logrus.Fields{
-		"command":  "/mentions add",
-		"network":  network,
-		"client":   client,
-		"guild":    guildID,
-		"mentions": mentions,
-		"user":     i.Member.User.Username,
-	}).Info("Received command")
-
 	// Get existing mentions or create new.
 	mention, err := c.bot.GetMentionsRepo().Get(context.Background(), network, client, guildID)
 	if err != nil {
@@ -66,6 +57,13 @@ func (c *MentionsCommand) handleAdd(
 	if err := c.bot.GetMentionsRepo().Persist(context.Background(), mention); err != nil {
 		return fmt.Errorf("failed to persist mentions: %w", err)
 	}
+
+	c.log.WithFields(logrus.Fields{
+		"network":  network,
+		"client":   client,
+		"guild":    guildID,
+		"mentions": mentions,
+	}).Info("Mentions added successfully")
 
 	return s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,

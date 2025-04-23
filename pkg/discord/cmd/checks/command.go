@@ -323,7 +323,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
-		}).Info("No issues detected, not sending notification")
+		}).Info("No issues detected, skipped notification")
 
 		return false, nil
 	}
@@ -341,7 +341,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
-		}).Info("No failures detected, not sending notification")
+		}).Info("No failures detected, skipped notification")
 
 		return false, nil
 	}
@@ -381,7 +381,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		c.log.WithFields(logrus.Fields{
 			"network": alert.Network,
 			"client":  alert.Client,
-		}).Info("Only infrastructure or unrelated issues detected, not sending notification")
+		}).Info("Only infrastructure or unrelated issues detected, skipped notification")
 
 		return false, nil
 	}

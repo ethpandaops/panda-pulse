@@ -210,6 +210,16 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 				subcommand = "none"
 			}
 
+			logCtx := logrus.Fields{
+				"command":    cmd.Name(),
+				"subcommand": subcommand,
+				"guild":      i.GuildID,
+				"user":       username,
+				"roles":      common.GetRoleNames(i.Member, s, i.GuildID),
+			}
+
+			b.log.WithFields(logCtx).Info("Received command")
+
 			// Record command execution
 			b.metrics.RecordCommandExecution(cmd.Name(), subcommand, username)
 
@@ -233,6 +243,7 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
 						Content: common.NoPermissionError(fmt.Sprintf("%s %s", cmd.Name(), subcommand)).Error(),
+						Flags:   discordgo.MessageFlagsEphemeral,
 					},
 				}); err != nil {
 					b.log.WithError(err).Error("Failed to respond with permission error")
@@ -240,6 +251,8 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 
 				// Record permission error
 				b.metrics.RecordCommandError(cmd.Name(), subcommand, "permission_denied")
+
+				b.log.WithFields(logCtx).Error("Permission denied")
 
 				return
 			}
@@ -276,9 +289,8 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 		b.log.WithFields(logrus.Fields{
 			"network":  alert.Network,
 			"client":   alert.Client,
-			"key":      jobName,
 			"schedule": alert.Schedule,
-		}).Info("Scheduling existing monitor alert")
+		}).Info("Scheduling alert")
 
 		// Use the alert's schedule if available, otherwise fall back to default
 		schedule := cmdchecks.DefaultCheckSchedule
@@ -290,8 +302,7 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 			b.log.WithFields(logrus.Fields{
 				"network": alert.Network,
 				"client":  alert.Client,
-				"key":     jobName,
-			}).Info("Queueing registered check")
+			}).Info("Queueing alert")
 
 			// Find the checks command.
 			for _, cmd := range b.commands {
@@ -324,9 +335,8 @@ func (b *DiscordBot) scheduleExistingAlerts() error {
 		b.log.WithFields(logrus.Fields{
 			"network":  alert.Network,
 			"channel":  alert.DiscordChannel,
-			"key":      jobName,
 			"schedule": alert.Schedule,
-		}).Info("Scheduling existing Hive summary alert")
+		}).Info("Scheduling hive summary")
 
 		if err := b.scheduler.AddJob(jobName, alert.Schedule, func(ctx context.Context) error {
 			// Find the hive command.

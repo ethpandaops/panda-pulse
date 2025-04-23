@@ -38,18 +38,6 @@ func TestMetrics(t *testing.T) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(m.apiRequestsErrors.WithLabelValues("github", "get_repo", "rate_limit_exceeded")))
 	})
 
-	t.Run("gauge metrics update correctly", func(t *testing.T) {
-		prometheus.DefaultRegisterer = prometheus.NewRegistry()
-		m := NewMetrics("test")
-
-		// Test apiRateLimitRemain
-		m.SetRateLimitRemaining("github", 4500)
-		assert.Equal(t, float64(4500), testutil.ToFloat64(m.apiRateLimitRemain.WithLabelValues("github")))
-
-		m.SetRateLimitRemaining("github", 4499)
-		assert.Equal(t, float64(4499), testutil.ToFloat64(m.apiRateLimitRemain.WithLabelValues("github")))
-	})
-
 	t.Run("histogram metrics record correctly", func(t *testing.T) {
 		prometheus.DefaultRegisterer = prometheus.NewRegistry()
 		m := NewMetrics("test")

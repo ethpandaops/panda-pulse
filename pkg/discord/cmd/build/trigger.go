@@ -20,19 +20,21 @@ const (
 func (c *BuildCommand) handleTrigger(s *discordgo.Session, i *discordgo.InteractionCreate, option *discordgo.ApplicationCommandInteractionDataOption) error {
 	// Send immediate response, discord requires an ACK with 3s, sometimes triggering
 	// the build can blow out, and then things will fall apart.
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: fmt.Sprintf("🔄 Triggering build for **%s**...", option.Options[0].StringValue()),
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to send initial response: %w", err)
 	}
 
 	// Get the client from the options.
-	client := option.Options[0].StringValue()
+	var (
+		client = option.Options[0].StringValue()
+		err    error
+	)
 
 	// Get optional parameters.
 	var repository, ref, dockerTag string
@@ -56,14 +58,6 @@ func (c *BuildCommand) handleTrigger(s *discordgo.Session, i *discordgo.Interact
 	if ref == "" {
 		ref = clients.DefaultBranches[client]
 	}
-
-	c.log.WithFields(logrus.Fields{
-		"command":    "/build trigger",
-		"repository": repository,
-		"ref":        ref,
-		"docker_tag": dockerTag,
-		"user":       i.Member.User.Username,
-	}).Info("Received command")
 
 	// Trigger the workflow.
 	workflowURL, err := c.triggerWorkflow(client, repository, ref, dockerTag)
@@ -125,6 +119,12 @@ func (c *BuildCommand) handleTrigger(s *discordgo.Session, i *discordgo.Interact
 	}); err != nil {
 		return fmt.Errorf("failed to edit response: %w", err)
 	}
+
+	c.log.WithFields(logrus.Fields{
+		"repository": repository,
+		"ref":        ref,
+		"docker_tag": dockerTag,
+	}).Info("Build triggered successfully")
 
 	return nil
 }

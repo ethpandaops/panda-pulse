@@ -49,6 +49,22 @@ type BotContext interface {
 	GetRoleConfig() *RoleConfig
 }
 
+// GetRoleNames returns the plain-english names of the roles a member has.
+func GetRoleNames(member *discordgo.Member, session *discordgo.Session, guildID string) []string {
+	roleNames := make([]string, 0)
+
+	for _, roleID := range member.Roles {
+		role, err := session.State.Role(guildID, roleID)
+		if err != nil {
+			continue
+		}
+
+		roleNames = append(roleNames, role.Name)
+	}
+
+	return roleNames
+}
+
 // HasPermission checks if a member has permission to execute a command.
 func HasPermission(member *discordgo.Member, session *discordgo.Session, guildID string, config *RoleConfig, cmdData *discordgo.ApplicationCommandInteractionData) bool {
 	// Check admin roles first and let it through to the keeper.
@@ -58,8 +74,7 @@ func HasPermission(member *discordgo.Member, session *discordgo.Session, guildID
 			continue
 		}
 
-		roleName := strings.ToLower(role.Name)
-		if config.AdminRoles[roleName] {
+		if config.AdminRoles[strings.ToLower(role.Name)] {
 			return true
 		}
 	}
@@ -74,13 +89,8 @@ func HasPermission(member *discordgo.Member, session *discordgo.Session, guildID
 		}
 
 		// Check if user has the required team role.
-		for _, roleID := range member.Roles {
-			role, err := session.State.Role(guildID, roleID)
-			if err != nil {
-				continue
-			}
-
-			if strings.EqualFold(role.Name, requiredRole) {
+		for _, roleName := range GetRoleNames(member, session, guildID) {
+			if strings.EqualFold(roleName, requiredRole) {
 				return true
 			}
 		}
