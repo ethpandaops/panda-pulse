@@ -2,6 +2,7 @@ package build
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
@@ -18,14 +19,16 @@ type BuildCommand struct {
 	log         *logrus.Logger
 	bot         common.BotContext
 	githubToken string
+	httpClient  *http.Client
 }
 
 // NewBuildCommand creates a new build command.
-func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string) *BuildCommand {
+func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string, client *http.Client) *BuildCommand {
 	return &BuildCommand{
 		log:         log,
 		bot:         bot,
 		githubToken: githubToken,
+		httpClient:  client,
 	}
 }
 

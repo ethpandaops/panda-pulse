@@ -267,9 +267,11 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 	default:
 	}
 
+	url := fmt.Sprintf("https://api.github.com/repos/%s/actions/workflows/build-push-%s.yml/dispatches", DefaultRepository, workflowName)
+
 	req, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("https://api.github.com/repos/%s/actions/workflows/build-push-%s.yml/dispatches", DefaultRepository, workflowName),
+		url,
 		strings.NewReader(string(jsonBody)),
 	)
 	if err != nil {
@@ -280,9 +282,8 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 	req.Header.Set("Authorization", "Bearer "+c.githubToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	httpClient := &http.Client{}
-
-	resp, err := httpClient.Do(req)
+	// Use the HTTP client
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}

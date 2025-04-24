@@ -69,6 +69,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	// Create specific HTTP clients for each external service
 	grafanaHTTPClient := createServiceClient("grafana")
 	hiveHTTPClient := createServiceClient("hive")
+	githubHTTPClient := createServiceClient("github")
 
 	// We don't need a separate client wrapper since we're using the transport-based metrics
 	// but we'll keep it around for other usages
@@ -130,7 +131,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		checks.NewChecksCommand(log, bot),
 		mentions.NewMentionsCommand(log, bot),
 		cmdhive.NewHiveCommand(log, bot),
-		build.NewBuildCommand(log, bot, cfg.GithubToken),
+		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 	})
 
 	return &Service{
