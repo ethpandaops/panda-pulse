@@ -37,44 +37,84 @@ func (c *BuildCommand) Name() string {
 // Register registers the /build command with the given discord session.
 func (c *BuildCommand) Register(session *discordgo.Session) error {
 	var (
-		clientChoices = c.getClientChoices()
+		clClientChoices = c.getCLClientChoices()
+		elClientChoices = c.getELClientChoices()
+		toolsChoices    = c.getToolsChoices()
 	)
+
+	// Options that are common to all subcommands
+	commonOptions := []*discordgo.ApplicationCommandOption{
+		{
+			Name:        "repository",
+			Description: "Source repository to build from",
+			Type:        discordgo.ApplicationCommandOptionString,
+			Required:    false,
+		},
+		{
+			Name:        "ref",
+			Description: "Branch, tag or SHA to build from",
+			Type:        discordgo.ApplicationCommandOptionString,
+			Required:    false,
+		},
+		{
+			Name:        "docker_tag",
+			Description: "Override target docker tag",
+			Type:        discordgo.ApplicationCommandOptionString,
+			Required:    false,
+		},
+		{
+			Name:        "build_args",
+			Description: "Build arguments to pass to the Docker build (key=value,...)",
+			Type:        discordgo.ApplicationCommandOptionString,
+			Required:    false,
+		},
+	}
 
 	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
 		Name:        c.Name(),
-		Description: "Trigger client docker image builds",
+		Description: "Trigger docker image builds",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
-				Name:        "trigger",
-				Description: "Trigger a build for a specific client",
+				Name:        "client-cl",
+				Description: "Trigger a build for a consensus layer client",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
-				Options: []*discordgo.ApplicationCommandOption{
+				Options: append([]*discordgo.ApplicationCommandOption{
 					{
 						Name:        "client",
-						Description: "Client to build",
+						Description: "Consensus client to build",
 						Type:        discordgo.ApplicationCommandOptionString,
 						Required:    true,
-						Choices:     clientChoices,
+						Choices:     clClientChoices,
 					},
+				}, commonOptions...),
+			},
+			{
+				Name:        "client-el",
+				Description: "Trigger a build for an execution layer client",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        "repository",
-						Description: "Source repository to build from",
+						Name:        "client",
+						Description: "Execution client to build",
 						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
+						Required:    true,
+						Choices:     elClientChoices,
 					},
+				}, commonOptions...),
+			},
+			{
+				Name:        "tool",
+				Description: "Trigger a build for a tool or utility",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        "ref",
-						Description: "Branch, tag or SHA to build from",
+						Name:        "workflow",
+						Description: "Tool workflow to build",
 						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
+						Required:    true,
+						Choices:     toolsChoices,
 					},
-					{
-						Name:        "docker_tag",
-						Description: "Override target docker tag",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
-					},
-				},
+				}, commonOptions...),
 			},
 		},
 	}); err != nil {
@@ -123,8 +163,8 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 	var err error
 
 	switch data.Options[0].Name {
-	case "trigger":
-		err = c.handleTrigger(s, i, data.Options[0])
+	case "client-cl", "client-el", "tool":
+		err = c.handleBuild(s, i, data.Options[0])
 	}
 
 	if err != nil {

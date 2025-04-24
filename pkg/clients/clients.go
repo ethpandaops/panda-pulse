@@ -105,6 +105,15 @@ var (
 		ELErigon:     "main",
 		ELEthereumJS: "master",
 	}
+	// ClientsWithBuildArgs is a map of clients that support build arguments and their default values.
+	ClientsWithBuildArgs = map[string]struct {
+		BuildArgs    string
+		HasBuildArgs bool
+	}{
+		CLLighthouse: {
+			HasBuildArgs: true,
+		},
+	}
 )
 
 // IsCLClient returns true if the client is a consensus client.
@@ -168,4 +177,22 @@ func GetClientLogo(client string) string {
 // IsPreProductionClient returns true if the client is considered pre-production.
 func IsPreProductionClient(client string) bool {
 	return PreProductionClients[client]
+}
+
+// ClientSupportsBuildArgs returns whether the given client supports build arguments.
+func ClientSupportsBuildArgs(client string) bool {
+	if clientInfo, exists := ClientsWithBuildArgs[client]; exists {
+		return clientInfo.HasBuildArgs
+	}
+
+	return false
+}
+
+// GetClientDefaultBuildArgs returns the default build arguments for a client, if any.
+func GetClientDefaultBuildArgs(client string) string {
+	if clientInfo, exists := ClientsWithBuildArgs[client]; exists && clientInfo.BuildArgs != "" {
+		return clientInfo.BuildArgs
+	}
+
+	return ""
 }
