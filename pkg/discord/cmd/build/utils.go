@@ -8,8 +8,127 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 )
 
-// getClientChoices returns the choices for client selection.
-func (c *BuildCommand) getClientChoices() []*discordgo.ApplicationCommandOptionChoice {
+// AdditionalWorkflows contains information about non-client workflows.
+var AdditionalWorkflows = map[string]struct {
+	Repository   string
+	Branch       string
+	Name         string
+	BuildArgs    string
+	HasBuildArgs bool
+}{
+	"rustic-builder": {
+		Repository: "pawanjay176/rustic-builder",
+		Branch:     "main",
+		Name:       "rustic-builder",
+	},
+	"beacon-metrics-gazer": {
+		Repository: "dapplion/beacon-metrics-gazer",
+		Branch:     "master",
+		Name:       "beacon-metrics-gazer",
+	},
+	"consensus-monitor": {
+		Repository: "ralexstokes/ethereum_consensus_monitor",
+		Branch:     "main",
+		Name:       "consensus-monitor",
+	},
+	"eleel": {
+		Repository: "sigp/eleel",
+		Branch:     "main",
+		Name:       "eleel",
+	},
+	"ethereum-genesis-generator": {
+		Repository: "ethpandaops/ethereum-genesis-generator",
+		Branch:     "master",
+		Name:       "ethereum-genesis-generator",
+	},
+	"execution-monitor": {
+		Repository: "ethereum/nodemonitor",
+		Branch:     "master",
+		Name:       "execution-monitor",
+	},
+	"flashbots-builder": {
+		Repository: "flashbots/builder",
+		Branch:     "main",
+		Name:       "flashbots-builder",
+	},
+	"goomy-blob": {
+		Repository: "ethpandaops/goomy-blob",
+		Branch:     "master",
+		Name:       "goomy-blob",
+	},
+	"goteth": {
+		Repository: "migalabs/goteth",
+		Branch:     "master",
+		Name:       "goteth",
+	},
+	"mev-boost": {
+		Repository: "flashbots/mev-boost",
+		Branch:     "develop",
+		Name:       "mev-boost",
+	},
+	"mev-boost-relay": {
+		Repository: "flashbots/mev-boost-relay",
+		Branch:     "main",
+		Name:       "mev-boost-relay",
+	},
+	"mev-rs": {
+		Repository:   "ralexstokes/mev-rs",
+		Branch:       "main",
+		Name:         "mev-rs",
+		HasBuildArgs: true,
+	},
+	"reth-rbuilder": {
+		Repository:   "flashbots/rbuilder",
+		Branch:       "develop",
+		Name:         "reth-rbuilder",
+		BuildArgs:    "RBUILDER_BIN=reth-rbuilder",
+		HasBuildArgs: true,
+	},
+	"tx-fuzz": {
+		Repository: "MariusVanDerWijden/tx-fuzz",
+		Branch:     "master",
+		Name:       "tx-fuzz",
+	},
+	"armiarma": {
+		Repository: "ethpandaops/armiarma",
+		Branch:     "master",
+		Name:       "armiarma",
+	},
+}
+
+// HasBuildArgs returns whether the given workflow or client supports build arguments.
+func HasBuildArgs(target string) bool {
+	// Check client workflows first
+	if clients.ClientSupportsBuildArgs(target) {
+		return true
+	}
+
+	// Check additional workflows
+	if workflow, exists := AdditionalWorkflows[target]; exists {
+		return workflow.HasBuildArgs
+	}
+
+	return false
+}
+
+// GetDefaultBuildArgs returns the default build arguments for a workflow or client, if any.
+func GetDefaultBuildArgs(target string) string {
+	// Check client workflows first.
+	clientBuildArgs := clients.GetClientDefaultBuildArgs(target)
+	if clientBuildArgs != "" {
+		return clientBuildArgs
+	}
+
+	// Check additional workflows.
+	if workflow, exists := AdditionalWorkflows[target]; exists && workflow.BuildArgs != "" {
+		return workflow.BuildArgs
+	}
+
+	return ""
+}
+
+// getCLClientChoices returns the choices for consensus layer client selection.
+func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
 
 	// Add consensus clients
@@ -20,11 +139,33 @@ func (c *BuildCommand) getClientChoices() []*discordgo.ApplicationCommandOptionC
 		})
 	}
 
+	return choices
+}
+
+// getELClientChoices returns the choices for execution layer client selection.
+func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptionChoice {
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
+
 	// Add execution clients
 	for _, client := range clients.ELClients {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  client,
 			Value: client,
+		})
+	}
+
+	return choices
+}
+
+// getToolsChoices returns the choices for tool workflow selection.
+func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionChoice {
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
+
+	// Add additional workflow choices
+	for key, workflow := range AdditionalWorkflows {
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  workflow.Name,
+			Value: key,
 		})
 	}
 
