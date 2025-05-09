@@ -95,7 +95,7 @@ func (c *ChecksCommand) handleList(
 		// Create a map of registered clients for this network.
 		var (
 			registered = make(map[string]clientInfo)
-			allClients = c.bot.GetClientsService().GetAllClients()
+			allClients = c.bot.GetCartographoor().GetAllClients()
 		)
 
 		// Initialize all clients as unregistered.

@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
@@ -64,9 +64,9 @@ func (c *Config) AsHiveConfig() *hive.Config {
 	}
 }
 
-// AsClientsConfig converts the configuration to a ClientsConfig.
-func (c *Config) AsClientsConfig() clients.ServiceConfig {
-	return clients.ServiceConfig{
+// AsCartographoorConfig converts the configuration to a CartographoorConfig.
+func (c *Config) AsCartographoorConfig() cartographoor.ServiceConfig {
+	return cartographoor.ServiceConfig{
 		SourceURL: c.ClientsDataURL,
 	}
 }

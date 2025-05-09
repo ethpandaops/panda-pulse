@@ -140,7 +140,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 		}
 	}
 
-	clientType := c.bot.GetClientsService().GetClientType(*specificClient)
+	clientType := c.bot.GetCartographoor().GetClientType(*specificClient)
 	if clientType == string(clients.ClientTypeAll) {
 		return fmt.Errorf("unknown client: %s", *specificClient)
 	}
@@ -158,7 +158,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 // registerAllClients registers a monitor alert for all clients for a given network.
 func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID, guildID string, schedule string) error {
 	// Register CL clients.
-	for _, client := range c.bot.GetClientsService().GetCLClients() {
+	for _, client := range c.bot.GetCartographoor().GetCLClients() {
 		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID, guildID)
 		alert.Schedule = schedule
 
@@ -168,7 +168,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 	}
 
 	// Register EL clients.
-	for _, client := range c.bot.GetClientsService().GetELClients() {
+	for _, client := range c.bot.GetCartographoor().GetELClients() {
 		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID, guildID)
 		alert.Schedule = schedule
 

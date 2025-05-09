@@ -59,19 +59,3 @@ type query struct {
 	Interval      string                 `json:"interval"`
 	LegendFormat  string                 `json:"legendFormat,omitempty"`
 }
-
-// networkResponse represents the response structure for network queries.
-type networkResponse struct {
-	Results map[string]struct {
-		Frames []struct {
-			Data struct {
-				Values [][]interface{} `json:"values"`
-			} `json:"data"`
-			Schema struct {
-				Fields []struct {
-					Labels map[string]string `json:"labels"`
-				} `json:"fields"`
-			} `json:"schema"`
-		} `json:"frames"`
-	} `json:"results"`
-}

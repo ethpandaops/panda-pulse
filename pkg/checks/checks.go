@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/analyzer"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/logger"
 )
@@ -70,17 +71,17 @@ type Runner interface {
 
 // defaultRunner is a default implementation of the Runner interface.
 type defaultRunner struct {
-	id             string
-	log            *logger.CheckLogger
-	cfg            Config
-	checks         []Check
-	results        []*Result
-	analysis       *analyzer.AnalysisResult
-	clientsService *clients.Service
+	id            string
+	log           *logger.CheckLogger
+	cfg           Config
+	checks        []Check
+	results       []*Result
+	analysis      *analyzer.AnalysisResult
+	cartographoor *cartographoor.Service
 }
 
 // NewDefaultRunner creates a new default check runner.
-func NewDefaultRunner(cfg Config, clientsService *clients.Service) Runner {
+func NewDefaultRunner(cfg Config, cartographoor *cartographoor.Service) Runner {
 	// Give the runner a unique ID, so we can identify things easily.
 	id := generateCheckID()
 
@@ -90,11 +91,11 @@ func NewDefaultRunner(cfg Config, clientsService *clients.Service) Runner {
 	log := logger.NewCheckLogger(id)
 
 	return &defaultRunner{
-		id:             id,
-		log:            log,
-		cfg:            cfg,
-		checks:         make([]Check, 0),
-		clientsService: clientsService,
+		id:            id,
+		log:           log,
+		cfg:           cfg,
+		checks:        make([]Check, 0),
+		cartographoor: cartographoor,
 	}
 }
 
@@ -133,12 +134,12 @@ func (r *defaultRunner) RunChecks(ctx context.Context) error {
 	)
 
 	if r.cfg.ConsensusNode != "" {
-		a = analyzer.NewAnalyzer(r.log, r.cfg.ConsensusNode, analyzer.ClientTypeCL, r.clientsService)
+		a = analyzer.NewAnalyzer(r.log, r.cfg.ConsensusNode, analyzer.ClientTypeCL, r.cartographoor)
 		client = r.cfg.ConsensusNode
 	}
 
 	if r.cfg.ExecutionNode != "" {
-		a = analyzer.NewAnalyzer(r.log, r.cfg.ExecutionNode, analyzer.ClientTypeEL, r.clientsService)
+		a = analyzer.NewAnalyzer(r.log, r.cfg.ExecutionNode, analyzer.ClientTypeEL, r.cartographoor)
 		client = r.cfg.ExecutionNode
 	}
 

@@ -131,7 +131,7 @@ func (c *MentionsCommand) buildMentionsTable(mentions map[string]*store.ClientMe
 	var msg strings.Builder
 
 	// Get all available clients.
-	allClients := c.bot.GetClientsService().GetAllClients()
+	allClients := c.bot.GetCartographoor().GetAllClients()
 	sort.Strings(allClients)
 
 	msg.WriteString("```\n")

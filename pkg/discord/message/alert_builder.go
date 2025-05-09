@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -45,7 +45,7 @@ type AlertMessageBuilder struct {
 	hiveBaseURL                string
 	rootCauses                 []string // List of clients determined to be root causes
 	onlyInfraOrUnrelatedIssues bool     // Flag to indicate if only infrastructure or unrelated issues were detected
-	clientsService             *clients.Service
+	cartographoor              *cartographoor.Service
 }
 
 type Config struct {
@@ -56,7 +56,7 @@ type Config struct {
 	GrafanaBaseURL string
 	HiveBaseURL    string
 	RootCauses     []string // List of clients determined to be root causes
-	ClientsService *clients.Service
+	Cartographoor  *cartographoor.Service
 }
 
 // NewAlertMessageBuilder creates a new AlertMessageBuilder.
@@ -69,7 +69,7 @@ func NewAlertMessageBuilder(cfg *Config) *AlertMessageBuilder {
 		grafanaBaseURL: cfg.GrafanaBaseURL,
 		hiveBaseURL:    cfg.HiveBaseURL,
 		rootCauses:     cfg.RootCauses,
-		clientsService: cfg.ClientsService,
+		cartographoor:  cfg.Cartographoor,
 	}
 }
 
@@ -277,7 +277,7 @@ func (b *AlertMessageBuilder) buildInstanceList(instances map[string]bool) strin
 			elClient = parts[1]
 		}
 
-		if (b.clientsService != nil && (b.clientsService.IsPreProductionClient(clClient) || b.clientsService.IsPreProductionClient(elClient))) ||
+		if (b.cartographoor != nil && (b.cartographoor.IsPreProductionClient(clClient) || b.cartographoor.IsPreProductionClient(elClient))) ||
 			rootCauseMap[clClient] || rootCauseMap[elClient] {
 			unrelatedInstances = append(unrelatedInstances, inst)
 		} else {
@@ -413,8 +413,8 @@ func (b *AlertMessageBuilder) buildMainEmbed() *discordgo.MessageEmbed {
 		Fields:    make([]*discordgo.MessageEmbedField, 0),
 	}
 
-	if b.clientsService != nil {
-		if logo := b.clientsService.GetClientLogo(b.alert.Client); logo != "" {
+	if b.cartographoor != nil {
+		if logo := b.cartographoor.GetClientLogo(b.alert.Client); logo != "" {
 			embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
 				URL: logo,
 			}
@@ -448,12 +448,12 @@ func (b *AlertMessageBuilder) buildActionButtons() []discordgo.MessageComponent 
 	executionClient := "All"
 	consensusClient := "All"
 
-	if b.clientsService != nil {
-		if b.clientsService.IsELClient(b.alert.Client) {
+	if b.cartographoor != nil {
+		if b.cartographoor.IsELClient(b.alert.Client) {
 			executionClient = b.alert.Client
 		}
 
-		if b.clientsService.IsCLClient(b.alert.Client) {
+		if b.cartographoor.IsCLClient(b.alert.Client) {
 			consensusClient = b.alert.Client
 		}
 	}

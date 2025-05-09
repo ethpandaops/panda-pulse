@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/build"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
@@ -32,17 +32,17 @@ const (
 
 // Service is the main service for the panda-pulse application.
 type Service struct {
-	config          *Config
-	log             *logrus.Logger
-	scheduler       *scheduler.Scheduler
-	bot             discord.Bot
-	monitorRepo     *store.MonitorRepo
-	checksRepo      *store.ChecksRepo
-	mentionsRepo    *store.MentionsRepo
-	hiveSummaryRepo *store.HiveSummaryRepo
-	clientsService  *clients.Service
-	healthSrv       *http.Server
-	metricsSrv      *http.Server
+	config               *Config
+	log                  *logrus.Logger
+	scheduler            *scheduler.Scheduler
+	bot                  discord.Bot
+	monitorRepo          *store.MonitorRepo
+	checksRepo           *store.ChecksRepo
+	mentionsRepo         *store.MentionsRepo
+	hiveSummaryRepo      *store.HiveSummaryRepo
+	cartographoorService *cartographoor.Service
+	healthSrv            *http.Server
+	metricsSrv           *http.Server
 }
 
 // NewService creates a new Service.
@@ -74,18 +74,18 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	githubHTTPClient := createServiceClient("github")
 	clientsHTTPClient := createServiceClient("clients")
 
-	// Create clients service
-	clientsConfig := cfg.AsClientsConfig()
-	clientsConfig.Logger = log
-	clientsConfig.HTTPClient = clientsHTTPClient
+	// Create cartographoor service
+	cartographoorConfig := cfg.AsCartographoorConfig()
+	cartographoorConfig.Logger = log
+	cartographoorConfig.HTTPClient = clientsHTTPClient
 
-	clientsService, err := clients.NewService(ctx, clientsConfig)
+	cartographoorService, err := cartographoor.NewService(ctx, cartographoorConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create clients service: %w", err)
+		return nil, fmt.Errorf("failed to create cartographoor service: %w", err)
 	}
 
-	// Start the clients service
-	clientsService.Start(ctx)
+	// Start the cartographoor service
+	cartographoorService.Start(ctx)
 
 	// Create store repositories.
 	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
@@ -134,7 +134,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		grafanaClient,
 		hiveClient,
 		discordMetrics,
-		clientsService,
+		cartographoorService,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bot: %w", err)
@@ -149,15 +149,15 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	})
 
 	return &Service{
-		config:          cfg,
-		log:             log,
-		bot:             bot,
-		scheduler:       scheduler,
-		monitorRepo:     monitorRepo,
-		checksRepo:      checksRepo,
-		mentionsRepo:    mentionsRepo,
-		hiveSummaryRepo: hiveSummaryRepo,
-		clientsService:  clientsService,
+		config:               cfg,
+		log:                  log,
+		bot:                  bot,
+		scheduler:            scheduler,
+		monitorRepo:          monitorRepo,
+		checksRepo:           checksRepo,
+		mentionsRepo:         mentionsRepo,
+		hiveSummaryRepo:      hiveSummaryRepo,
+		cartographoorService: cartographoorService,
 	}, nil
 }
 
@@ -193,9 +193,9 @@ func (s *Service) Start(ctx context.Context) error {
 }
 
 func (s *Service) Stop(ctx context.Context) error {
-	// Stop the clients service
-	s.log.Info("Stopping clients service")
-	s.clientsService.Stop()
+	// Stop the cartographoor service
+	s.log.Info("Stopping cartographoor service")
+	s.cartographoorService.Stop()
 
 	// Stop the scheduler.
 	s.log.Info("Stopping scheduler")
