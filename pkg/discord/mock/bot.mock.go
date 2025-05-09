@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	discordgo "github.com/bwmarrin/discordgo"
+	clients "github.com/ethpandaops/panda-pulse/pkg/clients"
 	common "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	grafana "github.com/ethpandaops/panda-pulse/pkg/grafana"
 	hive "github.com/ethpandaops/panda-pulse/pkg/hive"
@@ -59,6 +60,20 @@ func (m *MockBot) GetChecksRepo() *store.ChecksRepo {
 func (mr *MockBotMockRecorder) GetChecksRepo() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChecksRepo", reflect.TypeOf((*MockBot)(nil).GetChecksRepo))
+}
+
+// GetClientsService mocks base method.
+func (m *MockBot) GetClientsService() *clients.Service {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClientsService")
+	ret0, _ := ret[0].(*clients.Service)
+	return ret0
+}
+
+// GetClientsService indicates an expected call of GetClientsService.
+func (mr *MockBotMockRecorder) GetClientsService() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClientsService", reflect.TypeOf((*MockBot)(nil).GetClientsService))
 }
 
 // GetGrafana mocks base method.

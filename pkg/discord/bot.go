@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
@@ -35,6 +36,7 @@ type BotServices interface {
 	GetHiveSummaryRepo() *store.HiveSummaryRepo
 	GetGrafana() grafana.Client
 	GetHive() hive.Hive
+	GetClientsService() *clients.Service
 }
 
 // Bot is the interface for the Discord bot.
@@ -58,6 +60,7 @@ type DiscordBot struct {
 	hiveSummaryRepo *store.HiveSummaryRepo
 	grafana         grafana.Client
 	hive            hive.Hive
+	clientsService  *clients.Service
 	commands        []common.Command
 	metrics         *Metrics
 }
@@ -74,6 +77,7 @@ func NewBot(
 	grafana grafana.Client,
 	hive hive.Hive,
 	metrics *Metrics,
+	clientsService *clients.Service,
 ) (Bot, error) {
 	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -92,6 +96,7 @@ func NewBot(
 		hiveSummaryRepo: hiveSummaryRepo,
 		grafana:         grafana,
 		hive:            hive,
+		clientsService:  clientsService,
 		commands:        make([]common.Command, 0),
 		metrics:         metrics,
 	}
@@ -181,6 +186,11 @@ func (b *DiscordBot) GetGrafana() grafana.Client {
 // GetHive returns the Hive client.
 func (b *DiscordBot) GetHive() hive.Hive {
 	return b.hive
+}
+
+// GetClientsService returns the clients service.
+func (b *DiscordBot) GetClientsService() *clients.Service {
+	return b.clientsService
 }
 
 // handleInteraction handles Discord command interactions.

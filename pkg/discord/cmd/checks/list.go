@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/robfig/cron/v3"
 )
@@ -96,7 +95,7 @@ func (c *ChecksCommand) handleList(
 		// Create a map of registered clients for this network.
 		var (
 			registered = make(map[string]clientInfo)
-			allClients = append(clients.CLClients, clients.ELClients...)
+			allClients = c.bot.GetClientsService().GetAllClients()
 		)
 
 		// Initialize all clients as unregistered.

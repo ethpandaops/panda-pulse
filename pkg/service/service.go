@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/build"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
@@ -39,6 +40,7 @@ type Service struct {
 	checksRepo      *store.ChecksRepo
 	mentionsRepo    *store.MentionsRepo
 	hiveSummaryRepo *store.HiveSummaryRepo
+	clientsService  *clients.Service
 	healthSrv       *http.Server
 	metricsSrv      *http.Server
 }
@@ -70,9 +72,20 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	grafanaHTTPClient := createServiceClient("grafana")
 	hiveHTTPClient := createServiceClient("hive")
 	githubHTTPClient := createServiceClient("github")
+	clientsHTTPClient := createServiceClient("clients")
 
-	// We don't need a separate client wrapper since we're using the transport-based metrics
-	// but we'll keep it around for other usages
+	// Create clients service
+	clientsConfig := cfg.AsClientsConfig()
+	clientsConfig.Logger = log
+	clientsConfig.HTTPClient = clientsHTTPClient
+
+	clientsService, err := clients.NewService(ctx, clientsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clients service: %w", err)
+	}
+
+	// Start the clients service
+	clientsService.Start(ctx)
 
 	// Create store repositories.
 	monitorRepo, err := store.NewMonitorRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
@@ -121,6 +134,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		grafanaClient,
 		hiveClient,
 		discordMetrics,
+		clientsService,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bot: %w", err)
@@ -143,6 +157,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		checksRepo:      checksRepo,
 		mentionsRepo:    mentionsRepo,
 		hiveSummaryRepo: hiveSummaryRepo,
+		clientsService:  clientsService,
 	}, nil
 }
 
@@ -178,6 +193,10 @@ func (s *Service) Start(ctx context.Context) error {
 }
 
 func (s *Service) Stop(ctx context.Context) error {
+	// Stop the clients service
+	s.log.Info("Stopping clients service")
+	s.clientsService.Stop()
+
 	// Stop the scheduler.
 	s.log.Info("Stopping scheduler")
 

@@ -140,12 +140,12 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 		}
 	}
 
-	clientType := getClientType(*specificClient)
-	if clientType == clients.ClientTypeAll {
+	clientType := c.bot.GetClientsService().GetClientType(*specificClient)
+	if clientType == string(clients.ClientTypeAll) {
 		return fmt.Errorf("unknown client: %s", *specificClient)
 	}
 
-	alert := newMonitorAlert(network, *specificClient, clientType, channelID, guildID)
+	alert := newMonitorAlert(network, *specificClient, clients.ClientType(clientType), channelID, guildID)
 	alert.Schedule = schedule
 
 	if err := c.scheduleAlert(ctx, alert); err != nil {
@@ -158,7 +158,7 @@ func (c *ChecksCommand) registerAlert(ctx context.Context, network, channelID, g
 // registerAllClients registers a monitor alert for all clients for a given network.
 func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channelID, guildID string, schedule string) error {
 	// Register CL clients.
-	for _, client := range clients.CLClients {
+	for _, client := range c.bot.GetClientsService().GetCLClients() {
 		alert := newMonitorAlert(network, client, clients.ClientTypeCL, channelID, guildID)
 		alert.Schedule = schedule
 
@@ -168,7 +168,7 @@ func (c *ChecksCommand) registerAllClients(ctx context.Context, network, channel
 	}
 
 	// Register EL clients.
-	for _, client := range clients.ELClients {
+	for _, client := range c.bot.GetClientsService().GetELClients() {
 		alert := newMonitorAlert(network, client, clients.ClientTypeEL, channelID, guildID)
 		alert.Schedule = schedule
 
@@ -231,21 +231,4 @@ func newMonitorAlert(network, client string, clientType clients.ClientType, chan
 		UpdatedAt:      now,
 		Enabled:        true,
 	}
-}
-
-// getClientType determines the client type from a client name.
-func getClientType(clientName string) clients.ClientType {
-	for _, c := range clients.CLClients {
-		if c == clientName {
-			return clients.ClientTypeCL
-		}
-	}
-
-	for _, c := range clients.ELClients {
-		if c == clientName {
-			return clients.ClientTypeEL
-		}
-	}
-
-	return clients.ClientTypeAll
 }

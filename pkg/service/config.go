@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/discord"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
@@ -22,6 +23,7 @@ type Config struct {
 	S3BucketPrefix     string
 	S3Region           string
 	S3EndpointURL      string
+	ClientsDataURL     string
 	MetricsAddress     string // Defaults to :9091
 	HealthCheckAddress string // Defaults to :9191
 }
@@ -59,6 +61,13 @@ func (c *Config) AsGrafanaConfig() *grafana.Config {
 func (c *Config) AsHiveConfig() *hive.Config {
 	return &hive.Config{
 		BaseURL: hive.BaseURL,
+	}
+}
+
+// AsClientsConfig converts the configuration to a ClientsConfig.
+func (c *Config) AsClientsConfig() clients.ServiceConfig {
+	return clients.ServiceConfig{
+		SourceURL: c.ClientsDataURL,
 	}
 }
 

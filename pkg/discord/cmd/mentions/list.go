@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
 
@@ -79,7 +78,7 @@ func (c *MentionsCommand) handleList(
 			}
 		}
 
-		msg := fmt.Sprintf(msgNetworkMentions, networkName) + buildMentionsTable(clientMentions)
+		msg := fmt.Sprintf(msgNetworkMentions, networkName) + c.buildMentionsTable(clientMentions)
 
 		if respondErr := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -128,11 +127,11 @@ func (c *MentionsCommand) listMentions(ctx context.Context, guildID string, netw
 }
 
 // buildMentionsTable creates an ASCII table of client mentions.
-func buildMentionsTable(mentions map[string]*store.ClientMention) string {
+func (c *MentionsCommand) buildMentionsTable(mentions map[string]*store.ClientMention) string {
 	var msg strings.Builder
 
 	// Get all available clients.
-	allClients := append(clients.CLClients, clients.ELClients...)
+	allClients := c.bot.GetClientsService().GetAllClients()
 	sort.Strings(allClients)
 
 	msg.WriteString("```\n")

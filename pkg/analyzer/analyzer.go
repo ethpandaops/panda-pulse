@@ -31,10 +31,11 @@ type AnalysisState struct {
 }
 
 type Analyzer struct {
-	nodeStatusMap NodeStatusMap
-	targetClient  string
-	clientType    ClientType
-	log           *logger.CheckLogger
+	nodeStatusMap  NodeStatusMap
+	targetClient   string
+	clientType     ClientType
+	log            *logger.CheckLogger
+	clientsService *clients.Service
 }
 
 type Config struct {
@@ -48,12 +49,13 @@ type Config struct {
 	PromDatasourceID string
 }
 
-func NewAnalyzer(log *logger.CheckLogger, targetClient string, clientType ClientType) *Analyzer {
+func NewAnalyzer(log *logger.CheckLogger, targetClient string, clientType ClientType, clientsService *clients.Service) *Analyzer {
 	return &Analyzer{
-		nodeStatusMap: make(NodeStatusMap),
-		targetClient:  targetClient,
-		clientType:    clientType,
-		log:           log,
+		nodeStatusMap:  make(NodeStatusMap),
+		targetClient:   targetClient,
+		clientType:     clientType,
+		log:            log,
+		clientsService: clientsService,
 	}
 }
 
@@ -302,7 +304,7 @@ func (a *Analyzer) removeFalsePositives(state *AnalysisState) {
 		nonMajorRootCauseFailures := 0
 
 		for _, peer := range failure.FailedWith {
-			if !majorRootCauses[peer] && !clients.IsPreProductionClient(peer) {
+			if !majorRootCauses[peer] && !a.clientsService.IsPreProductionClient(peer) {
 				nonMajorRootCauseFailures++
 			}
 		}
@@ -312,7 +314,7 @@ func (a *Analyzer) removeFalsePositives(state *AnalysisState) {
 		// 2. Not failing with enough non-major-root-cause and non-pre-production peers.
 		if nonMajorRootCauseFailures < MinFailuresForRootCause {
 			// Exception: Don't remove pre-production clients from root causes if they have multiple failures.
-			if clients.IsPreProductionClient(client) && len(failure.FailedWith) >= MinFailuresForRootCause {
+			if a.clientsService.IsPreProductionClient(client) && len(failure.FailedWith) >= MinFailuresForRootCause {
 				continue
 			}
 
@@ -360,7 +362,7 @@ func (a *Analyzer) findUnexplainedIssues(state *AnalysisState) {
 		}
 
 		// Skip if either client is a pre-production client.
-		if clients.IsPreProductionClient(pair.CLClient) || clients.IsPreProductionClient(pair.ELClient) {
+		if a.clientsService.IsPreProductionClient(pair.CLClient) || a.clientsService.IsPreProductionClient(pair.ELClient) {
 			a.log.Printf("  - Skipping pre-production client pair: %s-%s", pair.CLClient, pair.ELClient)
 
 			continue

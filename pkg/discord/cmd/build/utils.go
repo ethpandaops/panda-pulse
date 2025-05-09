@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 )
 
@@ -97,9 +96,9 @@ var AdditionalWorkflows = map[string]struct {
 }
 
 // HasBuildArgs returns whether the given workflow or client supports build arguments.
-func HasBuildArgs(target string) bool {
+func (c *BuildCommand) HasBuildArgs(target string) bool {
 	// Check client workflows first
-	if clients.ClientSupportsBuildArgs(target) {
+	if c.bot.GetClientsService().ClientSupportsBuildArgs(target) {
 		return true
 	}
 
@@ -112,9 +111,9 @@ func HasBuildArgs(target string) bool {
 }
 
 // GetDefaultBuildArgs returns the default build arguments for a workflow or client, if any.
-func GetDefaultBuildArgs(target string) string {
+func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 	// Check client workflows first.
-	clientBuildArgs := clients.GetClientDefaultBuildArgs(target)
+	clientBuildArgs := c.bot.GetClientsService().GetClientDefaultBuildArgs(target)
 	if clientBuildArgs != "" {
 		return clientBuildArgs
 	}
@@ -130,11 +129,12 @@ func GetDefaultBuildArgs(target string) string {
 // getCLClientChoices returns the choices for consensus layer client selection.
 func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
+	clientsService := c.bot.GetClientsService()
 
 	// Add consensus clients
-	for _, client := range clients.CLClients {
+	for _, client := range clientsService.GetCLClients() {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  client,
+			Name:  clientsService.GetClientDisplayName(client),
 			Value: client,
 		})
 	}
@@ -145,11 +145,12 @@ func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptio
 // getELClientChoices returns the choices for execution layer client selection.
 func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
+	clientsService := c.bot.GetClientsService()
 
 	// Add execution clients
-	for _, client := range clients.ELClients {
+	for _, client := range clientsService.GetELClients() {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  client,
+			Name:  clientsService.GetClientDisplayName(client),
 			Value: client,
 		})
 	}
