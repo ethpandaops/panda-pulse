@@ -29,8 +29,7 @@ type Service struct {
 
 // NetworksData represents the structure of the networks.json file.
 type NetworksData struct {
-	Clients  map[string]ClientData `json:"clients"`
-	Networks map[string]Network    `json:"networks"`
+	Clients map[string]ClientData `json:"clients"`
 }
 
 // ClientData represents the structure of a client in the networks.json file.
@@ -44,25 +43,6 @@ type ClientData struct {
 	LatestVersion string `json:"latestVersion"`
 	WebsiteURL    string `json:"websiteUrl"`
 	DocsURL       string `json:"docsUrl"`
-}
-
-// Network represents a network in the networks.json file.
-type Network struct {
-	Name   string        `json:"name"`
-	Status string        `json:"status"`
-	Images *NetworkImage `json:"images,omitempty"`
-}
-
-// NetworkImage contains image information for a network.
-type NetworkImage struct {
-	URL     string          `json:"url"`
-	Clients []NetworkClient `json:"clients"`
-}
-
-// NetworkClient represents a client in a network.
-type NetworkClient struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
 }
 
 // ServiceConfig contains the configuration for the clients service.
@@ -456,19 +436,4 @@ func (s *Service) GetELClients() []string {
 // GetAdminRoles returns all admin roles.
 func (s *Service) GetAdminRoles() map[string]string {
 	return AdminRoles
-}
-
-// GetNetworksData returns a copy of the current networks data.
-func (s *Service) GetNetworksData() *NetworksData {
-	s.clientsMu.RLock()
-	defer s.clientsMu.RUnlock()
-
-	if s.remoteData == nil {
-		return nil
-	}
-
-	// Return a copy to prevent concurrent access issues
-	dataCopy := *s.remoteData
-
-	return &dataCopy
 }

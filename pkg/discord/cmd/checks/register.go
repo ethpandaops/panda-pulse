@@ -232,20 +232,3 @@ func newMonitorAlert(network, client string, clientType clients.ClientType, chan
 		Enabled:        true,
 	}
 }
-
-// getClientType determines the client type from a client name.
-// func getClientType(clientName string) clients.ClientType {
-// 	for _, c := range clients.CLClients {
-// 		if c == clientName {
-// 			return clients.ClientTypeCL
-// 		}
-// 	}
-
-// 	for _, c := range clients.ELClients {
-// 		if c == clientName {
-// 			return clients.ClientTypeEL
-// 		}
-// 	}
-
-// 	return clients.ClientTypeAll
-// }
