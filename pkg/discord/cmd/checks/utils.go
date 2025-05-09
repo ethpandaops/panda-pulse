@@ -6,7 +6,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 )
 
 // categoryResults is a struct that holds the results of a category.
@@ -23,15 +22,8 @@ var orderedCategories = []checks.Category{
 
 // getClientChoices returns the choices for the client dropdown.
 func (c *ChecksCommand) getClientChoices() []*discordgo.ApplicationCommandOptionChoice {
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(clients.CLClients)+len(clients.ELClients))
-	for _, client := range clients.CLClients {
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  client,
-			Value: client,
-		})
-	}
-
-	for _, client := range clients.ELClients {
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(c.bot.GetClientsService().GetAllClients()))
+	for _, client := range c.bot.GetClientsService().GetAllClients() {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  client,
 			Value: client,

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,7 +32,8 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		for _, opt := range option.Options {
 			if opt.Name == "client" {
 				targetName = opt.StringValue()
-				targetDisplayName = targetName
+				clientsService := c.bot.GetClientsService()
+				targetDisplayName = clientsService.GetClientDisplayName(targetName)
 
 				break
 			}
@@ -86,9 +86,10 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	// Use defaults if not provided.
 	if repository == "" {
 		if isClient {
-			if repo, exists := clients.DefaultRepositories[targetName]; exists {
-				repository = repo
-			} else {
+			clientsService := c.bot.GetClientsService()
+			repository = clientsService.GetClientRepository(targetName)
+
+			if repository == "" {
 				// For unknown clients, repository is required.
 				if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 					Content: stringPtr(fmt.Sprintf("❌ Repository is required for **%s**", targetDisplayName)),
@@ -117,9 +118,10 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 
 	if ref == "" {
 		if isClient {
-			if branch, exists := clients.DefaultBranches[targetName]; exists {
-				ref = branch
-			} else {
+			clientsService := c.bot.GetClientsService()
+
+			ref = clientsService.GetClientBranch(targetName)
+			if ref == "" {
 				// For unknown clients, default to main.
 				ref = "main"
 			}
@@ -135,8 +137,8 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	}
 
 	// Use default build args if provided and user didn't specify any.
-	if buildArgs == "" && HasBuildArgs(targetName) {
-		buildArgs = GetDefaultBuildArgs(targetName)
+	if buildArgs == "" && c.HasBuildArgs(targetName) {
+		buildArgs = c.GetDefaultBuildArgs(targetName)
 	}
 
 	// Trigger the workflow.
@@ -195,8 +197,9 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	}
 
 	// Add thumbnail.
-	if isClient && (clients.IsELClient(targetName) || clients.IsCLClient(targetName)) {
-		if logo := clients.GetClientLogo(targetName); logo != "" {
+	clientsService := c.bot.GetClientsService()
+	if isClient && (clientsService.IsELClient(targetName) || clientsService.IsCLClient(targetName)) {
+		if logo := clientsService.GetClientLogo(targetName); logo != "" {
 			embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
 				URL: logo,
 			}
@@ -258,10 +261,10 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 
 	// Special case mapping for clients with different repo/workflow names
 	switch buildTarget {
-	case clients.CLNimbus:
+	case "nimbus":
 		// See: https://github.com/status-im/nimbus-eth2
 		workflowName = "nimbus-eth2"
-	case clients.ELNimbusel:
+	case "nimbusel":
 		// See: https://github.com/status-im/nimbus-eth1
 		workflowName = "nimbus-eth1"
 	default:

@@ -1,25 +1,31 @@
 package analyzer
 
 import (
+	"context"
 	"testing"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/ethpandaops/panda-pulse/pkg/logger"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAnalyzer_RootCauseDetection(t *testing.T) {
+	cs, _ := clients.NewService(context.Background(), clients.ServiceConfig{})
+
 	tests := []struct {
 		name            string
 		targetClient    string
 		clientType      ClientType
+		clientsService  *clients.Service
 		nodes           map[string]bool // map[nodeName]isHealthy
 		wantRootCause   []string
 		wantUnexplained []string
 	}{
 		{
-			name:         "all healthy nodes",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "all healthy nodes",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"lighthouse-geth-1":       true,
 				"lighthouse-besu-1":       true,
@@ -29,9 +35,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "unexplained issue - single failure pair",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "unexplained issue - single failure pair",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"lighthouse-erigon-1": false, // Only this lighthouse+erigon pair is failing.
 				"lighthouse-geth-1":   true,  // Other lighthouse pairs are healthy.
@@ -43,9 +50,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{"lighthouse-erigon-1"},
 		},
 		{
-			name:         "clear root cause - EL client failing with many CL clients",
-			targetClient: "ethereumjs",
-			clientType:   ClientTypeEL,
+			name:           "clear root cause - EL client failing with many CL clients",
+			targetClient:   "ethereumjs",
+			clientType:     ClientTypeEL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"lighthouse-ethereumjs-1": false,
 				"teku-ethereumjs-1":       false,
@@ -62,9 +70,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 		// This tests when we have multiple instances of the same client pair (prysm-geth-N).
 		// Some failing, some healthy, each failing instance should be listed as unexplained.
 		{
-			name:         "multiple node instances - same client pair",
-			targetClient: "prysm",
-			clientType:   ClientTypeCL,
+			name:           "multiple node instances - same client pair",
+			targetClient:   "prysm",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"prysm-geth-1": false,
 				"prysm-geth-2": false,
@@ -82,9 +91,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			},
 		},
 		{
-			name:         "clear root cause - CL client failing with many EL clients",
-			targetClient: "prysm",
-			clientType:   ClientTypeCL,
+			name:           "clear root cause - CL client failing with many EL clients",
+			targetClient:   "prysm",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"prysm-erigon-1":     false,
 				"prysm-geth-1":       false,
@@ -99,9 +109,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "false positive - client only failing with known root causes",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "false positive - client only failing with known root causes",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// ethereumjs + nethermind are root causes (failing with many CL clients).
 				"lighthouse-ethereumjs-1": false,
@@ -120,9 +131,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "mixed health status - some nodes healthy, some failing",
-			targetClient: "ethereumjs",
-			clientType:   ClientTypeEL,
+			name:           "mixed health status - some nodes healthy, some failing",
+			targetClient:   "ethereumjs",
+			clientType:     ClientTypeEL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				"lighthouse-ethereumjs-1": false,
 				"teku-ethereumjs-1":       false,
@@ -137,9 +149,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "borderline case - client failing with exactly MinFailuresForRootCause peers",
-			targetClient: "reth",
-			clientType:   ClientTypeEL,
+			name:           "borderline case - client failing with exactly MinFailuresForRootCause peers",
+			targetClient:   "reth",
+			clientType:     ClientTypeEL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// Exactly MinFailuresForRootCause (2) failures.
 				"lighthouse-reth-1": false,
@@ -152,9 +165,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "below threshold - client failing with less than MinFailuresForRootCause peers",
-			targetClient: "reth",
-			clientType:   ClientTypeEL,
+			name:           "below threshold - client failing with less than MinFailuresForRootCause peers",
+			targetClient:   "reth",
+			clientType:     ClientTypeEL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// Only one failure, below MinFailuresForRootCause (2).
 				"lighthouse-reth-1": false,
@@ -167,9 +181,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{"lighthouse-reth-1"},
 		},
 		{
-			name:         "secondary root cause - client failing with non-root-cause peers",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "secondary root cause - client failing with non-root-cause peers",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// lighthouse failing with multiple non-root-cause EL clients.
 				"lighthouse-geth-1":       false,
@@ -187,9 +202,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "major root cause overrides - client failing with many peers including root causes",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "major root cause overrides - client failing with many peers including root causes",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// lighthouse failing with many peers (>4).
 				"lighthouse-geth-1":       false,
@@ -207,9 +223,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "secondary root cause - EL client failing with non-root-cause peers",
-			targetClient: "besu",
-			clientType:   ClientTypeEL,
+			name:           "secondary root cause - EL client failing with non-root-cause peers",
+			targetClient:   "besu",
+			clientType:     ClientTypeEL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// besu failing with multiple non-root-cause CL clients
 				"lighthouse-besu-1": false,
@@ -227,9 +244,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{}, // These won't show up as unexplained from besu's perspective.
 		},
 		{
-			name:         "secondary root cause - CL client failing with non-root-cause peers",
-			targetClient: "teku",
-			clientType:   ClientTypeCL,
+			name:           "secondary root cause - CL client failing with non-root-cause peers",
+			targetClient:   "teku",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// teku failing with multiple non-root-cause EL clients.
 				"teku-geth-1":       false,
@@ -247,9 +265,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "unexplained issues - CL clients with single failures",
-			targetClient: "grandine",
-			clientType:   ClientTypeCL,
+			name:           "unexplained issues - CL clients with single failures",
+			targetClient:   "grandine",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// Single failure with besu
 				"grandine-besu-1": false,
@@ -261,9 +280,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{"grandine-besu-1"},
 		},
 		{
-			name:         "pre-production client exception - not removed as false positive",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "pre-production client exception - not removed as false positive",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// ethereumjs is already in PreProductionClients map
 				// Failing with exactly MinFailuresForRootCause peers (which happen to be major root causes)
@@ -288,9 +308,10 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 			wantUnexplained: []string{},
 		},
 		{
-			name:         "pre-production client skipped in unexplained issues",
-			targetClient: "lighthouse",
-			clientType:   ClientTypeCL,
+			name:           "pre-production client skipped in unexplained issues",
+			targetClient:   "lighthouse",
+			clientType:     ClientTypeCL,
+			clientsService: cs,
 			nodes: map[string]bool{
 				// A failing node with pre-production client (ethereumjs)
 				"lighthouse-ethereumjs-1": false,
@@ -309,7 +330,7 @@ func TestAnalyzer_RootCauseDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := logger.NewCheckLogger("id")
-			a := NewAnalyzer(log, tt.targetClient, tt.clientType)
+			a := NewAnalyzer(log, tt.targetClient, tt.clientType, tt.clientsService)
 
 			for nodeName, isHealthy := range tt.nodes {
 				a.AddNodeStatus(nodeName, isHealthy)
