@@ -32,8 +32,8 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		for _, opt := range option.Options {
 			if opt.Name == "client" {
 				targetName = opt.StringValue()
-				clientsService := c.bot.GetClientsService()
-				targetDisplayName = clientsService.GetClientDisplayName(targetName)
+				cartographoor := c.bot.GetCartographoor()
+				targetDisplayName = cartographoor.GetClientDisplayName(targetName)
 
 				break
 			}
@@ -86,8 +86,8 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	// Use defaults if not provided.
 	if repository == "" {
 		if isClient {
-			clientsService := c.bot.GetClientsService()
-			repository = clientsService.GetClientRepository(targetName)
+			cartographoor := c.bot.GetCartographoor()
+			repository = cartographoor.GetClientRepository(targetName)
 
 			if repository == "" {
 				// For unknown clients, repository is required.
@@ -118,9 +118,9 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 
 	if ref == "" {
 		if isClient {
-			clientsService := c.bot.GetClientsService()
+			cartographoor := c.bot.GetCartographoor()
 
-			ref = clientsService.GetClientBranch(targetName)
+			ref = cartographoor.GetClientBranch(targetName)
 			if ref == "" {
 				// For unknown clients, default to main.
 				ref = "main"
@@ -197,9 +197,9 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	}
 
 	// Add thumbnail.
-	clientsService := c.bot.GetClientsService()
-	if isClient && (clientsService.IsELClient(targetName) || clientsService.IsCLClient(targetName)) {
-		if logo := clientsService.GetClientLogo(targetName); logo != "" {
+	cartographoor := c.bot.GetCartographoor()
+	if isClient && (cartographoor.IsELClient(targetName) || cartographoor.IsCLClient(targetName)) {
+		if logo := cartographoor.GetClientLogo(targetName); logo != "" {
 			embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
 				URL: logo,
 			}

@@ -250,7 +250,8 @@ func (c *ChecksCommand) RunChecks(ctx context.Context, alert *store.MonitorAlert
 func (c *ChecksCommand) setupRunner(alert *store.MonitorAlert) (checks.Runner, error) {
 	var consensusNode, executionNode string
 
-	if c.bot.GetClientsService().IsELClient(alert.Client) {
+	cartographoor := c.bot.GetCartographoor()
+	if cartographoor.IsELClient(alert.Client) {
 		executionNode = alert.Client
 	} else {
 		consensusNode = alert.Client
@@ -260,7 +261,7 @@ func (c *ChecksCommand) setupRunner(alert *store.MonitorAlert) (checks.Runner, e
 		Network:       alert.Network,
 		ConsensusNode: consensusNode,
 		ExecutionNode: executionNode,
-	}, c.bot.GetClientsService())
+	}, cartographoor)
 
 	runner.RegisterCheck(checks.NewCLSyncCheck(c.bot.GetGrafana()))
 	runner.RegisterCheck(checks.NewHeadSlotCheck(c.bot.GetGrafana()))
@@ -361,7 +362,7 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		GrafanaBaseURL: c.bot.GetGrafana().GetBaseURL(),
 		HiveBaseURL:    c.bot.GetHive().GetBaseURL(),
 		RootCauses:     analysis.RootCause,
-		ClientsService: c.bot.GetClientsService(),
+		Cartographoor:  c.bot.GetCartographoor(),
 	})
 
 	// Process the data to detect infrastructure issues.
@@ -409,7 +410,8 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 		// Get a screenshot of the test coverage.
 		var consensusNode, executionNode string
 
-		if c.bot.GetClientsService().IsELClient(alert.Client) {
+		cartographoor := c.bot.GetCartographoor()
+		if cartographoor.IsELClient(alert.Client) {
 			executionNode = alert.Client
 		} else {
 			consensusNode = alert.Client

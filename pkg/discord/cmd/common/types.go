@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
@@ -46,8 +46,8 @@ type BotContext interface {
 	GetGrafana() grafana.Client
 	// GetHive returns the Hive client.
 	GetHive() hive.Hive
-	// GetClientsService returns the clients service.
-	GetClientsService() *clients.Service
+	// GetCartographoor returns the cartographoor service.
+	GetCartographoor() *cartographoor.Service
 	// GetRoleConfig returns the role configuration.
 	GetRoleConfig() *RoleConfig
 }

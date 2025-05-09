@@ -1,16 +1,17 @@
 package mentions
 
 import (
-	"context"
-	"log"
-
 	"github.com/bwmarrin/discordgo"
 )
 
 // getClientChoices returns the choices for the client dropdown.
 func (c *MentionsCommand) getClientChoices() []*discordgo.ApplicationCommandOptionChoice {
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(c.bot.GetClientsService().GetAllClients()))
-	for _, client := range c.bot.GetClientsService().GetAllClients() {
+	var (
+		clients = c.bot.GetCartographoor().GetAllClients()
+		choices = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(clients))
+	)
+
+	for _, client := range clients {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  client,
 			Value: client,
@@ -22,14 +23,11 @@ func (c *MentionsCommand) getClientChoices() []*discordgo.ApplicationCommandOpti
 
 // getNetworkChoices returns the choices for the network dropdown.
 func (c *MentionsCommand) getNetworkChoices() []*discordgo.ApplicationCommandOptionChoice {
-	networks, err := c.bot.GetGrafana().GetNetworks(context.Background())
-	if err != nil {
-		log.Printf("Failed to get networks from Grafana: %v", err)
+	var (
+		networks = c.bot.GetCartographoor().GetActiveNetworks()
+		choices  = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(networks))
+	)
 
-		return nil
-	}
-
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(networks))
 	for _, network := range networks {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  network,

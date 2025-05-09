@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethpandaops/panda-pulse/pkg/clients"
+	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
 	cmdchecks "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/checks"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
@@ -36,7 +36,7 @@ type BotServices interface {
 	GetHiveSummaryRepo() *store.HiveSummaryRepo
 	GetGrafana() grafana.Client
 	GetHive() hive.Hive
-	GetClientsService() *clients.Service
+	GetCartographoor() *cartographoor.Service
 }
 
 // Bot is the interface for the Discord bot.
@@ -60,9 +60,10 @@ type DiscordBot struct {
 	hiveSummaryRepo *store.HiveSummaryRepo
 	grafana         grafana.Client
 	hive            hive.Hive
-	clientsService  *clients.Service
-	commands        []common.Command
-	metrics         *Metrics
+	//clientsService  *clients.Service
+	cartographoor *cartographoor.Service
+	commands      []common.Command
+	metrics       *Metrics
 }
 
 // NewBot creates a new Discord bot.
@@ -77,7 +78,8 @@ func NewBot(
 	grafana grafana.Client,
 	hive hive.Hive,
 	metrics *Metrics,
-	clientsService *clients.Service,
+	//clientsService *clients.Service,
+	cartographoor *cartographoor.Service,
 ) (Bot, error) {
 	// Create a new Discord session.
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -96,9 +98,10 @@ func NewBot(
 		hiveSummaryRepo: hiveSummaryRepo,
 		grafana:         grafana,
 		hive:            hive,
-		clientsService:  clientsService,
-		commands:        make([]common.Command, 0),
-		metrics:         metrics,
+		//clientsService:  clientsService,
+		cartographoor: cartographoor,
+		commands:      make([]common.Command, 0),
+		metrics:       metrics,
 	}
 
 	// Register event handlers.
@@ -188,9 +191,9 @@ func (b *DiscordBot) GetHive() hive.Hive {
 	return b.hive
 }
 
-// GetClientsService returns the clients service.
-func (b *DiscordBot) GetClientsService() *clients.Service {
-	return b.clientsService
+// GetCartographoor returns the cartographoor service.
+func (b *DiscordBot) GetCartographoor() *cartographoor.Service {
+	return b.cartographoor
 }
 
 // handleInteraction handles Discord command interactions.

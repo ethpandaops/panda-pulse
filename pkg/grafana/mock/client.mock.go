@@ -55,21 +55,6 @@ func (mr *MockClientMockRecorder) GetBaseURL() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBaseURL", reflect.TypeOf((*MockClient)(nil).GetBaseURL))
 }
 
-// GetNetworks mocks base method.
-func (m *MockClient) GetNetworks(ctx context.Context) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNetworks", ctx)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetNetworks indicates an expected call of GetNetworks.
-func (mr *MockClientMockRecorder) GetNetworks(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworks", reflect.TypeOf((*MockClient)(nil).GetNetworks), ctx)
-}
-
 // Query mocks base method.
 func (m *MockClient) Query(ctx context.Context, query string) (*grafana.QueryResponse, error) {
 	m.ctrl.T.Helper()

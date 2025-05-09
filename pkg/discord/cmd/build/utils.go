@@ -98,7 +98,7 @@ var AdditionalWorkflows = map[string]struct {
 // HasBuildArgs returns whether the given workflow or client supports build arguments.
 func (c *BuildCommand) HasBuildArgs(target string) bool {
 	// Check client workflows first
-	if c.bot.GetClientsService().ClientSupportsBuildArgs(target) {
+	if c.bot.GetCartographoor().ClientSupportsBuildArgs(target) {
 		return true
 	}
 
@@ -113,7 +113,7 @@ func (c *BuildCommand) HasBuildArgs(target string) bool {
 // GetDefaultBuildArgs returns the default build arguments for a workflow or client, if any.
 func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 	// Check client workflows first.
-	clientBuildArgs := c.bot.GetClientsService().GetClientDefaultBuildArgs(target)
+	clientBuildArgs := c.bot.GetCartographoor().GetClientDefaultBuildArgs(target)
 	if clientBuildArgs != "" {
 		return clientBuildArgs
 	}
@@ -129,12 +129,12 @@ func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 // getCLClientChoices returns the choices for consensus layer client selection.
 func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-	clientsService := c.bot.GetClientsService()
+	cartographoor := c.bot.GetCartographoor()
 
 	// Add consensus clients
-	for _, client := range clientsService.GetCLClients() {
+	for _, client := range cartographoor.GetCLClients() {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  clientsService.GetClientDisplayName(client),
+			Name:  cartographoor.GetClientDisplayName(client),
 			Value: client,
 		})
 	}
@@ -145,12 +145,12 @@ func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptio
 // getELClientChoices returns the choices for execution layer client selection.
 func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-	clientsService := c.bot.GetClientsService()
+	cartographoor := c.bot.GetCartographoor()
 
 	// Add execution clients
-	for _, client := range clientsService.GetELClients() {
+	for _, client := range cartographoor.GetELClients() {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  clientsService.GetClientDisplayName(client),
+			Name:  cartographoor.GetClientDisplayName(client),
 			Value: client,
 		})
 	}

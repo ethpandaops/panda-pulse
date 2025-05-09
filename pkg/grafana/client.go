@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -28,8 +27,6 @@ const (
 type Client interface {
 	// Query executes a Grafana query.
 	Query(ctx context.Context, query string) (*QueryResponse, error)
-	// GetNetworks fetches the list of networks from Grafana.
-	GetNetworks(ctx context.Context) ([]string, error)
 	// GetBaseURL returns the base URL of the Grafana instance.
 	GetBaseURL() string
 }
@@ -77,38 +74,6 @@ func (c *client) Query(ctx context.Context, query string) (*QueryResponse, error
 	}
 
 	return &response, nil
-}
-
-// GetNetworks fetches the list of networks from Grafana.
-func (c *client) GetNetworks(ctx context.Context) ([]string, error) {
-	req, err := c.createRequest(ctx, "networks", "count by (network) (up)", "")
-	if err != nil {
-		return nil, err
-	}
-
-	body, err := c.doRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	var response networkResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	networks := make([]string, 0)
-
-	if result, ok := response.Results["networks"]; ok {
-		for _, frame := range result.Frames {
-			for _, field := range frame.Schema.Fields {
-				if network, ok := field.Labels["network"]; ok && strings.Contains(network, "-devnet-") {
-					networks = append(networks, network)
-				}
-			}
-		}
-	}
-
-	return networks, nil
 }
 
 func (c *client) createRequest(ctx context.Context, refID, expr, legendFormat string) (*http.Request, error) {

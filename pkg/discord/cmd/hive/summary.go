@@ -358,7 +358,7 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	}
 
 	return &discordgo.MessageEmbed{
-		Title:  "🐝 **Hive Summary**",
+		Title:  fmt.Sprintf("🐝 **Hive Summary - %s**", summary.Network),
 		Color:  0x3498DB,
 		Fields: fields,
 	}
