@@ -93,6 +93,11 @@ var AdditionalWorkflows = map[string]struct {
 		Branch:     "master",
 		Name:       "armiarma",
 	},
+	"goevmlab": {
+		Repository: "holiman/goevmlab",
+		Branch:     "master",
+		Name:       "goevmlab",
+	},
 }
 
 // HasBuildArgs returns whether the given workflow or client supports build arguments.
