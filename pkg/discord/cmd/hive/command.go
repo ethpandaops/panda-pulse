@@ -47,7 +47,6 @@ func (c *HiveCommand) Queue() *queue.AlertQueue {
 
 // Register registers the command with Discord.
 func (c *HiveCommand) Register(session *discordgo.Session) error {
-
 	_, err := session.ApplicationCommandCreate(
 		session.State.User.ID,
 		"",

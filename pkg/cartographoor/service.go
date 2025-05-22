@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	active                 = "active"
 	defaultRefreshInterval = 1 * time.Hour
 	defaultRequestTimeout  = 30 * time.Second
 )
@@ -244,7 +245,7 @@ func (s *Service) fetchAndUpdateData(ctx context.Context) error {
 
 	for _, network := range data.Networks {
 		// We only want devnets, so make sure the name contains "devnet".
-		if network.Status == "active" && strings.Contains(network.Name, "devnet") {
+		if network.Status == active && strings.Contains(network.Name, "devnet") {
 			activeNetworksCount++
 		} else {
 			inactiveNetworksCount++
@@ -504,7 +505,7 @@ func (s *Service) GetActiveNetworks() []string {
 	networks := make([]string, 0)
 
 	for key, network := range s.remoteData.Networks {
-		if network.Status == "active" && strings.Contains(key, "devnet") {
+		if network.Status == active && strings.Contains(key, "devnet") {
 			networks = append(networks, key)
 		}
 	}
@@ -526,7 +527,7 @@ func (s *Service) GetInactiveNetworks() []string {
 	networks := make([]string, 0)
 
 	for key, network := range s.remoteData.Networks {
-		if network.Status != "active" && strings.Contains(key, "devnet") {
+		if network.Status != active && strings.Contains(key, "devnet") {
 			networks = append(networks, key)
 		}
 	}
