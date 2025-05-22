@@ -1,0 +1,21 @@
+---
+description: Discord Mentions Command - Manages client team mention configurations for network monitoring alerts
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Discord Mentions Command
+
+Discord slash command for managing client team mention configurations for network monitoring alerts.
+
+## Key Integration Patterns
+- **Guild-Scoped Storage**: All mentions are stored per Discord guild (server) to allow multi-server deployments
+- **Network-Client Scoping**: Mentions are organized by network-client pairs for granular team notification control
+- **Ephemeral Responses**: All command responses use ephemeral flags to keep channel clean
+
+## Important Constraints
+- **Duplicate Prevention**: Add operations automatically prevent duplicate mentions in the storage layer
+- **Graceful Fallback**: List operations resolve Discord IDs to readable names but fall back to raw IDs if resolution fails
+- **Atomic Updates**: All persistence operations update the `UpdatedAt` timestamp for audit tracking

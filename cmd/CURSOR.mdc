@@ -1,0 +1,27 @@
+---
+description: CMD - Application entry point and CLI interface
+globs: 
+  - "*.go"
+  - "main.go"
+alwaysApply: false
+---
+
+# CMD Component
+
+Application entry point that bootstraps the panda-pulse monitoring service with Cobra CLI.
+
+## Key Patterns
+- Single main.go entry point with cobra.Command structure
+- Environment variable configuration binding in setConfig()
+- Graceful shutdown with context cancellation and signal handling
+- Service lifecycle management (create, start, stop) with proper error handling
+
+## Configuration Management
+- All configuration sourced from environment variables
+- Sensible defaults applied after env loading (Grafana URL, Prometheus datasource, S3 region/prefix)
+- Configuration validation before service startup with descriptive error messages
+
+## Shutdown Behavior
+- 30-second shutdown timeout for graceful service termination
+- Signal handling for SIGINT/SIGTERM with proper cleanup
+- Context-based shutdown coordination across all service components

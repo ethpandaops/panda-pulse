@@ -1,0 +1,86 @@
+---
+description: Project architecture and structure for panda-pulse
+alwaysApply: true
+---
+
+# Panda-Pulse Project Architecture
+
+## Overview
+Panda-pulse is an Ethereum network monitoring tool that performs health checks on nodes and reports issues to Discord. It integrates with Grafana/Prometheus for metrics collection and uses AWS S3 for storage.
+
+## Core Technologies
+- **Language**: Go 1.24
+- **Architecture**: Service-oriented with modular components
+- **External Services**: Discord, Grafana, Prometheus, AWS S3
+- **Testing**: Standard Go testing with testcontainers and mocks
+- **Deployment**: Docker containerization with docker-compose for local development
+
+## Project Structure
+
+### Core Service (`pkg/service/`)
+- Main application service orchestration
+- Configuration management and validation
+- Lifecycle management (start/stop)
+
+### Components
+- **Analyzer** (`pkg/analyzer/`): Health check analysis and processing
+- **Cartographoor** (`pkg/cartographoor/`): Service discovery and client management
+- **Checks** (`pkg/checks/`): Individual health check implementations
+  - Consensus Layer checks (finalized epoch, head slot, sync status)
+  - Execution Layer checks (block height, sync status)
+- **Discord Bot** (`pkg/discord/`): Discord integration with slash commands
+- **Grafana Client** (`pkg/grafana/`): Grafana API integration
+- **Store** (`pkg/store/`): Data persistence layer with S3 backend
+- **Scheduler** (`pkg/scheduler/`): Cron-based job scheduling
+- **Queue** (`pkg/queue/`): Job queue management
+
+### Infrastructure
+- **HTTP Client** (`pkg/http/`): HTTP utilities and metrics
+- **Logger** (`pkg/logger/`): Structured logging with logrus
+- **Metrics** (various packages): Prometheus metrics collection
+
+### Entry Point
+- **Main** (`cmd/main.go`): Application entry point with Cobra CLI
+
+## Key Patterns
+
+### Service Pattern
+- Each major component follows a service pattern with Start/Stop lifecycle methods
+- Services are configured via environment variables and config structs
+- Proper context handling for graceful shutdown
+
+### Check Pattern
+- Health checks implement a common interface
+- Each check type has its own file with associated tests
+- Checks are categorized and can be registered/deregistered via Discord commands
+
+### Testing Pattern
+- Unit tests alongside source files (`*_test.go`)
+- Mock implementations in `mock/` subdirectories
+- Integration tests use testcontainers for external dependencies
+
+### Metrics Pattern
+- Each package exposes Prometheus metrics in dedicated `metrics.go` files
+- Consistent naming and labeling conventions
+- Metrics are registered at service startup
+
+## Dependencies Management
+- Go modules with explicit version pinning
+- AWS SDK v2 for S3 operations
+- Discord Go library for bot functionality  
+- Prometheus client for metrics
+- Chromedp for headless browser operations (Grafana screenshots)
+- Testcontainers for integration testing
+
+## Configuration
+- Environment variable-based configuration
+- Validation at startup with clear error messages
+- Sensible defaults for optional parameters
+- Support for local development with localstack
+
+## Deployment Architecture
+- Single binary application
+- Docker containerization with multi-stage builds
+- Environment-specific configuration via env vars
+- Health check endpoints for monitoring
+- Prometheus metrics endpoint for observability

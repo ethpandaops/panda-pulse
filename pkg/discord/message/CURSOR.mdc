@@ -1,0 +1,21 @@
+---
+description: Discord Message Builder - Constructs rich Discord alert messages with categorized content
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Discord Message Builder
+
+Generates structured Discord alert messages for Ethereum network monitoring alerts with categorized instance lists and rich embeds.
+
+## Key Integration Patterns
+- **Builder Pattern**: AlertMessageBuilder constructs complex Discord messages through incremental build methods
+- **Categorization Logic**: Intelligently categorizes failed instances as regular, infrastructure issues, or unrelated based on root cause analysis
+- **Infrastructure Health Checks**: Validates SSH connectivity to determine if failures are infrastructure-related vs client-related
+
+## Important Constraints
+- **Message Size Limits**: Discord has strict message size limits requiring content to be split across multiple messages and threads
+- **Instance Classification**: Must correctly identify pre-production clients and root cause patterns to avoid false positives
+- **Thread Management**: Main alerts with detailed breakdowns in thread messages for better organization

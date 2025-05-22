@@ -1,0 +1,23 @@
+---
+description: Hive - Ethereum test coverage integration and screenshot capture
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Hive Integration Component
+
+Ethereum test coverage integration that fetches test results and captures visual snapshots from Hive test infrastructure.
+
+## Key Integration Patterns
+- Uses HTTP client with configurable timeout for API requests
+- Implements headless Chrome via chromedp for screenshot capture
+- Maps internal client/network names to Hive's naming conventions
+- Filters test results to latest runs per client/test type
+
+## Important Constraints
+- Screenshot capture requires chromedp browser context with mobile viewport
+- Network and client name mapping is essential for proper Hive API interaction
+- Test result processing must handle JSONL format with timestamp extraction
+- Always validate snapshot configuration before browser operations

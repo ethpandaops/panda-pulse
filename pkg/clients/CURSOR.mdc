@@ -1,0 +1,22 @@
+---
+description: Clients - Ethereum client definitions and team mappings
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Clients Component
+
+Central registry for Ethereum client types and team mappings used across the monitoring system.
+
+## Key Patterns
+- **Client Type System**: Use ClientType enum for consensus/execution layer differentiation
+- **Team Role Mapping**: TeamRoles map connects client names to Discord team roles for notifications
+- **Pre-production Tracking**: PreProductionClients map identifies development/testing clients
+- **Build Configuration**: ClientsWithBuildArgs defines clients requiring special build parameters
+
+## Important Constraints
+- Client names in maps must match exactly with discovery system identifiers
+- Discord role names must correspond to actual server roles for proper notifications
+- Pre-production flag affects alert routing and severity levels

@@ -1,0 +1,22 @@
+---
+description: Analyzer - Health check analysis engine that identifies root causes and unexplained issues
+globs: 
+  - "*.go"
+  - "*_test.go"
+alwaysApply: false
+---
+
+# Analyzer Component
+
+Health check analysis engine that identifies root causes and unexplained issues in Ethereum client pairs.
+
+## Key Integration Patterns
+- Stateful analysis using multi-step pipeline approach
+- Client pair abstraction (CL-EL combinations) for failure correlation
+- Root cause detection with primary/secondary classification
+- False positive removal for pre-production clients
+
+## Critical Design Constraints  
+- Minimum failure threshold (MinFailuresForRootCause = 2) for root cause classification
+- Pre-production client handling with special exemptions
+- Target client filtering for focused analysis scope

@@ -1,0 +1,25 @@
+---
+description: Health check implementations for Ethereum node monitoring
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Health Checks Component
+
+Node health check implementations that analyze Ethereum consensus and execution layer clients for monitoring issues.
+
+## Key Patterns
+
+- **Check Interface**: All health checks implement the `Check` interface with `Run()` method that returns categorized results
+- **Two-Phase Analysis**: First gather data from ALL clients, then filter results for target client to enable root cause analysis
+- **Status Filtering**: Only include FAIL results with affected nodes matching the target client in notifications
+- **Comprehensive Logging**: Use CheckLogger to create detailed audit trail of check execution and decision making
+
+## Implementation Requirements
+
+- Each check must specify Category (sync/general) and ClientType (CL/EL/All)
+- Include comprehensive test coverage with table-driven tests for multiple scenarios
+- Populate AffectedNodes slice with specific client identifiers for proper filtering
+- Follow naming convention: `{layer}_{check_type}.go` (e.g., `cl_finalized_epoch.go`)

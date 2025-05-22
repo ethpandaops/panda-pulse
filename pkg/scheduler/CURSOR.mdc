@@ -1,0 +1,24 @@
+---
+description: Scheduler - Cron-based job scheduling with metrics and error handling
+globs: 
+  - "*.go"
+  - "*_test.go"
+alwaysApply: false
+---
+
+# Scheduler Component
+
+Cron-based job scheduling system with integrated Prometheus metrics and error handling.
+
+## Key Patterns
+
+- **Thread-safe Operations**: All job management operations use mutex protection for concurrent access
+- **Job Replacement**: Adding a job with existing name automatically replaces the previous job  
+- **Comprehensive Metrics**: Tracks executions, failures, timing, and active job counts via Prometheus
+- **Context-aware Execution**: All job functions receive context for cancellation and timeouts
+
+## Important Constraints
+
+- Jobs are identified by name - duplicate names will replace existing jobs
+- All metrics must be properly registered at startup to avoid panics
+- Test isolation requires resetting Prometheus registry between tests

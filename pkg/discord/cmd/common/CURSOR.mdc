@@ -1,0 +1,21 @@
+---
+description: Discord Command Common - Shared types and utilities for Discord slash commands
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Discord Command Common
+
+Shared types and utilities for Discord slash commands that handle role-based authorization and bot context access.
+
+## Key Integration Patterns
+- **Command Interface**: All Discord commands must implement the `Command` interface with Name(), Register(), and Handle() methods
+- **Role-Based Authorization**: Use `HasPermission()` function to validate user access with admin/client team roles
+- **Centralized Bot Context**: Commands access services through the `BotContext` interface rather than direct dependencies
+
+## Important Constraints
+- **Permission Validation**: Always check permissions before command execution using role configuration
+- **Client-Specific Access**: Team members can only access commands for their assigned client networks
+- **Admin Override**: Admin roles have full access to all commands regardless of client restrictions

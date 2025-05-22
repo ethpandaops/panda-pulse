@@ -1,0 +1,22 @@
+---
+description: Cartographoor - Ethereum network and client metadata service
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Cartographoor Service
+
+Client and network metadata management service that fetches and caches data from remote cartographoor API.
+
+## Core Functionality
+- Maintains client metadata (repositories, versions, logos, types)
+- Filters networks to only include devnets
+- Thread-safe access with automatic periodic updates
+- Integrates with static client configuration data
+
+## Key Constraints
+- All network operations are filtered to devnet-only
+- Uses read-write mutex for thread safety with high-frequency read access
+- Combines remote API data with local static client configuration

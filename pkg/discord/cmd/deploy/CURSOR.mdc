@@ -1,0 +1,20 @@
+---
+description: Deploy Command - Discord slash command for deploying Docker images to network nodes via SSH
+globs: 
+  - "*.go"
+alwaysApply: false
+---
+
+# Deploy Command Component
+
+Discord slash command that handles deployment of Docker images to Ethereum network nodes via SSH.
+
+## Key Integration Patterns
+- **SSH-Based Deployment**: Uses SSH to connect to network nodes for Docker container management
+- **Concurrent Operations**: Deploys to multiple nodes simultaneously with progress tracking
+- **Inventory-Based Filtering**: Fetches network inventory from API to determine target nodes
+
+## Important Constraints
+- **Admin-Only Access**: Deploy command is restricted to admin roles only due to security implications
+- **Progress Reporting**: Long-running deployments provide regular Discord message updates
+- **Error Resilience**: Individual node failures don't stop deployment to other nodes

@@ -1,0 +1,20 @@
+---
+description: Discord Bot Mock - Generated mock implementation for testing Discord Bot interface
+globs: 
+  - "*.mock.go"
+  - "**/*.mock.go"
+alwaysApply: false
+---
+
+# Discord Bot Mock Component
+
+Generated mock implementation of the Discord Bot interface using GoMock for unit testing purposes.
+
+## Key Integration Patterns
+- **GoMock Generated**: Auto-generated using `go:generate mockgen` directives with uber-go/mock
+- **Interface Mocking**: Provides complete mock implementation of Bot interface for dependency injection in tests
+
+## Important Constraints
+- **Generated Code**: This file is auto-generated and should not be manually edited
+- **Regeneration**: Update via `mockgen` command when Bot interface changes
+- **Test Only**: Mock is designed exclusively for unit testing scenarios
