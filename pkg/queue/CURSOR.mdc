@@ -1,0 +1,24 @@
+---
+description: Queue - Generic concurrent queue system with deduplication and metrics
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Queue Component
+
+Generic concurrent queue system that processes MonitorAlert items with built-in deduplication and comprehensive metrics tracking.
+
+## Key Integration Patterns
+
+- **Generic Queue Design**: Uses Go generics to support type-safe queue operations for any item type
+- **Deduplication via Sync.Map**: Prevents duplicate processing of items using network-client key combinations
+- **Prometheus Metrics Integration**: Comprehensive metrics for queue length, processing time, failures, and skip counts
+- **Worker Function Pattern**: Configurable worker functions that return success/error status for flexible processing
+
+## Important Constraints
+
+- **Single Item Processing**: Only one item per network-client combination can be processed at a time
+- **Bounded Queue**: Fixed buffer size of 100 items to prevent memory issues
+- **Context-Based Lifecycle**: Queue processing respects context cancellation for graceful shutdown

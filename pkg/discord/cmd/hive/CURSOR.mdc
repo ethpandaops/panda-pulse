@@ -1,0 +1,21 @@
+---
+description: Hive Discord Command - Manages Hive test summary alerts and execution
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Hive Discord Command
+
+Discord slash command for managing Hive test summary alerts and on-demand execution.
+
+## Key Integration Patterns
+- **Subcommand Structure**: Uses Discord subcommands (register, deregister, list, run) within single `/hive` command
+- **Scheduled Execution**: Integrates with scheduler service to run periodic Hive summary checks via cron expressions
+- **Comparison Logic**: Compares current test results with previous summaries to detect changes in Ethereum client behavior
+
+## Important Constraints
+- **Network Validation**: All operations require checking Hive availability for the specified network before execution
+- **Storage Integration**: Uses HiveSummaryRepo for persistence and comparison with previous test results
+- **Discord Threading**: Creates threaded conversations for detailed test result discussions with auto-archive

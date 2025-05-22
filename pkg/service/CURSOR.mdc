@@ -1,0 +1,23 @@
+---
+description: Service - Main application orchestrator and lifecycle manager
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Service Component
+
+Main application orchestrator that manages component lifecycle and configuration.
+
+## Key Patterns
+- **Service Orchestration**: Coordinates all major components (scheduler, bot, stores, cartographoor)
+- **Configuration Management**: Centralizes config validation and transforms into component-specific configs
+- **Lifecycle Management**: Handles graceful startup/shutdown with proper ordering of component initialization
+- **HTTP Server Management**: Runs separate health and metrics servers with configured timeouts
+
+## Important Constraints
+- Components must be started in correct order (S3 connection verification before everything else)
+- All services must support graceful shutdown via context cancellation
+- Configuration validation happens at startup - fail fast on missing required env vars
+- Health and metrics endpoints use separate HTTP servers for isolation

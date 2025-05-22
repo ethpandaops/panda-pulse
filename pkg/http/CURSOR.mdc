@@ -1,0 +1,28 @@
+---
+description: HTTP Client - Instrumented HTTP client wrapper with metrics and logging
+globs:
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# HTTP Client Component
+
+Instrumented HTTP client wrapper that provides automatic metrics collection and structured logging for API requests.
+
+## Key Patterns
+
+### Wrapper Pattern
+- Use ClientWrapper for high-level HTTP operations with automatic metrics
+- Use MetricsRoundTripper for low-level transport-level instrumentation
+- Always provide service and operation labels for proper metrics categorization
+
+### Error Handling
+- Special case handling for expected errors (e.g., Hive 404s return nil without logging)
+- Structured error logging with request context (URL, method, duration, status)
+- Automatic metrics recording for both network errors and HTTP status errors
+
+### Metrics Integration
+- Record request counts, error counts, and duration histograms
+- Use service/operation labels for proper segmentation
+- Register metrics with Prometheus at initialization

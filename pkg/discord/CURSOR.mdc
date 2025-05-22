@@ -1,0 +1,23 @@
+---
+description: Discord Bot - Provides Discord slash command interface for network monitoring
+globs: 
+  - "*.go"
+  - "**/*.go"
+  - "cmd/**/*.go"
+  - "message/**/*.go"
+alwaysApply: false
+---
+
+# Discord Bot Component
+
+Discord bot integration that provides slash command interface for Ethereum network monitoring management.
+
+## Key Integration Patterns
+- **Command Pattern**: All Discord commands implement the `common.Command` interface with registration and handling
+- **Role-Based Permissions**: Commands are protected by role-based access control using Discord server roles
+- **Event-Driven Architecture**: Uses Discord interaction events to trigger monitoring operations via queues
+
+## Important Constraints  
+- **Permission Validation**: All commands except build triggers require permission checks before execution
+- **Metrics Collection**: Every command execution is tracked with Prometheus metrics including duration and error rates
+- **Queue Integration**: Commands operate through queues rather than direct execution for better resilience

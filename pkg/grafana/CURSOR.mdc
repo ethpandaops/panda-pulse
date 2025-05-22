@@ -1,0 +1,21 @@
+---
+description: Grafana - HTTP client for Grafana API queries with Prometheus datasource integration
+globs: 
+  - "*.go"
+  - "**/*_test.go"
+alwaysApply: false
+---
+
+# Grafana Client
+
+HTTP client for Grafana API queries with Prometheus datasource integration.
+
+## Key Integration Pattern
+- Uses Bearer token authentication with configurable datasource UID
+- Implements query interface for Prometheus metric queries via Grafana API
+- Supports HTTP client injection for metrics tracking and testing
+
+## Important Constraints
+- Hardcoded query parameters (1 data point, 1m interval, 5m time range)
+- Fixed refID "pandaPulse" and legend format for all queries
+- Always uses POST requests to `/api/ds/query` endpoint
