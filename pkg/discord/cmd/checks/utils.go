@@ -1,6 +1,8 @@
 package checks
 
 import (
+	"fmt"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/checks"
 )
@@ -37,13 +39,21 @@ func (c *ChecksCommand) getClientChoices() []*discordgo.ApplicationCommandOption
 // getNetworkChoices returns the choices for the network dropdown.
 func (c *ChecksCommand) getNetworkChoices() []*discordgo.ApplicationCommandOptionChoice {
 	var (
-		networks = c.bot.GetCartographoor().GetActiveNetworks()
-		choices  = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(networks))
+		activeNetworks   = c.bot.GetCartographoor().GetActiveNetworks()
+		inactiveNetworks = c.bot.GetCartographoor().GetInactiveNetworks()
+		choices          = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(activeNetworks)+len(inactiveNetworks))
 	)
 
-	for _, network := range networks {
+	for _, network := range activeNetworks {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  network,
+			Value: network,
+		})
+	}
+
+	for _, network := range inactiveNetworks {
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  fmt.Sprintf("%s (inactive)", network),
 			Value: network,
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -491,7 +492,7 @@ func (s *Service) GetAllClients() []string {
 	return clientsList
 }
 
-// GetActiveNetworks returns all active networks.
+// GetActiveNetworks returns all active networks sorted alphabetically.
 func (s *Service) GetActiveNetworks() []string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
@@ -507,6 +508,30 @@ func (s *Service) GetActiveNetworks() []string {
 			networks = append(networks, key)
 		}
 	}
+
+	sort.Strings(networks)
+
+	return networks
+}
+
+// GetInactiveNetworks returns all inactive networks sorted alphabetically.
+func (s *Service) GetInactiveNetworks() []string {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	if s.remoteData == nil {
+		return []string{}
+	}
+
+	networks := make([]string, 0)
+
+	for key, network := range s.remoteData.Networks {
+		if network.Status != "active" && strings.Contains(key, "devnet") {
+			networks = append(networks, key)
+		}
+	}
+
+	sort.Strings(networks)
 
 	return networks
 }

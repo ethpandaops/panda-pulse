@@ -18,16 +18,18 @@ const (
 
 // HiveCommand handles the /hive command.
 type HiveCommand struct {
-	log   *logrus.Logger
-	bot   common.BotContext
-	queue *queue.AlertQueue
+	log                 *logrus.Logger
+	bot                 common.BotContext
+	queue               *queue.AlertQueue
+	autocompleteHandler *common.AutocompleteHandler
 }
 
 // NewHiveCommand creates a new hive command.
 func NewHiveCommand(log *logrus.Logger, bot common.BotContext) *HiveCommand {
 	cmd := &HiveCommand{
-		log: log,
-		bot: bot,
+		log:                 log,
+		bot:                 bot,
+		autocompleteHandler: common.NewAutocompleteHandler(bot, log),
 	}
 
 	return cmd
@@ -45,8 +47,6 @@ func (c *HiveCommand) Queue() *queue.AlertQueue {
 
 // Register registers the command with Discord.
 func (c *HiveCommand) Register(session *discordgo.Session) error {
-	// Get network choices for dropdowns
-	networkChoices := c.getNetworkChoices()
 
 	_, err := session.ApplicationCommandCreate(
 		session.State.User.ID,
@@ -61,11 +61,11 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
 					Options: []*discordgo.ApplicationCommandOption{
 						{
-							Name:        "network",
-							Description: "The network to monitor",
-							Type:        discordgo.ApplicationCommandOptionString,
-							Required:    true,
-							Choices:     networkChoices,
+							Name:         "network",
+							Description:  "The network to monitor",
+							Type:         discordgo.ApplicationCommandOptionString,
+							Required:     true,
+							Autocomplete: true,
 						},
 						{
 							Name:        "channel",
@@ -90,11 +90,11 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
 					Options: []*discordgo.ApplicationCommandOption{
 						{
-							Name:        "network",
-							Description: "The network to stop monitoring",
-							Type:        discordgo.ApplicationCommandOptionString,
-							Required:    true,
-							Choices:     networkChoices,
+							Name:         "network",
+							Description:  "The network to stop monitoring",
+							Type:         discordgo.ApplicationCommandOptionString,
+							Required:     true,
+							Autocomplete: true,
 						},
 					},
 				},
@@ -104,11 +104,11 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
 					Options: []*discordgo.ApplicationCommandOption{
 						{
-							Name:        "network",
-							Description: "Filter by network (optional)",
-							Type:        discordgo.ApplicationCommandOptionString,
-							Required:    false,
-							Choices:     networkChoices,
+							Name:         "network",
+							Description:  "Filter by network (optional)",
+							Type:         discordgo.ApplicationCommandOptionString,
+							Required:     false,
+							Autocomplete: true,
 						},
 					},
 				},
@@ -118,11 +118,11 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 					Type:        discordgo.ApplicationCommandOptionSubCommand,
 					Options: []*discordgo.ApplicationCommandOption{
 						{
-							Name:        "network",
-							Description: "The network to check",
-							Type:        discordgo.ApplicationCommandOptionString,
-							Required:    true,
-							Choices:     networkChoices,
+							Name:         "network",
+							Description:  "The network to check",
+							Type:         discordgo.ApplicationCommandOptionString,
+							Required:     true,
+							Autocomplete: true,
 						},
 					},
 				},
@@ -135,6 +135,13 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 
 // Handle handles the command.
 func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Handle autocomplete interactions
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+
+		return
+	}
+
 	// Only respond to application commands
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return

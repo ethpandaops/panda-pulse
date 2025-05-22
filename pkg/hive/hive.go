@@ -172,7 +172,8 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("failed to check hive availability: %w", err)
+		// If the request fails, we assume Hive is not available.
+		return false, nil
 	}
 
 	defer resp.Body.Close()
