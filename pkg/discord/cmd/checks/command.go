@@ -28,16 +28,18 @@ const (
 
 // ChecksCommand handles the /checks command.
 type ChecksCommand struct {
-	log   *logrus.Logger
-	bot   common.BotContext
-	queue *queue.AlertQueue
+	log                 *logrus.Logger
+	bot                 common.BotContext
+	queue               *queue.AlertQueue
+	autocompleteHandler *common.AutocompleteHandler
 }
 
 // NewChecksCommand creates a new checks command.
 func NewChecksCommand(log *logrus.Logger, bot common.BotContext) *ChecksCommand {
 	cmd := &ChecksCommand{
-		log: log,
-		bot: bot,
+		log:                 log,
+		bot:                 bot,
+		autocompleteHandler: common.NewAutocompleteHandler(bot, log),
 	}
 
 	cmd.queue = queue.NewAlertQueue(
@@ -61,10 +63,7 @@ func (c *ChecksCommand) Queue() *queue.AlertQueue {
 
 // Register registers the /checks command with the given discord session.
 func (c *ChecksCommand) Register(session *discordgo.Session) error {
-	var (
-		networkChoices = c.getNetworkChoices()
-		clientChoices  = c.getClientChoices()
-	)
+	clientChoices := c.getClientChoices()
 
 	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
 		Name:        c.Name(),
@@ -76,11 +75,11 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to check",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to check",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -97,11 +96,11 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to monitor",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to monitor",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "channel",
@@ -133,11 +132,11 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to stop monitoring",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to stop monitoring",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -154,11 +153,11 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to list checks for (optional)",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to list checks for (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -185,6 +184,13 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 
 // Handle handles the /checks command.
 func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Handle autocomplete interactions
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+
+		return
+	}
+
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}

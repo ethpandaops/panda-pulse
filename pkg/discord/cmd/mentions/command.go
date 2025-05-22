@@ -10,15 +10,17 @@ import (
 
 // MentionsCommand handles the /mentions command.
 type MentionsCommand struct {
-	log *logrus.Logger
-	bot common.BotContext
+	log                 *logrus.Logger
+	bot                 common.BotContext
+	autocompleteHandler *common.AutocompleteHandler
 }
 
 // NewMentionsCommand creates a new MentionsCommand.
 func NewMentionsCommand(log *logrus.Logger, bot common.BotContext) *MentionsCommand {
 	return &MentionsCommand{
-		log: log,
-		bot: bot,
+		log:                 log,
+		bot:                 bot,
+		autocompleteHandler: common.NewAutocompleteHandler(bot, log),
 	}
 }
 
@@ -29,10 +31,7 @@ func (c *MentionsCommand) Name() string {
 
 // Register registers the /mentions command with the given discord session.
 func (c *MentionsCommand) Register(session *discordgo.Session) error {
-	var (
-		networkChoices = c.getNetworkChoices()
-		clientChoices  = c.getClientChoices()
-	)
+	clientChoices := c.getClientChoices()
 
 	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
 		Name:        c.Name(),
@@ -44,11 +43,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to add mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to add mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -71,11 +70,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to remove mentions from",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to remove mentions from",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -98,11 +97,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to list mentions for (optional)",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to list mentions for (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -112,11 +111,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to enable mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to enable mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -133,11 +132,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: []*discordgo.ApplicationCommandOption{
 					{
-						Name:        "network",
-						Description: "Network to disable mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     networkChoices,
+						Name:         "network",
+						Description:  "Network to disable mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "client",
@@ -158,6 +157,13 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 
 // Handle handles the /mentions command.
 func (c *MentionsCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Handle autocomplete interactions
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+
+		return
+	}
+
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}

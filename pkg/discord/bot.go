@@ -198,6 +198,20 @@ func (b *DiscordBot) GetCartographoor() *cartographoor.Service {
 
 // handleInteraction handles Discord command interactions.
 func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Handle autocomplete interactions
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		data := i.ApplicationCommandData()
+		for _, cmd := range b.commands {
+			if cmd.Name() == data.Name {
+				cmd.Handle(s, i)
+
+				return
+			}
+		}
+
+		return
+	}
+
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
