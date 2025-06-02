@@ -127,6 +127,11 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 	return nil
 }
 
+// UpdateChoices updates the command choices by re-registering with fresh client and tool data.
+func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
+	return c.Register(session)
+}
+
 // Handle handles the /build command.
 func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {
