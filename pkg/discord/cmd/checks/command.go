@@ -182,6 +182,11 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 	return nil
 }
 
+// UpdateChoices updates the command choices by re-registering with fresh network and client data.
+func (c *ChecksCommand) UpdateChoices(session *discordgo.Session) error {
+	return c.Register(session)
+}
+
 // Handle handles the /checks command.
 func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Handle autocomplete interactions
