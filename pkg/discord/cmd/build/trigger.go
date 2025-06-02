@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	buildEmbedColor = 0x7289DA
+	fallbackDefaultBranch = "main"
+	buildEmbedColor       = 0x7289DA
 )
 
 // handleBuild handles the build subcommands (client-cl, client-el, tool).
@@ -32,8 +33,16 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		for _, opt := range option.Options {
 			if opt.Name == "client" {
 				targetName = opt.StringValue()
-				cartographoor := c.bot.GetCartographoor()
-				targetDisplayName = cartographoor.GetClientDisplayName(targetName)
+				// Get display name from workflows
+				if allWorkflows, err := c.workflowFetcher.GetAllWorkflows(); err == nil {
+					if workflow, exists := allWorkflows[targetName]; exists {
+						targetDisplayName = workflow.Name
+					} else {
+						targetDisplayName = targetName
+					}
+				} else {
+					targetDisplayName = targetName
+				}
 
 				break
 			}
@@ -44,8 +53,13 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		for _, opt := range option.Options {
 			if opt.Name == "workflow" {
 				targetName = opt.StringValue()
-				if workflow, exists := AdditionalWorkflows[targetName]; exists {
-					targetDisplayName = workflow.Name
+				// Get display name from workflows
+				if allWorkflows, err := c.workflowFetcher.GetAllWorkflows(); err == nil {
+					if workflow, exists := allWorkflows[targetName]; exists {
+						targetDisplayName = workflow.Name
+					} else {
+						targetDisplayName = targetName
+					}
 				} else {
 					targetDisplayName = targetName
 				}
@@ -85,54 +99,50 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 
 	// Use defaults if not provided.
 	if repository == "" {
-		if isClient {
-			cartographoor := c.bot.GetCartographoor()
-			repository = cartographoor.GetClientRepository(targetName)
+		// Get repository from workflows
+		allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+		if err != nil {
+			c.log.WithError(err).Error("Failed to fetch workflows for repository resolution")
 
-			if repository == "" {
-				// For unknown clients, repository is required.
-				if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-					Content: stringPtr(fmt.Sprintf("❌ Repository is required for **%s**", targetDisplayName)),
-				}); interactionErr != nil {
-					return fmt.Errorf("failed to edit response: %w", interactionErr)
-				}
-
-				return nil
+			if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: stringPtr(fmt.Sprintf("❌ Failed to fetch workflow data for **%s**", targetDisplayName)),
+			}); interactionErr != nil {
+				return fmt.Errorf("failed to edit response: %w", interactionErr)
 			}
-		} else {
-			// For tools, get from AdditionalWorkflows.
-			if workflow, exists := AdditionalWorkflows[targetName]; exists {
-				repository = workflow.Repository
-			} else {
-				// This should never happen with the dropdown selection.
-				if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-					Content: stringPtr(fmt.Sprintf("❌ Unknown tool workflow: **%s**", targetName)),
-				}); interactionErr != nil {
-					return fmt.Errorf("failed to edit response: %w", interactionErr)
-				}
 
-				return nil
+			return nil
+		}
+
+		if workflow, exists := allWorkflows[targetName]; exists {
+			repository = workflow.Repository
+		}
+
+		if repository == "" {
+			// Repository is required but not found
+			if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: stringPtr(fmt.Sprintf("❌ Repository not found for **%s**", targetDisplayName)),
+			}); interactionErr != nil {
+				return fmt.Errorf("failed to edit response: %w", interactionErr)
 			}
+
+			return nil
 		}
 	}
 
 	if ref == "" {
-		if isClient {
-			cartographoor := c.bot.GetCartographoor()
+		// Get branch from workflows
+		allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+		if err != nil {
+			c.log.WithError(err).Error("Failed to fetch workflows for branch resolution")
+			// Default to main if workflow fetch fails
+			ref = fallbackDefaultBranch
+		} else if workflow, exists := allWorkflows[targetName]; exists {
+			ref = workflow.Branch
+		}
 
-			ref = cartographoor.GetClientBranch(targetName)
-			if ref == "" {
-				// For unknown clients, default to main.
-				ref = "main"
-			}
-		} else {
-			// For tools, get from AdditionalWorkflows.
-			if workflow, exists := AdditionalWorkflows[targetName]; exists {
-				ref = workflow.Branch
-			} else {
-				// This should never happen with the dropdown selection.
-				ref = "main"
-			}
+		if ref == "" {
+			// Default to main if no branch specified
+			ref = fallbackDefaultBranch
 		}
 	}
 
