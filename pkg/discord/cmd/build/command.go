@@ -25,13 +25,12 @@ type BuildCommand struct {
 
 // NewBuildCommand creates a new build command.
 func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string, client *http.Client) *BuildCommand {
-	workflowFetcher := NewWorkflowFetcher(client, githubToken, log, bot)
 	return &BuildCommand{
 		log:             log,
 		bot:             bot,
 		githubToken:     githubToken,
 		httpClient:      client,
-		workflowFetcher: workflowFetcher,
+		workflowFetcher: NewWorkflowFetcher(client, githubToken, log, bot),
 	}
 }
 
