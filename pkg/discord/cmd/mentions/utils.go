@@ -20,20 +20,3 @@ func (c *MentionsCommand) getClientChoices() []*discordgo.ApplicationCommandOpti
 
 	return choices
 }
-
-// getNetworkChoices returns the choices for the network dropdown.
-func (c *MentionsCommand) getNetworkChoices() []*discordgo.ApplicationCommandOptionChoice {
-	var (
-		networks = c.bot.GetCartographoor().GetActiveNetworks()
-		choices  = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(networks))
-	)
-
-	for _, network := range networks {
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  network,
-			Value: network,
-		})
-	}
-
-	return choices
-}

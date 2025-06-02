@@ -34,23 +34,6 @@ func (c *ChecksCommand) getClientChoices() []*discordgo.ApplicationCommandOption
 	return choices
 }
 
-// getNetworkChoices returns the choices for the network dropdown.
-func (c *ChecksCommand) getNetworkChoices() []*discordgo.ApplicationCommandOptionChoice {
-	var (
-		networks = c.bot.GetCartographoor().GetActiveNetworks()
-		choices  = make([]*discordgo.ApplicationCommandOptionChoice, 0, len(networks))
-	)
-
-	for _, network := range networks {
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  network,
-			Value: network,
-		})
-	}
-
-	return choices
-}
-
 // Helper to create string pointer.
 func stringPtr(s string) *string {
 	if s == "" {
