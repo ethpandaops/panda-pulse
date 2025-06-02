@@ -156,6 +156,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 	return nil
 }
 
+// UpdateChoices updates the command choices by re-registering with fresh network and client data.
+func (c *MentionsCommand) UpdateChoices(session *discordgo.Session) error {
+	return c.Register(session)
+}
+
 // Handle handles the /mentions command.
 func (c *MentionsCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionApplicationCommand {

@@ -133,6 +133,11 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 	return err
 }
 
+// UpdateChoices updates the command choices by re-registering with fresh network data.
+func (c *HiveCommand) UpdateChoices(session *discordgo.Session) error {
+	return c.Register(session)
+}
+
 // Handle handles the command.
 func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Only respond to application commands
