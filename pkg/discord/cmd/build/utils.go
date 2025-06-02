@@ -7,108 +7,72 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 )
 
-// AdditionalWorkflows contains information about non-client workflows.
-var AdditionalWorkflows = map[string]struct {
-	Repository   string
-	Branch       string
-	Name         string
-	BuildArgs    string
-	HasBuildArgs bool
-}{
-	"rustic-builder": {
-		Repository: "pawanjay176/rustic-builder",
-		Branch:     "main",
-		Name:       "rustic-builder",
-	},
-	"beacon-metrics-gazer": {
-		Repository: "dapplion/beacon-metrics-gazer",
-		Branch:     "master",
-		Name:       "beacon-metrics-gazer",
-	},
-	"consensus-monitor": {
-		Repository: "ralexstokes/ethereum_consensus_monitor",
-		Branch:     "main",
-		Name:       "consensus-monitor",
-	},
-	"eleel": {
-		Repository: "sigp/eleel",
-		Branch:     "main",
-		Name:       "eleel",
-	},
-	"ethereum-genesis-generator": {
-		Repository: "ethpandaops/ethereum-genesis-generator",
-		Branch:     "master",
-		Name:       "ethereum-genesis-generator",
-	},
-	"execution-monitor": {
-		Repository: "ethereum/nodemonitor",
-		Branch:     "master",
-		Name:       "execution-monitor",
-	},
-	"flashbots-builder": {
-		Repository: "flashbots/builder",
-		Branch:     "main",
-		Name:       "flashbots-builder",
-	},
-	"goomy-blob": {
-		Repository: "ethpandaops/goomy-blob",
-		Branch:     "master",
-		Name:       "goomy-blob",
-	},
-	"goteth": {
-		Repository: "migalabs/goteth",
-		Branch:     "master",
-		Name:       "goteth",
-	},
-	"mev-boost": {
-		Repository: "flashbots/mev-boost",
-		Branch:     "develop",
-		Name:       "mev-boost",
-	},
-	"mev-boost-relay": {
-		Repository: "flashbots/mev-boost-relay",
-		Branch:     "main",
-		Name:       "mev-boost-relay",
-	},
-	"mev-rs": {
-		Repository:   "ralexstokes/mev-rs",
-		Branch:       "main",
-		Name:         "mev-rs",
-		HasBuildArgs: true,
-	},
-	"reth-rbuilder": {
-		Repository:   "flashbots/rbuilder",
-		Branch:       "develop",
-		Name:         "reth-rbuilder",
-		BuildArgs:    "RBUILDER_BIN=reth-rbuilder",
-		HasBuildArgs: true,
-	},
-	"tx-fuzz": {
-		Repository: "MariusVanDerWijden/tx-fuzz",
-		Branch:     "master",
-		Name:       "tx-fuzz",
-	},
-	"armiarma": {
-		Repository: "ethpandaops/armiarma",
-		Branch:     "master",
-		Name:       "armiarma",
-	},
-	"goevmlab": {
-		Repository: "holiman/goevmlab",
-		Branch:     "master",
-		Name:       "goevmlab",
-	},
+// getAdditionalWorkflows returns workflow information, dynamically fetched from GitHub.
+func (c *BuildCommand) getAdditionalWorkflows() map[string]WorkflowInfo {
+	workflows, err := c.workflowFetcher.GetToolWorkflows()
+	if err != nil {
+		c.log.WithError(err).Error("Failed to fetch dynamic workflows")
+
+		return make(map[string]WorkflowInfo)
+	}
+
+	return workflows
+}
+
+// getClientWorkflows returns workflows for clients that exist in both Cartographoor and GitHub workflows.
+func (c *BuildCommand) getClientWorkflows(clientType string) map[string]WorkflowInfo {
+	allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+	if err != nil {
+		c.log.WithError(err).Error("Failed to fetch all workflows")
+
+		return make(map[string]WorkflowInfo)
+	}
+
+	cartographoor := c.bot.GetCartographoor()
+
+	var clients []string
+
+	switch clientType {
+	case "execution":
+		clients = cartographoor.GetELClients()
+	case "consensus":
+		clients = cartographoor.GetCLClients()
+	default:
+		return make(map[string]WorkflowInfo)
+	}
+
+	// Filter workflows to only include clients that exist in both Cartographoor and GitHub workflows.
+	clientWorkflows := make(map[string]WorkflowInfo)
+
+	for _, client := range clients {
+		// Map client name to workflow name for special cases
+		workflowName := getClientToWorkflowName(client)
+
+		if workflow, exists := allWorkflows[workflowName]; exists {
+			// Use Cartographoor display name but keep all other workflow data unchanged.
+			workflowCopy := workflow
+			workflowCopy.Name = cartographoor.GetClientDisplayName(client)
+			clientWorkflows[client] = workflowCopy
+		}
+	}
+
+	return clientWorkflows
 }
 
 // HasBuildArgs returns whether the given workflow or client supports build arguments.
 func (c *BuildCommand) HasBuildArgs(target string) bool {
-	// Check client workflows first
-	if c.bot.GetCartographoor().ClientSupportsBuildArgs(target) {
-		return true
+	// Check all workflows (clients and tools).
+	allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+	if err != nil {
+		c.log.WithError(err).Error("Failed to fetch workflows for build args check")
+
+		return false
 	}
 
-	// Check additional workflows
-	if workflow, exists := AdditionalWorkflows[target]; exists {
+	// Map client name to workflow name for special cases
+	workflowName := getClientToWorkflowName(target)
+
+	if workflow, exists := allWorkflows[workflowName]; exists {
 		return workflow.HasBuildArgs
 	}
 
@@ -117,14 +81,18 @@ func (c *BuildCommand) HasBuildArgs(target string) bool {
 
 // GetDefaultBuildArgs returns the default build arguments for a workflow or client, if any.
 func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
-	// Check client workflows first.
-	clientBuildArgs := c.bot.GetCartographoor().GetClientDefaultBuildArgs(target)
-	if clientBuildArgs != "" {
-		return clientBuildArgs
+	// Check all workflows (clients and tools)
+	allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+	if err != nil {
+		c.log.WithError(err).Error("Failed to fetch workflows for build args")
+
+		return ""
 	}
 
-	// Check additional workflows.
-	if workflow, exists := AdditionalWorkflows[target]; exists && workflow.BuildArgs != "" {
+	// Map client name to workflow name for special cases
+	workflowName := getClientToWorkflowName(target)
+
+	if workflow, exists := allWorkflows[workflowName]; exists && workflow.BuildArgs != "" {
 		return workflow.BuildArgs
 	}
 
@@ -134,12 +102,12 @@ func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 // getCLClientChoices returns the choices for consensus layer client selection.
 func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-	cartographoor := c.bot.GetCartographoor()
 
-	// Add consensus clients
-	for _, client := range cartographoor.GetCLClients() {
+	// Get consensus clients that have workflows
+	clientWorkflows := c.getClientWorkflows("consensus")
+	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  cartographoor.GetClientDisplayName(client),
+			Name:  workflow.Name,
 			Value: client,
 		})
 	}
@@ -150,12 +118,12 @@ func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptio
 // getELClientChoices returns the choices for execution layer client selection.
 func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptionChoice {
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-	cartographoor := c.bot.GetCartographoor()
 
-	// Add execution clients
-	for _, client := range cartographoor.GetELClients() {
+	// Get execution clients that have workflows
+	clientWorkflows := c.getClientWorkflows("execution")
+	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  cartographoor.GetClientDisplayName(client),
+			Name:  workflow.Name,
 			Value: client,
 		})
 	}
@@ -168,7 +136,8 @@ func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionCh
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
 
 	// Add additional workflow choices
-	for key, workflow := range AdditionalWorkflows {
+	workflows := c.getAdditionalWorkflows()
+	for key, workflow := range workflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  workflow.Name,
 			Value: key,
@@ -198,6 +167,19 @@ func (c *BuildCommand) hasPermission(member *discordgo.Member, session *discordg
 	}
 
 	return false
+}
+
+// getClientToWorkflowName maps client names to their corresponding workflow names.
+func getClientToWorkflowName(clientName string) string {
+	// Special case mapping for clients with different repo/workflow names
+	switch clientName {
+	case "nimbus":
+		return "nimbus-eth2"
+	case "nimbusel":
+		return "nimbus-eth1"
+	default:
+		return clientName
+	}
 }
 
 // stringPtr returns a pointer to the given string.

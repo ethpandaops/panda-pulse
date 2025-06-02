@@ -16,19 +16,21 @@ const (
 
 // BuildCommand handles the /build command.
 type BuildCommand struct {
-	log         *logrus.Logger
-	bot         common.BotContext
-	githubToken string
-	httpClient  *http.Client
+	log             *logrus.Logger
+	bot             common.BotContext
+	githubToken     string
+	httpClient      *http.Client
+	workflowFetcher *WorkflowFetcher
 }
 
 // NewBuildCommand creates a new build command.
 func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string, client *http.Client) *BuildCommand {
 	return &BuildCommand{
-		log:         log,
-		bot:         bot,
-		githubToken: githubToken,
-		httpClient:  client,
+		log:             log,
+		bot:             bot,
+		githubToken:     githubToken,
+		httpClient:      client,
+		workflowFetcher: NewWorkflowFetcher(client, githubToken, log, bot),
 	}
 }
 
@@ -129,6 +131,11 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 
 // UpdateChoices updates the command choices by re-registering with fresh client and tool data.
 func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
+	// Refresh the workflow cache to get latest workflows from GitHub.
+	if err := c.workflowFetcher.RefreshCache(); err != nil {
+		c.log.WithError(err).Warn("Failed to refresh workflow cache, using existing data")
+	}
+
 	return c.Register(session)
 }
 
