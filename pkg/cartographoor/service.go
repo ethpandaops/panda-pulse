@@ -626,24 +626,6 @@ func (s *Service) IsPreProductionClient(clientName string) bool {
 	return clients.PreProductionClients[clientName]
 }
 
-// ClientSupportsBuildArgs checks if a client supports build arguments.
-func (s *Service) ClientSupportsBuildArgs(clientName string) bool {
-	if clientInfo, exists := clients.ClientsWithBuildArgs[clientName]; exists {
-		return clientInfo.HasBuildArgs
-	}
-
-	return false
-}
-
-// GetClientDefaultBuildArgs returns the default build arguments for a client.
-func (s *Service) GetClientDefaultBuildArgs(clientName string) string {
-	if clientInfo, exists := clients.ClientsWithBuildArgs[clientName]; exists && clientInfo.BuildArgs != "" {
-		return clientInfo.BuildArgs
-	}
-
-	return ""
-}
-
 // GetCLClients returns all consensus layer client names.
 func (s *Service) GetCLClients() []string {
 	return s.GetConsensusClients()

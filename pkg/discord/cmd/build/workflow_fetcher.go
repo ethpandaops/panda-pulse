@@ -160,30 +160,45 @@ func (wf *WorkflowFetcher) GetToolWorkflows() (map[string]WorkflowInfo, error) {
 
 	// Get all known clients from Cartographoor
 	var (
-		cartographoor = wf.botContext.GetCartographoor()
-		knownClients  = make(map[string]bool)
+		cartographoor  = wf.botContext.GetCartographoor()
+		knownWorkflows = make(map[string]bool)
 	)
 
-	// Add all EL clients
+	// Add all EL clients (map to their workflow names)
 	for _, client := range cartographoor.GetELClients() {
-		knownClients[client] = true
+		workflowName := wf.getClientToWorkflowName(client)
+		knownWorkflows[workflowName] = true
 	}
 
-	// Add all CL clients
+	// Add all CL clients (map to their workflow names)
 	for _, client := range cartographoor.GetCLClients() {
-		knownClients[client] = true
+		workflowName := wf.getClientToWorkflowName(client)
+		knownWorkflows[workflowName] = true
 	}
 
-	// Filter out known clients
+	// Filter out known client workflows
 	toolWorkflows := make(map[string]WorkflowInfo)
 
 	for name, workflow := range allWorkflows {
-		if !knownClients[name] {
+		if !knownWorkflows[name] {
 			toolWorkflows[name] = workflow
 		}
 	}
 
 	return toolWorkflows, nil
+}
+
+// getClientToWorkflowName maps client names to their corresponding workflow names.
+func (wf *WorkflowFetcher) getClientToWorkflowName(clientName string) string {
+	// Special case mapping for clients with different repo/workflow names
+	switch clientName {
+	case "nimbus":
+		return "nimbus-eth2"
+	case "nimbusel":
+		return "nimbus-eth1"
+	default:
+		return clientName
+	}
 }
 
 // fetchWorkflows fetches workflow information from GitHub.

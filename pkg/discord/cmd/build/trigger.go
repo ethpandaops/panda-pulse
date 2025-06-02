@@ -35,7 +35,9 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 				targetName = opt.StringValue()
 				// Get display name from workflows
 				if allWorkflows, err := c.workflowFetcher.GetAllWorkflows(); err == nil {
-					if workflow, exists := allWorkflows[targetName]; exists {
+					// Map client name to workflow name for special cases
+					workflowName := getClientToWorkflowName(targetName)
+					if workflow, exists := allWorkflows[workflowName]; exists {
 						targetDisplayName = workflow.Name
 					} else {
 						targetDisplayName = targetName
@@ -113,7 +115,9 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 			return nil
 		}
 
-		if workflow, exists := allWorkflows[targetName]; exists {
+		// Map client name to workflow name for special cases
+		workflowName := getClientToWorkflowName(targetName)
+		if workflow, exists := allWorkflows[workflowName]; exists {
 			repository = workflow.Repository
 		}
 
@@ -136,8 +140,12 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 			c.log.WithError(err).Error("Failed to fetch workflows for branch resolution")
 			// Default to main if workflow fetch fails
 			ref = fallbackDefaultBranch
-		} else if workflow, exists := allWorkflows[targetName]; exists {
-			ref = workflow.Branch
+		} else {
+			// Map client name to workflow name for special cases
+			workflowName := getClientToWorkflowName(targetName)
+			if workflow, exists := allWorkflows[workflowName]; exists {
+				ref = workflow.Branch
+			}
 		}
 
 		if ref == "" {
@@ -267,18 +275,8 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 	}
 
 	// Determine the workflow path based on the build target
-	workflowName := buildTarget
-
-	// Special case mapping for clients with different repo/workflow names
-	switch buildTarget {
-	case "nimbus":
-		// See: https://github.com/status-im/nimbus-eth2
-		workflowName = "nimbus-eth2"
-	case "nimbusel":
-		// See: https://github.com/status-im/nimbus-eth1
-		workflowName = "nimbus-eth1"
-	default:
-	}
+	// Use helper function to handle client-to-workflow name mapping
+	workflowName := getClientToWorkflowName(buildTarget)
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/actions/workflows/build-push-%s.yml/dispatches", DefaultRepository, workflowName)
 

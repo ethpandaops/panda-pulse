@@ -45,7 +45,10 @@ func (c *BuildCommand) getClientWorkflows(clientType string) map[string]Workflow
 	clientWorkflows := make(map[string]WorkflowInfo)
 
 	for _, client := range clients {
-		if workflow, exists := allWorkflows[client]; exists {
+		// Map client name to workflow name for special cases
+		workflowName := getClientToWorkflowName(client)
+
+		if workflow, exists := allWorkflows[workflowName]; exists {
 			// Use Cartographoor display name but keep all other workflow data unchanged.
 			workflowCopy := workflow
 			workflowCopy.Name = cartographoor.GetClientDisplayName(client)
@@ -66,7 +69,10 @@ func (c *BuildCommand) HasBuildArgs(target string) bool {
 		return false
 	}
 
-	if workflow, exists := allWorkflows[target]; exists {
+	// Map client name to workflow name for special cases
+	workflowName := getClientToWorkflowName(target)
+
+	if workflow, exists := allWorkflows[workflowName]; exists {
 		return workflow.HasBuildArgs
 	}
 
@@ -83,7 +89,10 @@ func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 		return ""
 	}
 
-	if workflow, exists := allWorkflows[target]; exists && workflow.BuildArgs != "" {
+	// Map client name to workflow name for special cases
+	workflowName := getClientToWorkflowName(target)
+
+	if workflow, exists := allWorkflows[workflowName]; exists && workflow.BuildArgs != "" {
 		return workflow.BuildArgs
 	}
 
@@ -158,6 +167,19 @@ func (c *BuildCommand) hasPermission(member *discordgo.Member, session *discordg
 	}
 
 	return false
+}
+
+// getClientToWorkflowName maps client names to their corresponding workflow names.
+func getClientToWorkflowName(clientName string) string {
+	// Special case mapping for clients with different repo/workflow names
+	switch clientName {
+	case "nimbus":
+		return "nimbus-eth2"
+	case "nimbusel":
+		return "nimbus-eth1"
+	default:
+		return clientName
+	}
 }
 
 // stringPtr returns a pointer to the given string.

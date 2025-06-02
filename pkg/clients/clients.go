@@ -51,13 +51,4 @@ var (
 		"nimbusel":   true,
 		"erigonTwo":  true, // Not in standard client list but tracked for pre-production.
 	}
-	// ClientsWithBuildArgs is a map of clients that support build arguments and their default values.
-	ClientsWithBuildArgs = map[string]struct {
-		BuildArgs    string
-		HasBuildArgs bool
-	}{
-		"lighthouse": {
-			HasBuildArgs: true,
-		},
-	}
 )
