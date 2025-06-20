@@ -14,7 +14,7 @@ import (
 const (
 	msgHiveAlreadyRegistered = "ℹ️ Hive summary is already registered for **%s** in <#%s>"
 	msgHiveRegistered        = "✅ Successfully registered Hive summary for **%s** notifications in <#%s>"
-	defaultHiveSchedule      = "0 9 * * *" // Daily at 9am UTC
+	defaultHiveSchedule      = "0 1 * * 1-5" // Weekdays at 1am UTC
 )
 
 // handleRegister handles the register subcommand.
