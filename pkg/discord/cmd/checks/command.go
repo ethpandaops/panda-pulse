@@ -32,6 +32,7 @@ type ChecksCommand struct {
 	bot                 common.BotContext
 	queue               *queue.AlertQueue
 	autocompleteHandler *common.AutocompleteHandler
+	commandID           string // Store the registered command ID for updates
 }
 
 // NewChecksCommand creates a new checks command.
@@ -61,11 +62,11 @@ func (c *ChecksCommand) Queue() *queue.AlertQueue {
 	return c.queue
 }
 
-// Register registers the /checks command with the given discord session.
-func (c *ChecksCommand) Register(session *discordgo.Session) error {
+// getCommandDefinition returns the application command definition with current choices.
+func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	clientChoices := c.getClientChoices()
 
-	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
+	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage network client health checks",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -175,16 +176,38 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 				},
 			},
 		},
-	}); err != nil {
+	}
+}
+
+// Register registers the /checks command with the given discord session.
+func (c *ChecksCommand) Register(session *discordgo.Session) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
+	if err != nil {
 		return fmt.Errorf("failed to register checks command: %w", err)
 	}
+
+	// Store the command ID for future updates
+	c.commandID = cmd.ID
 
 	return nil
 }
 
-// UpdateChoices updates the command choices by re-registering with fresh network and client data.
+// UpdateChoices updates the command choices by editing the existing command with fresh network and client data.
 func (c *ChecksCommand) UpdateChoices(session *discordgo.Session) error {
-	return c.Register(session)
+	// If we don't have a command ID, we can't update choices
+	if c.commandID == "" {
+		c.log.Warn("No command ID stored, cannot update choices")
+
+		return nil
+	}
+
+	// Use the same command definition as Register
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to update checks command choices: %w", err)
+	}
+
+	return nil
 }
 
 // Handle handles the /checks command.

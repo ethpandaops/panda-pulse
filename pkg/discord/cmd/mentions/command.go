@@ -13,6 +13,7 @@ type MentionsCommand struct {
 	log                 *logrus.Logger
 	bot                 common.BotContext
 	autocompleteHandler *common.AutocompleteHandler
+	commandID           string // Store the registered command ID for updates
 }
 
 // NewMentionsCommand creates a new MentionsCommand.
@@ -29,11 +30,11 @@ func (c *MentionsCommand) Name() string {
 	return "mentions"
 }
 
-// Register registers the /mentions command with the given discord session.
-func (c *MentionsCommand) Register(session *discordgo.Session) error {
+// getCommandDefinition returns the application command definition with current choices.
+func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	clientChoices := c.getClientChoices()
 
-	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
+	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage client team mentions",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -148,16 +149,38 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 				},
 			},
 		},
-	}); err != nil {
+	}
+}
+
+// Register registers the /mentions command with the given discord session.
+func (c *MentionsCommand) Register(session *discordgo.Session) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
+	if err != nil {
 		return err
 	}
+
+	// Store the command ID for future updates
+	c.commandID = cmd.ID
 
 	return nil
 }
 
-// UpdateChoices updates the command choices by re-registering with fresh network and client data.
+// UpdateChoices updates the command choices by editing the existing command with fresh network and client data.
 func (c *MentionsCommand) UpdateChoices(session *discordgo.Session) error {
-	return c.Register(session)
+	// If we don't have a command ID, we can't update choices
+	if c.commandID == "" {
+		c.log.Warn("No command ID stored, cannot update choices")
+
+		return nil
+	}
+
+	// Use the same command definition as Register
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to update mentions command choices: %w", err)
+	}
+
+	return nil
 }
 
 // Handle handles the /mentions command.

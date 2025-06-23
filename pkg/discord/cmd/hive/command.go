@@ -22,6 +22,7 @@ type HiveCommand struct {
 	bot                 common.BotContext
 	queue               *queue.AlertQueue
 	autocompleteHandler *common.AutocompleteHandler
+	commandID           string // Store the registered command ID for updates
 }
 
 // NewHiveCommand creates a new hive command.
@@ -45,96 +46,111 @@ func (c *HiveCommand) Queue() *queue.AlertQueue {
 	return c.queue
 }
 
-// Register registers the command with Discord.
-func (c *HiveCommand) Register(session *discordgo.Session) error {
-	_, err := session.ApplicationCommandCreate(
-		session.State.User.ID,
-		"",
-		&discordgo.ApplicationCommand{
-			Name:        c.Name(),
-			Description: "Manage Hive test summaries",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Name:        "register",
-					Description: "Register a Hive summary alert",
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Name:         "network",
-							Description:  "The network to monitor",
-							Type:         discordgo.ApplicationCommandOptionString,
-							Required:     true,
-							Autocomplete: true,
-						},
-						{
-							Name:        "channel",
-							Description: "Channel to send alerts to",
-							Type:        discordgo.ApplicationCommandOptionChannel,
-							Required:    true,
-							ChannelTypes: []discordgo.ChannelType{
-								discordgo.ChannelTypeGuildText,
-							},
-						},
-						{
-							Name:        "schedule",
-							Description: "The schedule to run the check (cron format)",
-							Type:        discordgo.ApplicationCommandOptionString,
-							Required:    false,
+// getCommandDefinition returns the application command definition.
+func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name:        c.Name(),
+		Description: "Manage Hive test summaries",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:        "register",
+				Description: "Register a Hive summary alert",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:         "network",
+						Description:  "The network to monitor",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
+					},
+					{
+						Name:        "channel",
+						Description: "Channel to send alerts to",
+						Type:        discordgo.ApplicationCommandOptionChannel,
+						Required:    true,
+						ChannelTypes: []discordgo.ChannelType{
+							discordgo.ChannelTypeGuildText,
 						},
 					},
-				},
-				{
-					Name:        "deregister",
-					Description: "Deregister a Hive summary alert",
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Name:         "network",
-							Description:  "The network to stop monitoring",
-							Type:         discordgo.ApplicationCommandOptionString,
-							Required:     true,
-							Autocomplete: true,
-						},
+					{
+						Name:        "schedule",
+						Description: "The schedule to run the check (cron format)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    false,
 					},
 				},
-				{
-					Name:        "list",
-					Description: "List all Hive summary alerts",
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Name:         "network",
-							Description:  "Filter by network (optional)",
-							Type:         discordgo.ApplicationCommandOptionString,
-							Required:     false,
-							Autocomplete: true,
-						},
+			},
+			{
+				Name:        "deregister",
+				Description: "Deregister a Hive summary alert",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:         "network",
+						Description:  "The network to stop monitoring",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				},
-				{
-					Name:        "run",
-					Description: "Run a Hive summary check",
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Name:         "network",
-							Description:  "The network to check",
-							Type:         discordgo.ApplicationCommandOptionString,
-							Required:     true,
-							Autocomplete: true,
-						},
+			},
+			{
+				Name:        "list",
+				Description: "List all registered Hive summary alerts",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+			},
+			{
+				Name:        "run",
+				Description: "Run a Hive summary check immediately",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:         "network",
+						Description:  "The network to check",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				},
 			},
 		},
-	)
-
-	return err
+	}
 }
 
-// UpdateChoices updates the command choices by re-registering with fresh network data.
+// Register registers the command with Discord.
+func (c *HiveCommand) Register(session *discordgo.Session) error {
+	cmd, err := session.ApplicationCommandCreate(
+		session.State.User.ID,
+		"",
+		c.getCommandDefinition(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Store the command ID for future updates
+	c.commandID = cmd.ID
+
+	return nil
+}
+
+// UpdateChoices updates the command choices by editing the existing command with fresh network data.
 func (c *HiveCommand) UpdateChoices(session *discordgo.Session) error {
-	return c.Register(session)
+	// If we don't have a command ID, we can't update choices
+	if c.commandID == "" {
+		c.log.Warn("No command ID stored, cannot update choices")
+
+		return nil
+	}
+
+	// Use the same command definition as Register
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to update hive command choices: %w", err)
+	}
+
+	return nil
 }
 
 // Handle handles the command.
