@@ -21,6 +21,7 @@ type BuildCommand struct {
 	githubToken     string
 	httpClient      *http.Client
 	workflowFetcher *WorkflowFetcher
+	commandID       string // Store the registered command ID for updates
 }
 
 // NewBuildCommand creates a new build command.
@@ -39,8 +40,8 @@ func (c *BuildCommand) Name() string {
 	return "build"
 }
 
-// Register registers the /build command with the given discord session.
-func (c *BuildCommand) Register(session *discordgo.Session) error {
+// getCommandDefinition returns the application command definition with current choices.
+func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	var (
 		clClientChoices = c.getCLClientChoices()
 		elClientChoices = c.getELClientChoices()
@@ -75,7 +76,7 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 		},
 	}
 
-	if _, err := session.ApplicationCommandCreate(session.State.User.ID, "", &discordgo.ApplicationCommand{
+	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Trigger docker image builds",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -122,21 +123,43 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 				}, commonOptions...),
 			},
 		},
-	}); err != nil {
+	}
+}
+
+// Register registers the /build command with the given discord session.
+func (c *BuildCommand) Register(session *discordgo.Session) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
+	if err != nil {
 		return fmt.Errorf("failed to register build command: %w", err)
 	}
+
+	// Store the command ID for future updates
+	c.commandID = cmd.ID
 
 	return nil
 }
 
-// UpdateChoices updates the command choices by re-registering with fresh client and tool data.
+// UpdateChoices updates the command choices by editing the existing command with fresh client and tool data.
 func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
+	// If we don't have a command ID, we can't update choices
+	if c.commandID == "" {
+		c.log.Warn("No command ID stored, cannot update choices")
+
+		return nil
+	}
+
 	// Refresh the workflow cache to get latest workflows from GitHub.
 	if err := c.workflowFetcher.RefreshCache(); err != nil {
 		c.log.WithError(err).Warn("Failed to refresh workflow cache, using existing data")
 	}
 
-	return c.Register(session)
+	// Use the same command definition as Register
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to update build command choices: %w", err)
+	}
+
+	return nil
 }
 
 // Handle handles the /build command.

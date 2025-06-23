@@ -425,17 +425,44 @@ func (b *DiscordBot) GetQueues() []queue.Queuer {
 func (b *DiscordBot) RefreshCommandChoices() error {
 	b.log.Info("Refreshing command choices")
 
+	var (
+		successCount int
+		failureCount int
+		errors       []error
+	)
+
 	for _, cmd := range b.commands {
 		// Check if command supports choice updates.
 		if updater, ok := cmd.(interface {
 			UpdateChoices(*discordgo.Session) error
 		}); ok {
 			if err := updater.UpdateChoices(b.session); err != nil {
-				return fmt.Errorf("failed to update choices for command %s: %w", cmd.Name(), err)
-			}
+				// Log the error but continue with other commands
+				b.log.WithFields(logrus.Fields{
+					"command": cmd.Name(),
+					"error":   err,
+				}).Error("Failed to update command choices")
 
-			b.log.WithField("command", cmd.Name()).Info("Successfully updated command choices")
+				failureCount++
+
+				errors = append(errors, fmt.Errorf("command %s: %w", cmd.Name(), err))
+			} else {
+				b.log.WithField("command", cmd.Name()).Info("Successfully updated command choices")
+
+				successCount++
+			}
 		}
+	}
+
+	// Log summary
+	b.log.WithFields(logrus.Fields{
+		"success_count": successCount,
+		"failure_count": failureCount,
+	}).Info("Command choices refresh completed")
+
+	// Return an error only if all updates failed
+	if successCount == 0 && failureCount > 0 {
+		return fmt.Errorf("all command choice updates failed: %v", errors)
 	}
 
 	return nil
@@ -446,7 +473,7 @@ func (b *DiscordBot) RefreshCommandChoices() error {
 // a discord command is registered, we need to refresh the choices to reflect any changes.
 func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
 	// Refresh choices every hour.
-	if err := b.scheduler.AddJob("refresh-command-choices", "*/15 * * * *", func(ctx context.Context) error {
+	if err := b.scheduler.AddJob("refresh-command-choices", "*/45 * * * *", func(ctx context.Context) error {
 		b.log.Info("Running scheduled command choices refresh")
 
 		return b.RefreshCommandChoices()
