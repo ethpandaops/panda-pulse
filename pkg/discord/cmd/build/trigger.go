@@ -154,32 +154,6 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		}
 	}
 
-	// Check if we need to prepend organization to docker tag
-	if dockerTag == "" && repository != "" {
-		// Get the official repository for comparison
-		officialRepo := ""
-		allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
-
-		if err == nil {
-			workflowName := getClientToWorkflowName(targetName)
-			if workflow, exists := allWorkflows[workflowName]; exists {
-				officialRepo = workflow.Repository
-			}
-		}
-
-		// If building from a fork, prepend the organization name
-		if shouldPrependOrganization(repository, officialRepo, dockerTag) {
-			if org := extractOrganization(repository); org != "" {
-				dockerTag = fmt.Sprintf("%s-%s", org, ref)
-				c.log.WithFields(logrus.Fields{
-					"repository": repository,
-					"official":   officialRepo,
-					"docker_tag": dockerTag,
-				}).Debug("Auto-generated docker tag for forked repository")
-			}
-		}
-	}
-
 	// Use default build args if provided and user didn't specify any.
 	if buildArgs == "" && c.HasBuildArgs(targetName) {
 		buildArgs = c.GetDefaultBuildArgs(targetName)
