@@ -35,7 +35,7 @@ func (c *HiveCommand) sendHiveSummary(
 	if networkName != "" {
 		// Use the mapped network name for the Hive URL
 		hiveNetworkName := c.bot.GetHive().MapNetworkName(networkName)
-		hiveURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/index.html", hiveNetworkName)
+		hiveURL := fmt.Sprintf("https://hive.ethpandaops.io/#/group/%s", hiveNetworkName)
 
 		messageSend.Components = []discordgo.MessageComponent{
 			discordgo.ActionsRow{

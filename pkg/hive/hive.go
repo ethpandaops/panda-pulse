@@ -36,6 +36,8 @@ type Hive interface {
 	ProcessSummary(results []TestResult) *SummaryResult
 	// MapNetworkName maps the network name to the corresponding Hive network name.
 	MapNetworkName(network string) string
+	// FetchAvailableNetworks fetches the list of available networks from discovery.json.
+	FetchAvailableNetworks(ctx context.Context) ([]string, error)
 }
 
 // hive is a Hive client implementation of Hive.
@@ -160,10 +162,14 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 	// Map network name for Hive
 	hiveNetwork := mapNetworkName(network)
 
+	// Create cache-busting timestamp
+	timestamp := time.Now().Unix()
+	discoveryURL := fmt.Sprintf("%s/discovery.json?t=%d", h.baseURL, timestamp)
+
 	req, err := http.NewRequestWithContext(
 		ctx,
-		http.MethodHead,
-		fmt.Sprintf("%s/%s/index.html", h.baseURL, hiveNetwork),
+		http.MethodGet,
+		discoveryURL,
 		nil,
 	)
 	if err != nil {
@@ -175,10 +181,77 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 		// If the request fails, we assume Hive is not available.
 		return false, nil
 	}
-
 	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK, nil
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+
+	// Parse the discovery response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var discoveries []DiscoveryEntry
+	if err := json.Unmarshal(body, &discoveries); err != nil {
+		return false, fmt.Errorf("failed to parse discovery JSON: %w", err)
+	}
+
+	// Check if the network exists in the discovery list
+	for _, entry := range discoveries {
+		if entry.Name == hiveNetwork {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// FetchAvailableNetworks fetches the list of available networks from discovery.json.
+func (h *hive) FetchAvailableNetworks(ctx context.Context) ([]string, error) {
+	// Create cache-busting timestamp
+	timestamp := time.Now().Unix()
+	discoveryURL := fmt.Sprintf("%s/discovery.json?t=%d", h.baseURL, timestamp)
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		discoveryURL,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch discovery: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("discovery endpoint returned status %d", resp.StatusCode)
+	}
+
+	// Parse the discovery response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var discoveries []DiscoveryEntry
+	if err := json.Unmarshal(body, &discoveries); err != nil {
+		return nil, fmt.Errorf("failed to parse discovery JSON: %w", err)
+	}
+
+	// Extract network names
+	networks := make([]string, 0, len(discoveries))
+	for _, entry := range discoveries {
+		networks = append(networks, entry.Name)
+	}
+
+	return networks, nil
 }
 
 // FetchTestResults fetches the latest test results for a network.
