@@ -56,7 +56,6 @@ func (s *Scheduler) AddJob(name, schedule string, run func(context.Context) erro
 
 		s.metrics.executionTime.WithLabelValues(name).Observe(time.Since(start).Seconds())
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to add job %s: %w", name, err)
 	}

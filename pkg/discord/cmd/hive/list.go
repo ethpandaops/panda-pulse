@@ -120,7 +120,6 @@ func (c *HiveCommand) handleList(
 			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 				Content: pointer(msg.String()),
 			})
-
 			if err != nil {
 				c.log.WithError(err).WithField("network", networkName).Error("Failed to edit response for first network")
 			}
@@ -132,7 +131,6 @@ func (c *HiveCommand) handleList(
 				Content: msg.String(),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			})
-
 			if err != nil {
 				c.log.WithError(err).WithField("network", networkName).Error("Failed to send follow-up for network")
 			}
