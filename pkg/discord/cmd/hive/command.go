@@ -3,6 +3,7 @@ package hive
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
@@ -18,19 +19,17 @@ const (
 
 // HiveCommand handles the /hive command.
 type HiveCommand struct {
-	log                 *logrus.Logger
-	bot                 common.BotContext
-	queue               *queue.AlertQueue
-	autocompleteHandler *common.AutocompleteHandler
-	commandID           string // Store the registered command ID for updates
+	log       *logrus.Logger
+	bot       common.BotContext
+	queue     *queue.AlertQueue
+	commandID string // Store the registered command ID for updates
 }
 
 // NewHiveCommand creates a new hive command.
 func NewHiveCommand(log *logrus.Logger, bot common.BotContext) *HiveCommand {
 	cmd := &HiveCommand{
-		log:                 log,
-		bot:                 bot,
-		autocompleteHandler: common.NewAutocompleteHandler(bot, log),
+		log: log,
+		bot: bot,
 	}
 
 	return cmd
@@ -157,7 +156,7 @@ func (c *HiveCommand) UpdateChoices(session *discordgo.Session) error {
 func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
-		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+		c.handleNetworkAutocomplete(s, i)
 
 		return
 	}
@@ -244,6 +243,88 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 	}).Info("Processed Hive client test results, sent notification")
 
 	return nil
+}
+
+// handleNetworkAutocomplete handles autocomplete for network selection using Hive discovery.
+func (c *HiveCommand) handleNetworkAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+	if data.Name != c.Name() {
+		return
+	}
+
+	// Find the focused option
+	focusedOption := c.findFocusedOption(data.Options)
+	if focusedOption == nil || focusedOption.Name != "network" {
+		return
+	}
+
+	// Get the current input value
+	inputValue := ""
+	if focusedOption.Value != nil {
+		inputValue = strings.ToLower(fmt.Sprintf("%v", focusedOption.Value))
+	}
+
+	// Fetch available networks from Hive discovery
+	choices := c.buildHiveNetworkChoices(inputValue)
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	})
+	if err != nil {
+		c.log.WithError(err).Error("Failed to respond to autocomplete")
+	}
+}
+
+// findFocusedOption finds the currently focused option in the interaction data.
+func (c *HiveCommand) findFocusedOption(options []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.ApplicationCommandInteractionDataOption {
+	for _, option := range options {
+		if option.Type == discordgo.ApplicationCommandOptionSubCommand {
+			for _, subOption := range option.Options {
+				if subOption.Focused {
+					return subOption
+				}
+			}
+		}
+
+		if option.Focused {
+			return option
+		}
+	}
+
+	return nil
+}
+
+// buildHiveNetworkChoices builds the autocomplete choices for networks from Hive discovery.
+func (c *HiveCommand) buildHiveNetworkChoices(inputValue string) []*discordgo.ApplicationCommandOptionChoice {
+	// Fetch networks from Hive discovery
+	ctx := context.Background()
+
+	networks, err := c.bot.GetHive().FetchAvailableNetworks(ctx)
+	if err != nil {
+		c.log.WithError(err).Warn("Failed to fetch Hive networks, falling back to empty list")
+
+		return []*discordgo.ApplicationCommandOptionChoice{}
+	}
+
+	// Build choices - max 25 per Discord limits
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for _, network := range networks {
+		if inputValue == "" || strings.Contains(strings.ToLower(network), inputValue) {
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  network,
+				Value: network,
+			})
+			if len(choices) >= 25 {
+				break
+			}
+		}
+	}
+
+	return choices
 }
 
 // respondWithError responds to the interaction with an error message.

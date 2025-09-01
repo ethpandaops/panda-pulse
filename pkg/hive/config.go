@@ -9,6 +9,13 @@ type Config struct {
 	BaseURL string
 }
 
+// DiscoveryEntry represents an entry in the Hive discovery.json response.
+type DiscoveryEntry struct {
+	Name            string   `json:"name"`
+	Address         string   `json:"address"`
+	GithubWorkflows []string `json:"github_workflows"` //nolint:tagliatelle // API uses snake_case
+}
+
 // SnapshotConfig contains configuration for taking a screenshot of the test coverage.
 type SnapshotConfig struct {
 	Network       string
