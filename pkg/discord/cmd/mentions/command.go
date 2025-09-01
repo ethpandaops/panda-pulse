@@ -30,10 +30,8 @@ func (c *MentionsCommand) Name() string {
 	return "mentions"
 }
 
-// getCommandDefinition returns the application command definition with current choices.
+// getCommandDefinition returns the application command definition.
 func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
-	clientChoices := c.getClientChoices()
-
 	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage client team mentions",
@@ -51,11 +49,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Client to add mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Client to add mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "handles",
@@ -78,11 +76,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Client to remove mentions from",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Client to remove mentions from",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 					{
 						Name:        "handles",
@@ -119,11 +117,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Client to enable mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Client to enable mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -140,11 +138,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Client to disable mentions for",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Client to disable mentions for",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -188,6 +186,7 @@ func (c *MentionsCommand) Handle(s *discordgo.Session, i *discordgo.InteractionC
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
 		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+		c.autocompleteHandler.HandleClientAutocomplete(s, i, c.Name())
 
 		return
 	}

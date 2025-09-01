@@ -114,3 +114,59 @@ func (h *AutocompleteHandler) buildNetworkChoices(inputValue string) []*discordg
 
 	return choices
 }
+
+// HandleClientAutocomplete handles autocomplete for client selection.
+func (h *AutocompleteHandler) HandleClientAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate, commandName string) {
+	data := i.ApplicationCommandData()
+	if data.Name != commandName {
+		return
+	}
+
+	// Find the focused option
+	focusedOption := h.findFocusedOption(data.Options)
+	if focusedOption == nil || focusedOption.Name != "client" {
+		return
+	}
+
+	// Get the current input value
+	inputValue := ""
+	if focusedOption.Value != nil {
+		inputValue = strings.ToLower(fmt.Sprintf("%v", focusedOption.Value))
+	}
+
+	// Build and send choices
+	choices := h.buildClientChoices(inputValue)
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	})
+	if err != nil {
+		h.log.WithError(err).Error("Failed to respond to client autocomplete")
+	}
+}
+
+// buildClientChoices builds the autocomplete choices for clients.
+func (h *AutocompleteHandler) buildClientChoices(inputValue string) []*discordgo.ApplicationCommandOptionChoice {
+	// Get all clients
+	clients := h.bot.GetCartographoor().GetAllClients()
+
+	// Build choices - max 25 per Discord limits
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for _, client := range clients {
+		if inputValue == "" || strings.Contains(strings.ToLower(client), inputValue) {
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  client,
+				Value: client,
+			})
+			if len(choices) >= 25 {
+				break
+			}
+		}
+	}
+
+	return choices
+}

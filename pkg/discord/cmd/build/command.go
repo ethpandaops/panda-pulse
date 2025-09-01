@@ -3,6 +3,7 @@ package build
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
@@ -12,6 +13,15 @@ import (
 const (
 	// DefaultRepository is the default repository for the eth-client-docker-image-builder.
 	DefaultRepository = "ethpandaops/eth-client-docker-image-builder"
+
+	// Subcommand names.
+	subcommandClientCL = "client-cl"
+	subcommandClientEL = "client-el"
+	subcommandTool     = "tool"
+
+	// Option names.
+	optionClient   = "client"
+	optionWorkflow = "workflow"
 )
 
 // BuildCommand handles the /build command.
@@ -40,14 +50,8 @@ func (c *BuildCommand) Name() string {
 	return "build"
 }
 
-// getCommandDefinition returns the application command definition with current choices.
+// getCommandDefinition returns the application command definition.
 func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
-	var (
-		clClientChoices = c.getCLClientChoices()
-		elClientChoices = c.getELClientChoices()
-		toolsChoices    = c.getToolsChoices()
-	)
-
 	// Options that are common to all subcommands
 	commonOptions := []*discordgo.ApplicationCommandOption{
 		{
@@ -81,44 +85,44 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 		Description: "Trigger docker image builds",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
-				Name:        "client-cl",
+				Name:        subcommandClientCL,
 				Description: "Trigger a build for a consensus layer client",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        "client",
-						Description: "Consensus client to build",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clClientChoices,
+						Name:         optionClient,
+						Description:  "Consensus client to build",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				}, commonOptions...),
 			},
 			{
-				Name:        "client-el",
+				Name:        subcommandClientEL,
 				Description: "Trigger a build for an execution layer client",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        "client",
-						Description: "Execution client to build",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     elClientChoices,
+						Name:         optionClient,
+						Description:  "Execution client to build",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				}, commonOptions...),
 			},
 			{
-				Name:        "tool",
+				Name:        subcommandTool,
 				Description: "Trigger a build for a tool or utility",
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        "workflow",
-						Description: "Tool workflow to build",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     toolsChoices,
+						Name:         optionWorkflow,
+						Description:  "Tool workflow to build",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				}, commonOptions...),
 			},
@@ -162,8 +166,84 @@ func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
 	return nil
 }
 
+// handleAutocomplete handles autocomplete for the build command.
+func (c *BuildCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+	if data.Name != c.Name() {
+		return
+	}
+
+	// Find the focused option
+	var focusedOption *discordgo.ApplicationCommandInteractionDataOption
+
+	subCmd := data.Options[0]
+
+	for _, opt := range subCmd.Options {
+		if opt.Focused {
+			focusedOption = opt
+
+			break
+		}
+	}
+
+	if focusedOption == nil {
+		return
+	}
+
+	var choices []*discordgo.ApplicationCommandOptionChoice
+
+	switch subCmd.Name {
+	case subcommandClientCL:
+		if focusedOption.Name == optionClient {
+			choices = c.getCLClientChoices()
+		}
+	case subcommandClientEL:
+		if focusedOption.Name == optionClient {
+			choices = c.getELClientChoices()
+		}
+	case subcommandTool:
+		if focusedOption.Name == optionWorkflow {
+			choices = c.getToolsChoices()
+		}
+	}
+
+	// Filter choices based on input value
+	inputValue := ""
+	if focusedOption.Value != nil {
+		inputValue = strings.ToLower(fmt.Sprintf("%v", focusedOption.Value))
+	}
+
+	filteredChoices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for _, choice := range choices {
+		if inputValue == "" || strings.Contains(strings.ToLower(choice.Name), inputValue) {
+			filteredChoices = append(filteredChoices, choice)
+			if len(filteredChoices) >= 25 {
+				break
+			}
+		}
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: filteredChoices,
+		},
+	})
+	if err != nil {
+		c.log.WithError(err).Error("Failed to respond to autocomplete")
+	}
+}
+
 // Handle handles the /build command.
 func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Handle autocomplete interactions
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		c.handleAutocomplete(s, i)
+
+		return
+	}
+
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
@@ -201,7 +281,7 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 	var err error
 
 	switch data.Options[0].Name {
-	case "client-cl", "client-el", "tool":
+	case subcommandClientCL, subcommandClientEL, subcommandTool:
 		err = c.handleBuild(s, i, data.Options[0])
 	}
 

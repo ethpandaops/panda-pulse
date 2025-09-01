@@ -62,10 +62,8 @@ func (c *ChecksCommand) Queue() *queue.AlertQueue {
 	return c.queue
 }
 
-// getCommandDefinition returns the application command definition with current choices.
+// getCommandDefinition returns the application command definition.
 func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
-	clientChoices := c.getClientChoices()
-
 	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage network client health checks",
@@ -83,11 +81,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Client to check",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Client to check",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -113,11 +111,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						},
 					},
 					{
-						Name:        "client",
-						Description: "Specific client to monitor (optional)",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Specific client to monitor (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
 					},
 					{
 						Name:        "schedule",
@@ -140,11 +138,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:        "client",
-						Description: "Specific client to stop monitoring (optional)",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    false,
-						Choices:     clientChoices,
+						Name:         "client",
+						Description:  "Specific client to stop monitoring (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
 					},
 				},
 			},
@@ -215,6 +213,7 @@ func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCre
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
 		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
+		c.autocompleteHandler.HandleClientAutocomplete(s, i, c.Name())
 
 		return
 	}
