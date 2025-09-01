@@ -74,6 +74,7 @@ func (q *Queue[T]) Enqueue(item T) {
 
 	q.metrics.queuedTotal.WithLabelValues(q.getItemNetwork(item), q.getItemClient(item)).Inc()
 	q.metrics.queueLength.Inc()
+
 	q.queue <- item
 }
 

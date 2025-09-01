@@ -104,6 +104,7 @@ func (wf *WorkflowFetcher) RefreshCache() error {
 // GetAllWorkflows returns all workflows from the GitHub repository.
 func (wf *WorkflowFetcher) GetAllWorkflows() (map[string]WorkflowInfo, error) {
 	wf.cacheMutex.RLock()
+
 	if time.Since(wf.lastUpdated) < wf.cacheExpiration && len(wf.cache) > 0 {
 		// Return cached data
 		result := make(map[string]WorkflowInfo)
@@ -116,6 +117,7 @@ func (wf *WorkflowFetcher) GetAllWorkflows() (map[string]WorkflowInfo, error) {
 
 		return result, nil
 	}
+
 	wf.cacheMutex.RUnlock()
 
 	// Need to fetch fresh data
@@ -123,6 +125,7 @@ func (wf *WorkflowFetcher) GetAllWorkflows() (map[string]WorkflowInfo, error) {
 	if err != nil {
 		// If we have stale cache data, use it rather than failing completely
 		wf.cacheMutex.RLock()
+
 		if len(wf.cache) > 0 {
 			wf.log.WithError(err).Warn("Failed to fetch fresh workflows, using stale cache")
 
