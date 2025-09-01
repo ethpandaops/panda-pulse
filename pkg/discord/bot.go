@@ -138,11 +138,6 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to schedule existing alerts: %w", err)
 	}
 
-	// Schedule periodic refresh of discord command choices.
-	if err := b.scheduleDiscordChoiceRefresh(); err != nil {
-		return fmt.Errorf("failed to schedule choice refresh: %w", err)
-	}
-
 	return nil
 }
 
@@ -464,24 +459,6 @@ func (b *DiscordBot) RefreshCommandChoices() error {
 	if successCount == 0 && failureCount > 0 {
 		return fmt.Errorf("all command choice updates failed: %v", errors)
 	}
-
-	return nil
-}
-
-// scheduleDiscordChoiceRefresh schedules periodic refresh of command choices. Our cartographoor service
-// is updated every hour, so we need to refresh the command choices to reflect the latest data as once
-// a discord command is registered, we need to refresh the choices to reflect any changes.
-func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
-	// Refresh choices every hour.
-	if err := b.scheduler.AddJob("refresh-command-choices", "*/45 * * * *", func(ctx context.Context) error {
-		b.log.Info("Running scheduled command choices refresh")
-
-		return b.RefreshCommandChoices()
-	}); err != nil {
-		return fmt.Errorf("failed to schedule choice refresh: %w", err)
-	}
-
-	b.log.Info("Scheduled bot command refresh")
 
 	return nil
 }
