@@ -3,7 +3,6 @@ package build
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
@@ -32,6 +31,7 @@ type BuildCommand struct {
 	httpClient      *http.Client
 	workflowFetcher *WorkflowFetcher
 	commandID       string // Store the registered command ID for updates
+	guildID         string // Store the guild ID for guild-specific registration
 }
 
 // NewBuildCommand creates a new build command.
@@ -52,6 +52,12 @@ func (c *BuildCommand) Name() string {
 
 // getCommandDefinition returns the application command definition.
 func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
+	var (
+		clClientChoices = c.getCLClientChoices()
+		elClientChoices = c.getELClientChoices()
+		toolsChoices    = c.getToolsChoices()
+	)
+
 	// Options that are common to all subcommands
 	commonOptions := []*discordgo.ApplicationCommandOption{
 		{
@@ -90,11 +96,11 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:         optionClient,
-						Description:  "Consensus client to build",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        optionClient,
+						Description: "Consensus client to build",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clClientChoices,
 					},
 				}, commonOptions...),
 			},
@@ -104,11 +110,11 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:         optionClient,
-						Description:  "Execution client to build",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        optionClient,
+						Description: "Execution client to build",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     elClientChoices,
 					},
 				}, commonOptions...),
 			},
@@ -118,11 +124,11 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:         optionWorkflow,
-						Description:  "Tool workflow to build",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        optionWorkflow,
+						Description: "Tool workflow to build",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     toolsChoices,
 					},
 				}, commonOptions...),
 			},
@@ -130,7 +136,7 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	}
 }
 
-// Register registers the /build command with the given discord session.
+// Register registers the /build command with the given discord session (globally).
 func (c *BuildCommand) Register(session *discordgo.Session) error {
 	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
 	if err != nil {
@@ -139,6 +145,23 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 
 	// Store the command ID for future updates
 	c.commandID = cmd.ID
+	c.guildID = "" // Global command
+
+	return nil
+}
+
+// RegisterWithGuild registers the /build command with a specific guild.
+func (c *BuildCommand) RegisterWithGuild(session *discordgo.Session, guildID string) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to register build command to guild %s: %w", guildID, err)
+	}
+
+	// Store the command ID and guild ID for future updates
+	c.commandID = cmd.ID
+	c.guildID = guildID
+
+	c.log.WithField("guild", guildID).Info("Registered build command to guild")
 
 	return nil
 }
@@ -157,93 +180,23 @@ func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
 		c.log.WithError(err).Warn("Failed to refresh workflow cache, using existing data")
 	}
 
-	// Use the same command definition as Register
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	// Use the stored guild ID (empty string for global commands)
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
 	if err != nil {
-		return fmt.Errorf("failed to update build command choices: %w", err)
+		return fmt.Errorf("failed to update build command choices for guild %s: %w", c.guildID, err)
+	}
+
+	if c.guildID != "" {
+		c.log.WithField("guild", c.guildID).Debug("Updated build command choices for guild")
+	} else {
+		c.log.Debug("Updated build command choices globally")
 	}
 
 	return nil
 }
 
-// handleAutocomplete handles autocomplete for the build command.
-func (c *BuildCommand) handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.ApplicationCommandData()
-	if data.Name != c.Name() {
-		return
-	}
-
-	// Find the focused option
-	var focusedOption *discordgo.ApplicationCommandInteractionDataOption
-
-	subCmd := data.Options[0]
-
-	for _, opt := range subCmd.Options {
-		if opt.Focused {
-			focusedOption = opt
-
-			break
-		}
-	}
-
-	if focusedOption == nil {
-		return
-	}
-
-	var choices []*discordgo.ApplicationCommandOptionChoice
-
-	switch subCmd.Name {
-	case subcommandClientCL:
-		if focusedOption.Name == optionClient {
-			choices = c.getCLClientChoices()
-		}
-	case subcommandClientEL:
-		if focusedOption.Name == optionClient {
-			choices = c.getELClientChoices()
-		}
-	case subcommandTool:
-		if focusedOption.Name == optionWorkflow {
-			choices = c.getToolsChoices()
-		}
-	}
-
-	// Filter choices based on input value
-	inputValue := ""
-	if focusedOption.Value != nil {
-		inputValue = strings.ToLower(fmt.Sprintf("%v", focusedOption.Value))
-	}
-
-	filteredChoices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
-
-	for _, choice := range choices {
-		if inputValue == "" || strings.Contains(strings.ToLower(choice.Name), inputValue) {
-			filteredChoices = append(filteredChoices, choice)
-			if len(filteredChoices) >= 25 {
-				break
-			}
-		}
-	}
-
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
-		Data: &discordgo.InteractionResponseData{
-			Choices: filteredChoices,
-		},
-	})
-	if err != nil {
-		c.log.WithError(err).Error("Failed to respond to autocomplete")
-	}
-}
-
 // Handle handles the /build command.
 func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Handle autocomplete interactions
-	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
-		c.handleAutocomplete(s, i)
-
-		return
-	}
-
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}

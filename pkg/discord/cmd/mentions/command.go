@@ -14,6 +14,7 @@ type MentionsCommand struct {
 	bot                 common.BotContext
 	autocompleteHandler *common.AutocompleteHandler
 	commandID           string // Store the registered command ID for updates
+	guildID             string // Store the guild ID for guild-specific registration
 }
 
 // NewMentionsCommand creates a new MentionsCommand.
@@ -32,6 +33,8 @@ func (c *MentionsCommand) Name() string {
 
 // getCommandDefinition returns the application command definition.
 func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
+	clientChoices := c.getClientChoices()
+
 	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage client team mentions",
@@ -49,11 +52,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Client to add mentions for",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Client to add mentions for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clientChoices,
 					},
 					{
 						Name:        "handles",
@@ -76,11 +79,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Client to remove mentions from",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Client to remove mentions from",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clientChoices,
 					},
 					{
 						Name:        "handles",
@@ -117,11 +120,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Client to enable mentions for",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Client to enable mentions for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clientChoices,
 					},
 				},
 			},
@@ -138,11 +141,11 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Client to disable mentions for",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Client to disable mentions for",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clientChoices,
 					},
 				},
 			},
@@ -150,7 +153,7 @@ func (c *MentionsCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	}
 }
 
-// Register registers the /mentions command with the given discord session.
+// Register registers the /mentions command with the given discord session (globally).
 func (c *MentionsCommand) Register(session *discordgo.Session) error {
 	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
 	if err != nil {
@@ -159,6 +162,23 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 
 	// Store the command ID for future updates
 	c.commandID = cmd.ID
+	c.guildID = "" // Global command
+
+	return nil
+}
+
+// RegisterWithGuild registers the /mentions command with a specific guild.
+func (c *MentionsCommand) RegisterWithGuild(session *discordgo.Session, guildID string) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to register mentions command to guild %s: %w", guildID, err)
+	}
+
+	// Store the command ID and guild ID for future updates
+	c.commandID = cmd.ID
+	c.guildID = guildID
+
+	c.log.WithField("guild", guildID).Info("Registered mentions command to guild")
 
 	return nil
 }
@@ -172,10 +192,16 @@ func (c *MentionsCommand) UpdateChoices(session *discordgo.Session) error {
 		return nil
 	}
 
-	// Use the same command definition as Register
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	// Use the stored guild ID (empty string for global commands)
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
 	if err != nil {
-		return fmt.Errorf("failed to update mentions command choices: %w", err)
+		return fmt.Errorf("failed to update mentions command choices for guild %s: %w", c.guildID, err)
+	}
+
+	if c.guildID != "" {
+		c.log.WithField("guild", c.guildID).Debug("Updated mentions command choices for guild")
+	} else {
+		c.log.Debug("Updated mentions command choices globally")
 	}
 
 	return nil
@@ -186,7 +212,6 @@ func (c *MentionsCommand) Handle(s *discordgo.Session, i *discordgo.InteractionC
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
 		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
-		c.autocompleteHandler.HandleClientAutocomplete(s, i, c.Name())
 
 		return
 	}

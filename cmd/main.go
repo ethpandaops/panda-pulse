@@ -84,6 +84,7 @@ func setConfig(cfg *service.Config) {
 	cfg.GrafanaBaseURL = os.Getenv("GRAFANA_BASE_URL")
 	cfg.PromDatasourceID = os.Getenv("PROMETHEUS_DATASOURCE_ID")
 	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
+	cfg.DiscordGuildID = os.Getenv("DISCORD_GUILD_ID")
 	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
 	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	cfg.GithubToken = os.Getenv("GITHUB_TOKEN")

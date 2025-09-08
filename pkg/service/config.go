@@ -14,6 +14,7 @@ import (
 type Config struct {
 	GrafanaToken       string
 	DiscordToken       string
+	DiscordGuildID     string // Optional: if set, commands will be registered to this guild only
 	GrafanaBaseURL     string
 	PromDatasourceID   string
 	AccessKeyID        string
@@ -45,6 +46,7 @@ func (c *Config) AsDiscordConfig() *discord.Config {
 	return &discord.Config{
 		DiscordToken: c.DiscordToken,
 		GithubToken:  c.GithubToken,
+		GuildID:      c.DiscordGuildID,
 	}
 }
 
