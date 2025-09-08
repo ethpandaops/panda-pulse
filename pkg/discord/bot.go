@@ -480,7 +480,7 @@ func (b *DiscordBot) RefreshCommandChoices() error {
 // a discord command is registered, we need to refresh the choices to reflect any changes.
 func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
 	// Refresh choices every hour.
-	if err := b.scheduler.AddJob("refresh-command-choices", "*/1 * * * *", func(ctx context.Context) error {
+	if err := b.scheduler.AddJob("refresh-command-choices", "*/45 * * * *", func(ctx context.Context) error {
 		b.log.Info("Running scheduled command choices refresh")
 
 		return b.RefreshCommandChoices()
