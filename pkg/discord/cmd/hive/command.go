@@ -23,6 +23,7 @@ type HiveCommand struct {
 	bot       common.BotContext
 	queue     *queue.AlertQueue
 	commandID string // Store the registered command ID for updates
+	guildID   string // Store the guild ID for guild-specific registration
 }
 
 // NewHiveCommand creates a new hive command.
@@ -117,7 +118,7 @@ func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	}
 }
 
-// Register registers the command with Discord.
+// Register registers the command with Discord (globally).
 func (c *HiveCommand) Register(session *discordgo.Session) error {
 	cmd, err := session.ApplicationCommandCreate(
 		session.State.User.ID,
@@ -130,6 +131,23 @@ func (c *HiveCommand) Register(session *discordgo.Session) error {
 
 	// Store the command ID for future updates
 	c.commandID = cmd.ID
+	c.guildID = "" // Global command
+
+	return nil
+}
+
+// RegisterWithGuild registers the /hive command with a specific guild.
+func (c *HiveCommand) RegisterWithGuild(session *discordgo.Session, guildID string) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to register hive command to guild %s: %w", guildID, err)
+	}
+
+	// Store the command ID and guild ID for future updates
+	c.commandID = cmd.ID
+	c.guildID = guildID
+
+	c.log.WithField("guild", guildID).Info("Registered hive command to guild")
 
 	return nil
 }
@@ -143,10 +161,16 @@ func (c *HiveCommand) UpdateChoices(session *discordgo.Session) error {
 		return nil
 	}
 
-	// Use the same command definition as Register
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	// Use the stored guild ID (empty string for global commands)
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
 	if err != nil {
-		return fmt.Errorf("failed to update hive command choices: %w", err)
+		return fmt.Errorf("failed to update hive command choices for guild %s: %w", c.guildID, err)
+	}
+
+	if c.guildID != "" {
+		c.log.WithField("guild", c.guildID).Debug("Updated hive command choices for guild")
+	} else {
+		c.log.Debug("Updated hive command choices globally")
 	}
 
 	return nil

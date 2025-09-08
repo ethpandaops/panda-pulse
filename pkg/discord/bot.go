@@ -60,10 +60,9 @@ type DiscordBot struct {
 	hiveSummaryRepo *store.HiveSummaryRepo
 	grafana         grafana.Client
 	hive            hive.Hive
-	//clientsService  *clients.Service
-	cartographoor *cartographoor.Service
-	commands      []common.Command
-	metrics       *Metrics
+	cartographoor   *cartographoor.Service
+	commands        []common.Command
+	metrics         *Metrics
 }
 
 // NewBot creates a new Discord bot.
@@ -78,7 +77,6 @@ func NewBot(
 	grafana grafana.Client,
 	hive hive.Hive,
 	metrics *Metrics,
-	//clientsService *clients.Service,
 	cartographoor *cartographoor.Service,
 ) (Bot, error) {
 	// Create a new Discord session.
@@ -127,8 +125,17 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			if err := cmd.Register(b.session); err != nil {
-				return fmt.Errorf("failed to register command: %w", err)
+			// Pass guild ID if available for guild-specific registration
+			if registrar, ok := cmd.(interface {
+				RegisterWithGuild(*discordgo.Session, string) error
+			}); ok && b.config.GuildID != "" {
+				if err := registrar.RegisterWithGuild(b.session, b.config.GuildID); err != nil {
+					return fmt.Errorf("failed to register command with guild: %w", err)
+				}
+			} else {
+				if err := cmd.Register(b.session); err != nil {
+					return fmt.Errorf("failed to register command: %w", err)
+				}
 			}
 		}
 	}
@@ -136,6 +143,11 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 	// If we have any existing monitor alerts configured, schedule them.
 	if err := b.scheduleExistingAlerts(); err != nil {
 		return fmt.Errorf("failed to schedule existing alerts: %w", err)
+	}
+
+	// Schedule periodic refresh of discord command choices.
+	if err := b.scheduleDiscordChoiceRefresh(); err != nil {
+		return fmt.Errorf("failed to schedule choice refresh: %w", err)
 	}
 
 	return nil
@@ -459,6 +471,24 @@ func (b *DiscordBot) RefreshCommandChoices() error {
 	if successCount == 0 && failureCount > 0 {
 		return fmt.Errorf("all command choice updates failed: %v", errors)
 	}
+
+	return nil
+}
+
+// scheduleDiscordChoiceRefresh schedules periodic refresh of command choices. Our cartographoor service
+// is updated every hour, so we need to refresh the command choices to reflect the latest data as once
+// a discord command is registered, we need to refresh the choices to reflect any changes.
+func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
+	// Refresh choices every hour.
+	if err := b.scheduler.AddJob("refresh-command-choices", "*/1 * * * *", func(ctx context.Context) error {
+		b.log.Info("Running scheduled command choices refresh")
+
+		return b.RefreshCommandChoices()
+	}); err != nil {
+		return fmt.Errorf("failed to schedule choice refresh: %w", err)
+	}
+
+	b.log.Info("Scheduled bot command refresh")
 
 	return nil
 }

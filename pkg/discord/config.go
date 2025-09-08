@@ -11,6 +11,7 @@ import (
 type Config struct {
 	DiscordToken string `yaml:"discordToken"`
 	GithubToken  string `yaml:"githubToken"`
+	GuildID      string `yaml:"guildId"` // Optional: if set, commands will be registered to this guild only
 }
 
 // AsRoleConfig returns the role configuration.

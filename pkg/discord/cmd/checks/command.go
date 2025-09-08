@@ -33,6 +33,7 @@ type ChecksCommand struct {
 	queue               *queue.AlertQueue
 	autocompleteHandler *common.AutocompleteHandler
 	commandID           string // Store the registered command ID for updates
+	guildID             string // Store the guild ID for guild-specific registration
 }
 
 // NewChecksCommand creates a new checks command.
@@ -64,6 +65,8 @@ func (c *ChecksCommand) Queue() *queue.AlertQueue {
 
 // getCommandDefinition returns the application command definition.
 func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
+	clientChoices := c.getClientChoices()
+
 	return &discordgo.ApplicationCommand{
 		Name:        c.Name(),
 		Description: "Manage network client health checks",
@@ -81,11 +84,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Client to check",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     true,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Client to check",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+						Choices:     clientChoices,
 					},
 				},
 			},
@@ -111,11 +114,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						},
 					},
 					{
-						Name:         "client",
-						Description:  "Specific client to monitor (optional)",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     false,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Specific client to monitor (optional)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    false,
+						Choices:     clientChoices,
 					},
 					{
 						Name:        "schedule",
@@ -138,11 +141,11 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Autocomplete: true,
 					},
 					{
-						Name:         "client",
-						Description:  "Specific client to stop monitoring (optional)",
-						Type:         discordgo.ApplicationCommandOptionString,
-						Required:     false,
-						Autocomplete: true,
+						Name:        "client",
+						Description: "Specific client to stop monitoring (optional)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    false,
+						Choices:     clientChoices,
 					},
 				},
 			},
@@ -177,7 +180,7 @@ func (c *ChecksCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	}
 }
 
-// Register registers the /checks command with the given discord session.
+// Register registers the /checks command with the given discord session (globally).
 func (c *ChecksCommand) Register(session *discordgo.Session) error {
 	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, "", c.getCommandDefinition())
 	if err != nil {
@@ -186,6 +189,23 @@ func (c *ChecksCommand) Register(session *discordgo.Session) error {
 
 	// Store the command ID for future updates
 	c.commandID = cmd.ID
+	c.guildID = "" // Global command
+
+	return nil
+}
+
+// RegisterWithGuild registers the /checks command with a specific guild.
+func (c *ChecksCommand) RegisterWithGuild(session *discordgo.Session, guildID string) error {
+	cmd, err := session.ApplicationCommandCreate(session.State.User.ID, guildID, c.getCommandDefinition())
+	if err != nil {
+		return fmt.Errorf("failed to register checks command to guild %s: %w", guildID, err)
+	}
+
+	// Store the command ID and guild ID for future updates
+	c.commandID = cmd.ID
+	c.guildID = guildID
+
+	c.log.WithField("guild", guildID).Info("Registered checks command to guild")
 
 	return nil
 }
@@ -199,10 +219,16 @@ func (c *ChecksCommand) UpdateChoices(session *discordgo.Session) error {
 		return nil
 	}
 
-	// Use the same command definition as Register
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, "", c.commandID, c.getCommandDefinition())
+	// Use the stored guild ID (empty string for global commands)
+	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
 	if err != nil {
-		return fmt.Errorf("failed to update checks command choices: %w", err)
+		return fmt.Errorf("failed to update checks command choices for guild %s: %w", c.guildID, err)
+	}
+
+	if c.guildID != "" {
+		c.log.WithField("guild", c.guildID).Debug("Updated checks command choices for guild")
+	} else {
+		c.log.Debug("Updated checks command choices globally")
 	}
 
 	return nil
@@ -213,7 +239,6 @@ func (c *ChecksCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCre
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
 		c.autocompleteHandler.HandleNetworkAutocomplete(s, i, c.Name())
-		c.autocompleteHandler.HandleClientAutocomplete(s, i, c.Name())
 
 		return
 	}
