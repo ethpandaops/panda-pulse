@@ -20,6 +20,7 @@ const (
 	defaultViewportWidth  = 500
 	defaultViewportHeight = 800
 	httpTimeout           = 30 * time.Second
+	consumeSyncTestName   = "eest/consume-sync"
 )
 
 // Hive is the interface for Hive operations.
@@ -394,12 +395,18 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 		summary.TestTypes[result.Name] = struct{}{}
 	}
 
-	// Group results by client.
+	// Group results by client, but exclude consume-sync tests from individual clients
 	clientResults := make(map[string][]TestResult)
+	consumeSyncResults := make([]TestResult, 0)
 
 	for _, result := range results {
-		clientName := result.Client
-		clientResults[clientName] = append(clientResults[clientName], result)
+		// ALL consume-sync tests are handled separately (suite-level tests)
+		if result.Name == consumeSyncTestName {
+			consumeSyncResults = append(consumeSyncResults, result)
+		} else {
+			clientName := result.Client
+			clientResults[clientName] = append(clientResults[clientName], result)
+		}
 	}
 
 	// Process each client's results.
@@ -410,6 +417,13 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 
 		for _, result := range clientTestResults {
 			testType := result.Name
+
+			// Skip ALL consume-sync results for individual client stats
+			// These are suite-level tests and shouldn't be attributed to individual clients
+			if testType == consumeSyncTestName {
+				continue
+			}
+
 			testTypes[testType] = struct{}{}
 
 			// If we haven't seen this test type yet, or this result is newer.
@@ -459,6 +473,16 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 		summary.ClientResults[clientName] = clientSummary
 	}
 
+	// Process consume-sync test results (suite-level tests)
+	// Add these to the overall summary but not to individual client stats
+	for _, result := range consumeSyncResults {
+		// Find the most recent consume-sync result for each test type
+		// For now we only use the latest one if there are multiple
+		summary.TotalTests += result.NTests
+		summary.TotalPasses += result.Passes
+		summary.TotalFails += result.Fails
+	}
+
 	// Calculate overall pass rate.
 	if summary.TotalTests > 0 {
 		summary.OverallPassRate = float64(summary.TotalPasses) / float64(summary.TotalTests) * 100
@@ -469,10 +493,38 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 
 // filterLatestResults filters the results to only keep the most recent ones for each client and test type.
 func filterLatestResults(results []TestResult) []TestResult {
-	// Group results by client and test type.
-	latestByClientAndType := make(map[string]map[string]TestResult)
+	// Separate consume-sync tests from other tests
+	// consume-sync tests are suite-level tests and should not be attributed to individual clients
+	consumeSyncResults := make([]TestResult, 0)
+	otherResults := make([]TestResult, 0)
 
 	for _, result := range results {
+		if result.Name == consumeSyncTestName {
+			consumeSyncResults = append(consumeSyncResults, result)
+		} else {
+			otherResults = append(otherResults, result)
+		}
+	}
+
+	// For consume-sync, find the latest result (prefer multi-client results)
+	var latestConsumeSyncResult *TestResult
+
+	for i := range consumeSyncResults {
+		result := &consumeSyncResults[i]
+		if latestConsumeSyncResult == nil || result.Timestamp.After(latestConsumeSyncResult.Timestamp) {
+			// Prefer multi-client results over single-client results at the same timestamp
+			if latestConsumeSyncResult != nil && result.Timestamp.Equal(latestConsumeSyncResult.Timestamp) && len(result.Clients) <= len(latestConsumeSyncResult.Clients) {
+				continue
+			}
+
+			latestConsumeSyncResult = result
+		}
+	}
+
+	// For other test types, use the original logic (latest per client)
+	latestByClientAndType := make(map[string]map[string]TestResult)
+
+	for _, result := range otherResults {
 		clientName := result.Client
 		testType := result.Name
 
@@ -490,6 +542,12 @@ func filterLatestResults(results []TestResult) []TestResult {
 	// Flatten the map back to a slice.
 	filtered := make([]TestResult, 0)
 
+	// Add the latest consume-sync result if found (for suite overview only)
+	if latestConsumeSyncResult != nil {
+		filtered = append(filtered, *latestConsumeSyncResult)
+	}
+
+	// Add all other test results
 	for _, testTypes := range latestByClientAndType {
 		for _, result := range testTypes {
 			filtered = append(filtered, result)

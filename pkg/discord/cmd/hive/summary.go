@@ -389,6 +389,11 @@ func buildTestSuiteLinks(clientName string, results []hive.TestResult, network s
 			continue
 		}
 
+		// Skip consume-sync tests as they are suite-level tests
+		if result.Name == "eest/consume-sync" {
+			continue
+		}
+
 		// Check if we already have a timestamp for this test type.
 		currentTimestamp, exists := latestTimestamps[result.Name]
 		if !exists || result.Timestamp.After(currentTimestamp) {
