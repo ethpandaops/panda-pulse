@@ -15,6 +15,8 @@ import (
 const (
 	threadAutoArchiveDuration = 60 // 1 hour.
 	threadDateFormat          = "2006-01-02"
+	optionNameNetwork         = "network"
+	optionNameSuite           = "suite"
 )
 
 // HiveCommand handles the /hive command.
@@ -74,6 +76,13 @@ func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						},
 					},
 					{
+						Name:         "suite",
+						Description:  "Filter by specific test suite (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
+					},
+					{
 						Name:        "schedule",
 						Description: "The schedule to run the check (cron format)",
 						Type:        discordgo.ApplicationCommandOptionString,
@@ -93,6 +102,13 @@ func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Required:     true,
 						Autocomplete: true,
 					},
+					{
+						Name:         "suite",
+						Description:  "Filter by specific test suite (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
+						Autocomplete: true,
+					},
 				},
 			},
 			{
@@ -110,6 +126,13 @@ func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Description:  "The network to check",
 						Type:         discordgo.ApplicationCommandOptionString,
 						Required:     true,
+						Autocomplete: true,
+					},
+					{
+						Name:         "suite",
+						Description:  "Filter by specific test suite (optional)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     false,
 						Autocomplete: true,
 					},
 				},
@@ -180,7 +203,19 @@ func (c *HiveCommand) UpdateChoices(session *discordgo.Session) error {
 func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Handle autocomplete interactions
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
-		c.handleNetworkAutocomplete(s, i)
+		// Find the focused option
+		data := i.ApplicationCommandData()
+		if data.Name == c.Name() {
+			focusedOption := c.findFocusedOption(data.Options)
+			if focusedOption != nil {
+				switch focusedOption.Name {
+				case optionNameNetwork:
+					c.handleNetworkAutocomplete(s, i)
+				case optionNameSuite:
+					c.handleSuiteAutocomplete(s, i)
+				}
+			}
+		}
 
 		return
 	}
@@ -228,7 +263,7 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 	}).Info("Running Hive summary check")
 
 	// Fetch test results from Hive
-	results, err := c.bot.GetHive().FetchTestResults(ctx, alert.Network)
+	results, err := c.bot.GetHive().FetchTestResults(ctx, alert.Network, alert.Suite)
 	if err != nil {
 		return fmt.Errorf("failed to fetch test results: %w", err)
 	}
@@ -240,7 +275,7 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 	}
 
 	// Get previous summary for comparison.
-	prevSummary, err := c.bot.GetHiveSummaryRepo().GetPreviousSummaryResult(ctx, alert.Network)
+	prevSummary, err := c.bot.GetHiveSummaryRepo().GetPreviousSummaryResultWithSuite(ctx, alert.Network, alert.Suite)
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to get previous summary, continuing without comparison")
 	} else if prevSummary != nil {
@@ -251,7 +286,7 @@ func (c *HiveCommand) RunHiveSummary(ctx context.Context, alert *hive.HiveSummar
 	}
 
 	// Store the new summary.
-	if err := c.bot.GetHiveSummaryRepo().StoreSummaryResult(ctx, summary); err != nil {
+	if err := c.bot.GetHiveSummaryRepo().StoreSummaryResultWithSuite(ctx, summary, alert.Suite); err != nil {
 		c.log.WithError(err).Warn("Failed to store summary, continuing")
 	}
 
@@ -278,7 +313,7 @@ func (c *HiveCommand) handleNetworkAutocomplete(s *discordgo.Session, i *discord
 
 	// Find the focused option
 	focusedOption := c.findFocusedOption(data.Options)
-	if focusedOption == nil || focusedOption.Name != "network" {
+	if focusedOption == nil || focusedOption.Name != optionNameNetwork {
 		return
 	}
 
@@ -341,6 +376,97 @@ func (c *HiveCommand) buildHiveNetworkChoices(inputValue string) []*discordgo.Ap
 			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 				Name:  network,
 				Value: network,
+			})
+			if len(choices) >= 25 {
+				break
+			}
+		}
+	}
+
+	return choices
+}
+
+// handleSuiteAutocomplete handles autocomplete for suite selection.
+func (c *HiveCommand) handleSuiteAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+	if data.Name != c.Name() {
+		return
+	}
+
+	// Find the focused option
+	focusedOption := c.findFocusedOption(data.Options)
+	if focusedOption == nil || focusedOption.Name != optionNameSuite {
+		return
+	}
+
+	// Get the current input value
+	inputValue := ""
+	if focusedOption.Value != nil {
+		inputValue = strings.ToLower(fmt.Sprintf("%v", focusedOption.Value))
+	}
+
+	// Find the network value from the options to fetch suites for that network
+	network := ""
+
+	if len(data.Options) > 0 && data.Options[0].Type == discordgo.ApplicationCommandOptionSubCommand {
+		for _, opt := range data.Options[0].Options {
+			if opt.Name == optionNameNetwork && opt.Value != nil {
+				network = fmt.Sprintf("%v", opt.Value)
+
+				break
+			}
+		}
+	}
+
+	// If no network specified, return empty choices
+	if network == "" {
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+			Data: &discordgo.InteractionResponseData{
+				Choices: []*discordgo.ApplicationCommandOptionChoice{},
+			},
+		})
+		if err != nil {
+			c.log.WithError(err).Error("Failed to respond to suite autocomplete")
+		}
+
+		return
+	}
+
+	// Fetch available suites for the network
+	choices := c.buildHiveSuiteChoices(network, inputValue)
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	})
+	if err != nil {
+		c.log.WithError(err).Error("Failed to respond to suite autocomplete")
+	}
+}
+
+// buildHiveSuiteChoices builds the autocomplete choices for suites from a specific network.
+func (c *HiveCommand) buildHiveSuiteChoices(network, inputValue string) []*discordgo.ApplicationCommandOptionChoice {
+	// Fetch suites from Hive for the specific network
+	ctx := context.Background()
+
+	suites, err := c.bot.GetHive().FetchAvailableSuites(ctx, network)
+	if err != nil {
+		c.log.WithError(err).Warn("Failed to fetch Hive suites, falling back to empty list")
+
+		return []*discordgo.ApplicationCommandOptionChoice{}
+	}
+
+	// Build choices - max 25 per Discord limits
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for _, suite := range suites {
+		if inputValue == "" || strings.Contains(strings.ToLower(suite), inputValue) {
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  suite,
+				Value: suite,
 			})
 			if len(choices) >= 25 {
 				break

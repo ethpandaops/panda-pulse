@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,13 +33,15 @@ type Hive interface {
 	// GetBaseURL returns the base URL of the Hive instance.
 	GetBaseURL() string
 	// FetchTestResults fetches the latest test results for a network.
-	FetchTestResults(ctx context.Context, network string) ([]TestResult, error)
+	FetchTestResults(ctx context.Context, network string, suiteFilter string) ([]TestResult, error)
 	// ProcessSummary processes test results into a summary.
 	ProcessSummary(results []TestResult) *SummaryResult
 	// MapNetworkName maps the network name to the corresponding Hive network name.
 	MapNetworkName(network string) string
 	// FetchAvailableNetworks fetches the list of available networks from discovery.json.
 	FetchAvailableNetworks(ctx context.Context) ([]string, error)
+	// FetchAvailableSuites fetches unique test suite types for a network.
+	FetchAvailableSuites(ctx context.Context, network string) ([]string, error)
 }
 
 // hive is a Hive client implementation of Hive.
@@ -255,8 +258,73 @@ func (h *hive) FetchAvailableNetworks(ctx context.Context) ([]string, error) {
 	return networks, nil
 }
 
-// FetchTestResults fetches the latest test results for a network.
-func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResult, error) {
+// FetchAvailableSuites fetches unique test suite types for a network.
+func (h *hive) FetchAvailableSuites(ctx context.Context, network string) ([]string, error) {
+	if network == "" {
+		return nil, fmt.Errorf("network cannot be empty")
+	}
+
+	// Map network name for Hive
+	hiveNetwork := mapNetworkName(network)
+
+	// Fetch the listing.jsonl file which contains all test results
+	listingURL := fmt.Sprintf("%s/%s/listing.jsonl", h.baseURL, hiveNetwork)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listingURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch test results: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch test results: status code %d", resp.StatusCode)
+	}
+
+	// Read and parse the JSONL file
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Split by newlines and parse each line as JSON
+	lines := bytes.Split(body, []byte("\n"))
+	suiteSet := make(map[string]struct{})
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+
+		var result TestResult
+		if err := json.Unmarshal(line, &result); err != nil {
+			continue // Skip invalid lines
+		}
+
+		// Add the test suite name to our set
+		if result.Name != "" {
+			suiteSet[result.Name] = struct{}{}
+		}
+	}
+
+	// Convert set to sorted slice
+	suites := make([]string, 0, len(suiteSet))
+	for suite := range suiteSet {
+		suites = append(suites, suite)
+	}
+
+	// Sort the suites alphabetically for consistent ordering
+	sort.Strings(suites)
+
+	return suites, nil
+}
+
+// FetchTestResults fetches the latest test results for a network with optional suite filtering.
+func (h *hive) FetchTestResults(ctx context.Context, network string, suiteFilter string) ([]TestResult, error) {
 	if network == "" {
 		return nil, fmt.Errorf("network cannot be empty")
 	}
@@ -348,6 +416,11 @@ func (h *hive) FetchTestResults(ctx context.Context, network string) ([]TestResu
 		// If testSuiteID is empty, use the network name
 		if result.TestSuiteID == "" {
 			result.TestSuiteID = network // Use original network name, not the mapped one
+		}
+
+		// Apply suite filter if specified
+		if suiteFilter != "" && result.Name != suiteFilter {
+			continue // Skip results that don't match the filter
 		}
 
 		allResults = append(allResults, result)

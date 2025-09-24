@@ -104,15 +104,20 @@ func (s *HiveSummaryRepo) Persist(ctx context.Context, alert *hive.HiveSummaryAl
 
 // Purge implements Repository for Hive summary alerts.
 func (s *HiveSummaryRepo) Purge(ctx context.Context, identifiers ...string) error {
-	if len(identifiers) != 1 {
-		return fmt.Errorf("expected network identifier, got %d identifiers", len(identifiers))
+	if len(identifiers) < 1 || len(identifiers) > 2 {
+		return fmt.Errorf("expected network and optional suite identifiers, got %d identifiers", len(identifiers))
 	}
 
 	network := identifiers[0]
+	suite := ""
+
+	if len(identifiers) == 2 {
+		suite = identifiers[1]
+	}
 
 	if _, err := s.store.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(s.Key(&hive.HiveSummaryAlert{Network: network})),
+		Key:    aws.String(s.Key(&hive.HiveSummaryAlert{Network: network, Suite: suite})),
 	}); err != nil {
 		return fmt.Errorf("failed to delete alert: %w", err)
 	}
@@ -128,6 +133,11 @@ func (s *HiveSummaryRepo) Key(alert *hive.HiveSummaryAlert) string {
 		return ""
 	}
 
+	// Include suite in path if specified
+	if alert.Suite != "" {
+		return fmt.Sprintf("%s/networks/%s/hive_summary/%s/alert.json", s.prefix, alert.Network, alert.Suite)
+	}
+
 	return fmt.Sprintf("%s/networks/%s/hive_summary/alert.json", s.prefix, alert.Network)
 }
 
@@ -136,6 +146,29 @@ func (s *HiveSummaryRepo) GetByNetwork(ctx context.Context, network string) (*hi
 	defer s.trackDuration("get", "hive_summary")()
 
 	key := fmt.Sprintf("%s/networks/%s/hive_summary/alert.json", s.prefix, network)
+
+	alert, err := s.getAlert(ctx, key)
+	if err != nil {
+		s.observeOperation("get", "hive_summary", err)
+
+		return nil, err
+	}
+
+	s.observeOperation("get", "hive_summary", nil)
+
+	return alert, nil
+}
+
+// GetByNetworkAndSuite retrieves a Hive summary alert by network and suite.
+func (s *HiveSummaryRepo) GetByNetworkAndSuite(ctx context.Context, network, suite string) (*hive.HiveSummaryAlert, error) {
+	defer s.trackDuration("get", "hive_summary")()
+
+	var key string
+	if suite != "" {
+		key = fmt.Sprintf("%s/networks/%s/hive_summary/%s/alert.json", s.prefix, network, suite)
+	} else {
+		key = fmt.Sprintf("%s/networks/%s/hive_summary/alert.json", s.prefix, network)
+	}
 
 	alert, err := s.getAlert(ctx, key)
 	if err != nil {
@@ -170,6 +203,11 @@ func (s *HiveSummaryRepo) getAlert(ctx context.Context, key string) (*hive.HiveS
 
 // StoreSummaryResult stores a summary result for historical tracking.
 func (s *HiveSummaryRepo) StoreSummaryResult(ctx context.Context, result *hive.SummaryResult) error {
+	return s.StoreSummaryResultWithSuite(ctx, result, "")
+}
+
+// StoreSummaryResultWithSuite stores a summary result for historical tracking with suite filter.
+func (s *HiveSummaryRepo) StoreSummaryResultWithSuite(ctx context.Context, result *hive.SummaryResult, suite string) error {
 	defer s.trackDuration("persist", "hive_summary_result")()
 
 	if result == nil {
@@ -179,7 +217,13 @@ func (s *HiveSummaryRepo) StoreSummaryResult(ctx context.Context, result *hive.S
 	// Format date as YYYY-MM-DD using the timestamp from the result
 	// This ensures we store it under the date the tests were actually run
 	dateStr := result.Timestamp.Format("2006-01-02")
-	key := fmt.Sprintf("%s/networks/%s/hive_summary/results/%s.json", s.prefix, result.Network, dateStr)
+
+	var key string
+	if suite != "" {
+		key = fmt.Sprintf("%s/networks/%s/hive_summary/%s/results/%s.json", s.prefix, result.Network, suite, dateStr)
+	} else {
+		key = fmt.Sprintf("%s/networks/%s/hive_summary/results/%s.json", s.prefix, result.Network, dateStr)
+	}
 
 	data, err := json.Marshal(result)
 	if err != nil {
@@ -207,10 +251,20 @@ func (s *HiveSummaryRepo) StoreSummaryResult(ctx context.Context, result *hive.S
 
 // GetPreviousSummaryResult retrieves the previous summary result.
 func (s *HiveSummaryRepo) GetPreviousSummaryResult(ctx context.Context, network string) (*hive.SummaryResult, error) {
+	return s.GetPreviousSummaryResultWithSuite(ctx, network, "")
+}
+
+// GetPreviousSummaryResultWithSuite retrieves the previous summary result with suite filter.
+func (s *HiveSummaryRepo) GetPreviousSummaryResultWithSuite(ctx context.Context, network, suite string) (*hive.SummaryResult, error) {
 	defer s.trackDuration("get", "hive_summary_result")()
 
 	// List all summary results for this network
-	prefix := fmt.Sprintf("%s/networks/%s/hive_summary/results/", s.prefix, network)
+	var prefix string
+	if suite != "" {
+		prefix = fmt.Sprintf("%s/networks/%s/hive_summary/%s/results/", s.prefix, network, suite)
+	} else {
+		prefix = fmt.Sprintf("%s/networks/%s/hive_summary/results/", s.prefix, network)
+	}
 
 	output, err := s.store.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(s.bucket),
