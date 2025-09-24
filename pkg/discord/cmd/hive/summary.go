@@ -11,6 +11,16 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 )
 
+const (
+	// Status icons for test results.
+	iconSuccess   = "✅"
+	iconWarning   = "⚠️"
+	iconFailure   = "❌"
+	iconExcellent = "🟢"
+	iconMedium    = "🟡"
+	iconPoor      = "🔴"
+)
+
 // sendHiveSummary sends a Hive summary to Discord.
 func (c *HiveCommand) sendHiveSummary(
 	ctx context.Context,
@@ -118,6 +128,8 @@ func sendClientBreakdownMessages(
 }
 
 // createClientEmbed creates an embed for a single client.
+//
+//nolint:gocyclo // splitting apart would add complexity.
 func createClientEmbed(
 	clientKey string,
 	result *hive.ClientSummary,
@@ -241,6 +253,13 @@ func createClientEmbed(
 	}
 
 	if changeValue != "" {
+		// Discord has a 1024 character limit for embed field values
+		const maxFieldLength = 1024
+		if len(changeValue) > maxFieldLength {
+			// Truncate and add ellipsis
+			changeValue = changeValue[:maxFieldLength-3] + "..."
+		}
+
 		fields = append(fields, &discordgo.MessageEmbedField{
 			Name:   "Details",
 			Value:  changeValue,
@@ -248,14 +267,41 @@ func createClientEmbed(
 		})
 	}
 
-	// Determine embed color based on pass rate.
-	color := 0xE74C3C
+	// Determine embed color based on pass rate
+	var color int
+
+	statusIcon := iconSuccess
+
 	if result.FailedTests == 0 {
-		color = 0x2ECC71 // Green for 100% pass.
+		color = 0x51CF66 // Green for perfect score
+	} else if result.PassRate >= 99 {
+		color = 0xF5A623 // Yellow/gold for very high pass rate
+		statusIcon = iconWarning
+	} else {
+		color = 0xFF6B6B // Red for concerning pass rate
+		statusIcon = iconFailure
+	}
+
+	// Format client name with proper casing
+	displayName := clientName
+	// Common client name mappings for better display
+	switch strings.ToLower(clientName) {
+	case "geth", "go-ethereum":
+		displayName = "Geth"
+	case "besu":
+		displayName = "Besu"
+	case "nethermind":
+		displayName = "Nethermind"
+	case "erigon":
+		displayName = "Erigon"
+	case "nimbus-el", "nimbusel":
+		displayName = "NimbusEL"
+	case "reth":
+		displayName = "Reth"
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Title:  fmt.Sprintf("🔍 %s", clientName),
+		Title:  fmt.Sprintf("%s %s", statusIcon, displayName),
 		Color:  color,
 		Fields: fields,
 	}
@@ -268,26 +314,38 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	// Format the timestamp in a user-friendly way using UTC.
 	lastUpdated := summary.Timestamp.UTC().Format("Mon, 2 Jan 2006")
 
-	// Create the overview fields.
+	// Create the overview fields with improved formatting
+	passRateIcon := iconExcellent
+	if summary.OverallPassRate < 95 {
+		passRateIcon = iconPoor
+	} else if summary.OverallPassRate < 99.5 {
+		passRateIcon = iconMedium
+	}
+
+	failureIcon := iconSuccess
+	if summary.TotalFails > 0 {
+		failureIcon = iconWarning
+	}
+
 	fields := []*discordgo.MessageEmbedField{
 		{
-			Name:   "Total Tests Run",
-			Value:  fmt.Sprintf("%d", summary.TotalTests),
+			Name:   "📊 Total Tests Run",
+			Value:  fmt.Sprintf("**%s**", formatNumber(summary.TotalTests)),
 			Inline: true,
 		},
 		{
-			Name:   "Overall Pass Rate",
-			Value:  formatPassRate(summary.OverallPassRate, summary.TotalFails),
+			Name:   fmt.Sprintf("%s Overall Pass Rate", passRateIcon),
+			Value:  fmt.Sprintf("**%s**", formatPassRate(summary.OverallPassRate, summary.TotalFails)),
 			Inline: true,
 		},
 		{
-			Name:   "Total Failures",
-			Value:  fmt.Sprintf("%d", summary.TotalFails),
+			Name:   fmt.Sprintf("%s Total Failures", failureIcon),
+			Value:  fmt.Sprintf("**%d**", summary.TotalFails),
 			Inline: true,
 		},
 		{
-			Name:   "Test Date",
-			Value:  lastUpdated,
+			Name:   "📅 Test Date",
+			Value:  fmt.Sprintf("**%s**", lastUpdated),
 			Inline: true,
 		},
 	}
@@ -327,13 +385,7 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 
 	sort.Strings(testTypes)
 
-	// Add a separator field.
-	fields = append(fields, &discordgo.MessageEmbedField{
-		Value:  "📊 **Suite Breakdown**",
-		Inline: false,
-	})
-
-	// Add test type fields.
+	// Add test type fields with improved formatting
 	for _, testType := range testTypes {
 		var (
 			stats    = testTypeResults[testType]
@@ -344,32 +396,64 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 			passRate = float64(stats.Passes) / float64(stats.Total) * 100
 		}
 
-		// Format the pass rate with appropriate precision.
+		// Add status indicator
+		statusIcon := iconSuccess
+		if passRate < 95 {
+			statusIcon = iconFailure
+		} else if passRate < 100 {
+			statusIcon = iconWarning
+		}
+
+		// Format the pass rate with appropriate precision
 		var passRateStr string
 		if stats.Fails > 0 && passRate >= 99.95 {
-			// Use higher precision for near-100% pass rates with failures.
+			// Use higher precision for near-100% pass rates with failures
 			passRateStr = fmt.Sprintf("%.2f%%", passRate)
 		} else {
 			passRateStr = fmt.Sprintf("%.1f%%", passRate)
 		}
 
+		// Format test name with proper styling
+		displayName := fmt.Sprintf("**%s**", testType)
+
+		//value := fmt.Sprintf("%s %s pass (%s/%s)", statusIcon, passRateStr, formatNumber(stats.Passes), formatNumber(stats.Total))
+		value := fmt.Sprintf("%s %s", statusIcon, passRateStr)
+
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("`%s`", testType),
-			Value:  fmt.Sprintf("%s pass (%d/%d)", passRateStr, stats.Passes, stats.Total),
+			Name:   displayName,
+			Value:  value,
 			Inline: true,
 		})
 	}
 
 	// Create title with optional suite information
-	title := fmt.Sprintf("🐝 **Hive Summary - %s**", summary.Network)
+	title := fmt.Sprintf("Ethereum Hive • %s", summary.Network)
 	if suite != "" {
-		title = fmt.Sprintf("🐝 **Hive Summary - %s (%s suite)**", summary.Network, suite)
+		title = fmt.Sprintf("Ethereum Hive • %s • %s", summary.Network, suite)
+	}
+
+	// Determine color based on overall pass rate
+	embedColor := 0xF5A623 // Hive brand yellow/gold
+	if summary.OverallPassRate < 95 {
+		embedColor = 0xFF6B6B // Red for concerning pass rates
+	} else if summary.OverallPassRate >= 99.5 {
+		embedColor = 0x51CF66 // Green for excellent pass rates
 	}
 
 	return &discordgo.MessageEmbed{
-		Title:  title,
-		Color:  0x3498DB,
+		//Title:  title,
+		Color:  embedColor,
 		Fields: fields,
+		//Thumbnail: &discordgo.MessageEmbedThumbnail{
+		//	URL: "https://ethpandaops.io/img/hive-logo.png",
+		//},
+		Author: &discordgo.MessageEmbedAuthor{
+			Name:    title,
+			IconURL: "https://ethpandaops.io/img/hive-logo.png",
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("Generated on %s", summary.Timestamp.UTC().Format("Jan 2, 2006 at 15:04 UTC")),
+		},
 	}
 }
 
@@ -383,78 +467,41 @@ func formatPassRate(passRate float64, failures int) string {
 	return fmt.Sprintf("%.1f%%", passRate)
 }
 
-// buildTestSuiteLinks creates links to specific test suites for a client.
+// formatNumber formats a number with thousand separators.
+func formatNumber(n int) string {
+	str := fmt.Sprintf("%d", n)
+	if n < 1000 {
+		return str
+	}
+
+	// Add comma separators
+	// Pre-allocate with estimated size (original length + commas)
+	result := make([]byte, 0, len(str)+(len(str)-1)/3)
+
+	for i, digit := range str {
+		if i > 0 && (len(str)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+
+		result = append(result, byte(digit))
+	}
+
+	return string(result)
+}
+
+// buildTestSuiteLinks creates a link to the Hive dashboard for viewing detailed results.
 func buildTestSuiteLinks(clientName string, results []hive.TestResult, network string, hiveClient hive.Hive) string {
-	// Map to store the latest test suite ID and file name for each test type.
-	latestSuites := make(map[string]struct {
-		suiteID  string
-		fileName string
-	})
-	latestTimestamps := make(map[string]time.Time)
-
-	// Find the latest test suite ID for each test type for this client.
-	for _, result := range results {
-		if result.Client != clientName || result.TestSuiteID == "" {
-			continue
-		}
-
-		// Skip consume-sync tests as they are suite-level tests
-		if result.Name == "eest/consume-sync" {
-			continue
-		}
-
-		// Check if we already have a timestamp for this test type.
-		currentTimestamp, exists := latestTimestamps[result.Name]
-		if !exists || result.Timestamp.After(currentTimestamp) {
-			latestSuites[result.Name] = struct {
-				suiteID  string
-				fileName string
-			}{
-				suiteID:  result.TestSuiteID,
-				fileName: result.FileName,
-			}
-
-			latestTimestamps[result.Name] = result.Timestamp
-		}
-	}
-
-	// If we don't have any test suites, return empty string.
-	if len(latestSuites) == 0 {
+	if network == "" {
 		return ""
 	}
 
-	networkName := network
-	if networkName == "" {
-		return ""
-	}
+	// Map network name for Hive URL
+	mappedNetworkName := hiveClient.MapNetworkName(network)
 
-	// Use the mapped network name for the Hive URL
-	mappedNetworkName := hiveClient.MapNetworkName(networkName)
+	// Create a single link to the Hive dashboard for this network
+	hiveURL := fmt.Sprintf("https://hive.ethpandaops.io/#/group/%s", mappedNetworkName)
 
-	// Build links for each test type.
-	links := make([]string, 0)
-
-	for testType, suiteInfo := range latestSuites {
-		// Use fileName if available, otherwise fallback to suiteID.json.
-		suitePath := fmt.Sprintf("%s.json", suiteInfo.suiteID)
-		if suiteInfo.fileName != "" {
-			suitePath = suiteInfo.fileName
-		}
-
-		// Create a hyperlink that Discord can display.
-		suiteURL := fmt.Sprintf("https://hive.ethpandaops.io/%s/suite.html?suiteid=%s", mappedNetworkName, suitePath)
-		links = append(links, fmt.Sprintf("[%s](%s)", testType, suiteURL))
-	}
-
-	// Sort links alphabetically.
-	sort.Strings(links)
-
-	// Limit to 3 links to avoid cluttering.
-	if len(links) > 3 {
-		links = links[:3]
-	}
-
-	return strings.Join(links, " | ")
+	return fmt.Sprintf("📊 [View detailed results in Hive](%s)", hiveURL)
 }
 
 // detectAnomalies in test results.
