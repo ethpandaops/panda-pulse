@@ -441,12 +441,8 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 	}
 
 	return &discordgo.MessageEmbed{
-		//Title:  title,
 		Color:  embedColor,
 		Fields: fields,
-		//Thumbnail: &discordgo.MessageEmbedThumbnail{
-		//	URL: "https://ethpandaops.io/img/hive-logo.png",
-		//},
 		Author: &discordgo.MessageEmbedAuthor{
 			Name:    title,
 			IconURL: "https://ethpandaops.io/img/hive-logo.png",
