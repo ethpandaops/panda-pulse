@@ -176,10 +176,28 @@ func (c *HiveCommand) listAlerts(ctx context.Context, guildID string, network *s
 func buildSummaryTable(alerts []*hive.HiveSummaryAlert, networkName string) string {
 	var msg strings.Builder
 
+	// Check if any alerts have suite specified
+	hasSuite := false
+
+	for _, alert := range alerts {
+		if alert.Network == networkName && alert.Suite != "" {
+			hasSuite = true
+
+			break
+		}
+	}
+
 	msg.WriteString("```\n")
-	msg.WriteString("┌──────────────────┬────────┬────────────────────┐\n")
-	msg.WriteString("│ Network          │ Status │ Next Run           │\n")
-	msg.WriteString("├──────────────────┼────────┼────────────────────┤\n")
+
+	if hasSuite {
+		msg.WriteString("┌──────────────────┬──────────────────┬────────┬────────────────────┐\n")
+		msg.WriteString("│ Network          │ Suite            │ Status │ Next Run           │\n")
+		msg.WriteString("├──────────────────┼──────────────────┼────────┼────────────────────┤\n")
+	} else {
+		msg.WriteString("┌──────────────────┬────────┬────────────────────┐\n")
+		msg.WriteString("│ Network          │ Status │ Next Run           │\n")
+		msg.WriteString("├──────────────────┼────────┼────────────────────┤\n")
+	}
 
 	for _, alert := range alerts {
 		if alert.Network != networkName {
@@ -198,10 +216,23 @@ func buildSummaryTable(alerts []*hive.HiveSummaryAlert, networkName string) stri
 			}
 		}
 
-		msg.WriteString(fmt.Sprintf("│ %-16s │   %s   │ %-18s │\n", alert.Network, status, nextRun))
+		if hasSuite {
+			suite := alert.Suite
+			if suite == "" {
+				suite = "All"
+			}
+
+			msg.WriteString(fmt.Sprintf("│ %-16s │ %-16s │   %s   │ %-18s │\n", alert.Network, suite, status, nextRun))
+		} else {
+			msg.WriteString(fmt.Sprintf("│ %-16s │   %s   │ %-18s │\n", alert.Network, status, nextRun))
+		}
 	}
 
-	msg.WriteString("└──────────────────┴────────┴────────────────────┘\n```")
+	if hasSuite {
+		msg.WriteString("└──────────────────┴──────────────────┴────────┴────────────────────┘\n```")
+	} else {
+		msg.WriteString("└──────────────────┴────────┴────────────────────┘\n```")
+	}
 
 	return msg.String()
 }

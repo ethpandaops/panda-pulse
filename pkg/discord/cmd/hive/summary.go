@@ -22,7 +22,7 @@ func (c *HiveCommand) sendHiveSummary(
 	session := c.bot.GetSession()
 
 	// Send the combined summary overview and test type breakdown in the main channel.
-	overviewEmbed := createCombinedOverviewEmbed(summary, prevSummary, results)
+	overviewEmbed := createCombinedOverviewEmbed(summary, prevSummary, results, alert.Suite)
 
 	// Create message send object.
 	messageSend := &discordgo.MessageSend{
@@ -57,6 +57,9 @@ func (c *HiveCommand) sendHiveSummary(
 
 	// Create a thread for the client details.
 	threadName := fmt.Sprintf("Hive Summary - %s", summary.Timestamp.Format(threadDateFormat))
+	if alert.Suite != "" {
+		threadName = fmt.Sprintf("Hive Summary (%s) - %s", alert.Suite, summary.Timestamp.Format(threadDateFormat))
+	}
 
 	thread, err := session.MessageThreadStartComplex(alert.DiscordChannel, mainMessage.ID, &discordgo.ThreadStart{
 		Name:                threadName,
@@ -261,7 +264,7 @@ func createClientEmbed(
 }
 
 // createCombinedOverviewEmbed creates an embed with the summary overview and test type breakdown.
-func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.SummaryResult, results []hive.TestResult) *discordgo.MessageEmbed {
+func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.SummaryResult, results []hive.TestResult, suite string) *discordgo.MessageEmbed {
 	// Format the timestamp in a user-friendly way using UTC.
 	lastUpdated := summary.Timestamp.UTC().Format("Mon, 2 Jan 2006")
 
@@ -357,8 +360,14 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 		})
 	}
 
+	// Create title with optional suite information
+	title := fmt.Sprintf("🐝 **Hive Summary - %s**", summary.Network)
+	if suite != "" {
+		title = fmt.Sprintf("🐝 **Hive Summary - %s (%s suite)**", summary.Network, suite)
+	}
+
 	return &discordgo.MessageEmbed{
-		Title:  fmt.Sprintf("🐝 **Hive Summary - %s**", summary.Network),
+		Title:  title,
 		Color:  0x3498DB,
 		Fields: fields,
 	}

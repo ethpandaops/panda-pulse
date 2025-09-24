@@ -25,11 +25,15 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 		channel  = options[1].ChannelValue(s)
 		guildID  = i.GuildID // Get the guild ID from the interaction
 		schedule = defaultHiveSchedule
+		suite    = ""
 	)
 
-	// If a schedule is provided, ensure its valid.
+	// Extract suite and schedule from options
 	for _, opt := range options {
-		if opt.Name == "schedule" {
+		switch opt.Name {
+		case optionNameSuite:
+			suite = opt.StringValue()
+		case "schedule":
 			schedule = opt.StringValue()
 
 			if _, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow).Parse(schedule); err != nil {
@@ -37,8 +41,6 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 
 				return
 			}
-
-			break
 		}
 	}
 
@@ -72,8 +74,13 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	}
 
 	for _, alert := range alerts {
-		if alert.Network == network && alert.DiscordChannel == channel.ID && alert.DiscordGuildID == guildID {
-			c.respondWithError(s, i, fmt.Sprintf(msgHiveAlreadyRegistered, network, channel.ID))
+		if alert.Network == network && alert.Suite == suite && alert.DiscordChannel == channel.ID && alert.DiscordGuildID == guildID {
+			msg := fmt.Sprintf(msgHiveAlreadyRegistered, network, channel.ID)
+			if suite != "" {
+				msg = fmt.Sprintf("ℹ️ Hive summary for **%s** (suite: %s) is already registered in <#%s>", network, suite, channel.ID)
+			}
+
+			c.respondWithError(s, i, msg)
 
 			return
 		}
@@ -82,6 +89,7 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	// Create a new alert.
 	alert := &hive.HiveSummaryAlert{
 		Network:        network,
+		Suite:          suite,
 		DiscordChannel: channel.ID,
 		DiscordGuildID: guildID,
 		Enabled:        true,
@@ -99,6 +107,9 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 
 	// Schedule the alert.
 	jobName := fmt.Sprintf("hive-summary-%s", network)
+	if suite != "" {
+		jobName = fmt.Sprintf("hive-summary-%s-%s", network, suite)
+	}
 
 	c.log.WithFields(logrus.Fields{
 		"network": network,
@@ -121,10 +132,15 @@ func (c *HiveCommand) handleRegister(s *discordgo.Session, i *discordgo.Interact
 	}).Info("Scheduled Hive summary")
 
 	// Respond with success.
+	successMsg := fmt.Sprintf(msgHiveRegistered, network, channel.ID)
+	if suite != "" {
+		successMsg = fmt.Sprintf("✅ Successfully registered Hive summary for **%s** (suite: %s) notifications in <#%s>", network, suite, channel.ID)
+	}
+
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf(msgHiveRegistered, network, channel.ID),
+			Content: successMsg,
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})

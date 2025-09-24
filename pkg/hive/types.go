@@ -45,6 +45,7 @@ type SummaryResult struct {
 // HiveSummaryAlert represents a Hive summary alert configuration.
 type HiveSummaryAlert struct {
 	Network        string    `json:"network"`
+	Suite          string    `json:"suite,omitempty"` // Optional suite filter - empty means all suites
 	DiscordChannel string    `json:"discordChannel"`
 	DiscordGuildID string    `json:"discordGuildId"`
 	Enabled        bool      `json:"enabled"`
