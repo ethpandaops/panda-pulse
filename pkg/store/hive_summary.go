@@ -320,18 +320,13 @@ func (s *HiveSummaryRepo) GetPreviousSummaryResultWithSuite(ctx context.Context,
 
 	s.log.WithField("dates", dates).Debug("Found summary result dates")
 
-	// If we only have one result, we can't get a "previous" one
-	if len(dates) < 2 {
-		return nil, fmt.Errorf("only one summary result found, need at least two for comparison")
-	}
-
-	// Get the second most recent result (index 1 after sorting)
-	previousDate := dates[1]
+	// Get the most recent result (index 0 after sorting)
+	// This will be compared against the current summary before it's stored
+	previousDate := dates[0]
 	previousKey := dateKeys[previousDate]
 
 	s.log.WithFields(logrus.Fields{
-		"mostRecentDate": dates[0],
-		"previousDate":   previousDate,
+		"previousDate": previousDate,
 	}).Debug("Found previous summary result")
 
 	// Get the previous result
