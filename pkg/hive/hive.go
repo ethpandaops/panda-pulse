@@ -21,7 +21,8 @@ const (
 	defaultViewportWidth  = 500
 	defaultViewportHeight = 800
 	httpTimeout           = 30 * time.Second
-	consumeSyncTestName   = "eest/consume-sync"
+	eestConsumeSyncTest   = "eest/consume-sync"
+	eelsConsumeSyncTest   = "eels/consume-sync"
 )
 
 // Hive is the interface for Hive operations.
@@ -474,7 +475,7 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 
 	for _, result := range results {
 		// ALL consume-sync tests are handled separately (suite-level tests)
-		if result.Name == consumeSyncTestName {
+		if isConsumeSyncTest(result.Name) {
 			consumeSyncResults = append(consumeSyncResults, result)
 		} else {
 			clientName := result.Client
@@ -493,7 +494,7 @@ func (h *hive) ProcessSummary(results []TestResult) *SummaryResult {
 
 			// Skip ALL consume-sync results for individual client stats
 			// These are suite-level tests and shouldn't be attributed to individual clients
-			if testType == consumeSyncTestName {
+			if isConsumeSyncTest(testType) {
 				continue
 			}
 
@@ -572,7 +573,7 @@ func filterLatestResults(results []TestResult) []TestResult {
 	otherResults := make([]TestResult, 0)
 
 	for _, result := range results {
-		if result.Name == consumeSyncTestName {
+		if isConsumeSyncTest(result.Name) {
 			consumeSyncResults = append(consumeSyncResults, result)
 		} else {
 			otherResults = append(otherResults, result)
@@ -646,6 +647,12 @@ func mapNetworkName(network string) string {
 	}
 
 	return network
+}
+
+// isConsumeSyncTest checks if a test name is a consume-sync test.
+// These are suite-level tests that should not be attributed to individual clients.
+func isConsumeSyncTest(testName string) bool {
+	return testName == eestConsumeSyncTest || testName == eelsConsumeSyncTest
 }
 
 func getDefaultChromeOptions() []chromedp.ExecAllocatorOption {
