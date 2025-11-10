@@ -21,7 +21,6 @@ const (
 	defaultViewportWidth  = 500
 	defaultViewportHeight = 800
 	httpTimeout           = 30 * time.Second
-	eestConsumeSyncTest   = "eest/consume-sync"
 	eelsConsumeSyncTest   = "eels/consume-sync"
 )
 
@@ -419,6 +418,11 @@ func (h *hive) FetchTestResults(ctx context.Context, network string, suiteFilter
 			result.TestSuiteID = network // Use original network name, not the mapped one
 		}
 
+		// Skip all EEST tests as they no longer exist
+		if strings.HasPrefix(result.Name, "eest/") {
+			continue
+		}
+
 		// Apply suite filter if specified
 		if suiteFilter != "" && result.Name != suiteFilter {
 			continue // Skip results that don't match the filter
@@ -652,7 +656,7 @@ func mapNetworkName(network string) string {
 // isConsumeSyncTest checks if a test name is a consume-sync test.
 // These are suite-level tests that should not be attributed to individual clients.
 func isConsumeSyncTest(testName string) bool {
-	return testName == eestConsumeSyncTest || testName == eelsConsumeSyncTest
+	return testName == eelsConsumeSyncTest
 }
 
 func getDefaultChromeOptions() []chromedp.ExecAllocatorOption {
