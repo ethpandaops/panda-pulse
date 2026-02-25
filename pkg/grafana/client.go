@@ -112,7 +112,7 @@ func (c *client) createRequest(ctx context.Context, refID, expr, legendFormat st
 }
 
 func (c *client) doRequest(req *http.Request) ([]byte, error) {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}

@@ -327,28 +327,29 @@ func createCombinedOverviewEmbed(summary *hive.SummaryResult, prevSummary *hive.
 		failureIcon = iconWarning
 	}
 
-	fields := []*discordgo.MessageEmbedField{
-		{
+	fields := make([]*discordgo.MessageEmbedField, 0, 4+len(results))
+	fields = append(fields,
+		&discordgo.MessageEmbedField{
 			Name:   "📊 Total Tests Run",
 			Value:  fmt.Sprintf("**%s**", formatNumber(summary.TotalTests)),
 			Inline: true,
 		},
-		{
+		&discordgo.MessageEmbedField{
 			Name:   fmt.Sprintf("%s Overall Pass Rate", passRateIcon),
 			Value:  fmt.Sprintf("**%s**", formatPassRate(summary.OverallPassRate, summary.TotalFails)),
 			Inline: true,
 		},
-		{
+		&discordgo.MessageEmbedField{
 			Name:   fmt.Sprintf("%s Total Failures", failureIcon),
 			Value:  fmt.Sprintf("**%d**", summary.TotalFails),
 			Inline: true,
 		},
-		{
+		&discordgo.MessageEmbedField{
 			Name:   "📅 Test Date",
 			Value:  fmt.Sprintf("**%s**", lastUpdated),
 			Inline: true,
 		},
-	}
+	)
 
 	// Add test type breakdown.
 	testTypeResults := make(map[string]struct {
@@ -479,7 +480,7 @@ func formatNumber(n int) string {
 			result = append(result, ',')
 		}
 
-		result = append(result, byte(digit))
+		result = append(result, byte(digit)) //nolint:gosec // digit is always an ASCII digit rune (0-9), safe to convert
 	}
 
 	return string(result)

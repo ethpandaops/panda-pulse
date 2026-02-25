@@ -101,10 +101,9 @@ func (c *BuildCommand) GetDefaultBuildArgs(target string) string {
 
 // getCLClientChoices returns the choices for consensus layer client selection.
 func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptionChoice {
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-
-	// Get consensus clients that have workflows
 	clientWorkflows := c.getClientWorkflows("consensus")
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(clientWorkflows))
+
 	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  workflow.Name,
@@ -117,10 +116,9 @@ func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptio
 
 // getELClientChoices returns the choices for execution layer client selection.
 func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptionChoice {
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-
-	// Get execution clients that have workflows
 	clientWorkflows := c.getClientWorkflows("execution")
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(clientWorkflows))
+
 	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  workflow.Name,
@@ -133,10 +131,9 @@ func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptio
 
 // getToolsChoices returns the choices for tool workflow selection.
 func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionChoice {
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0)
-
-	// Add additional workflow choices
 	workflows := c.getAdditionalWorkflows()
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(workflows))
+
 	for key, workflow := range workflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
 			Name:  workflow.Name,

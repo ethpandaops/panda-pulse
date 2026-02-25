@@ -85,7 +85,7 @@ func (c *HiveCommand) handleList(
 
 		var msg strings.Builder
 
-		msg.WriteString(fmt.Sprintf(msgNetworkHiveSummary, networkName))
+		fmt.Fprintf(&msg, msgNetworkHiveSummary, networkName)
 		msg.WriteString(buildSummaryTable(alerts, networkName))
 
 		// Find the channel for this network
@@ -107,7 +107,7 @@ func (c *HiveCommand) handleList(
 					msg.WriteString(", ")
 				}
 
-				msg.WriteString(fmt.Sprintf("<#%s>", channelID))
+				fmt.Fprintf(&msg, "<#%s>", channelID)
 
 				first = false
 			}
@@ -222,9 +222,9 @@ func buildSummaryTable(alerts []*hive.HiveSummaryAlert, networkName string) stri
 				suite = "All"
 			}
 
-			msg.WriteString(fmt.Sprintf("│ %-16s │ %-16s │   %s   │ %-18s │\n", alert.Network, suite, status, nextRun))
+			fmt.Fprintf(&msg, "│ %-16s │ %-16s │   %s   │ %-18s │\n", alert.Network, suite, status, nextRun)
 		} else {
-			msg.WriteString(fmt.Sprintf("│ %-16s │   %s   │ %-18s │\n", alert.Network, status, nextRun))
+			fmt.Fprintf(&msg, "│ %-16s │   %s   │ %-18s │\n", alert.Network, status, nextRun)
 		}
 	}
 

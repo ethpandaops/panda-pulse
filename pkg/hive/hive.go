@@ -180,7 +180,7 @@ func (h *hive) IsAvailable(ctx context.Context, network string) (bool, error) {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		// If the request fails, we assume Hive is not available.
 		return false, nil
@@ -228,7 +228,7 @@ func (h *hive) FetchAvailableNetworks(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch discovery: %w", err)
 	}
@@ -275,7 +275,7 @@ func (h *hive) FetchAvailableSuites(ctx context.Context, network string) ([]stri
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch test results: %w", err)
 	}
@@ -340,7 +340,7 @@ func (h *hive) FetchTestResults(ctx context.Context, network string, suiteFilter
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch test results: %w", err)
 	}

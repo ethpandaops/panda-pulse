@@ -118,7 +118,7 @@ func (c *ChecksCommand) handleList(
 
 		var msg strings.Builder
 
-		msg.WriteString(fmt.Sprintf(msgNetworkClients, networkName))
+		fmt.Fprintf(&msg, msgNetworkClients, networkName)
 		msg.WriteString(buildClientTable(allClients, registered))
 
 		// Collect all unique channels.
@@ -140,7 +140,7 @@ func (c *ChecksCommand) handleList(
 					msg.WriteString(", ")
 				}
 
-				msg.WriteString(fmt.Sprintf("<#%s>", channelID))
+				fmt.Fprintf(&msg, "<#%s>", channelID)
 
 				first = false
 			}
@@ -252,7 +252,7 @@ func buildClientTable(clients []string, registered map[string]clientInfo) string
 			}
 		}
 
-		msg.WriteString(fmt.Sprintf("│ %-12s │   %s   │ %-18s │\n", client, status, nextRun))
+		fmt.Fprintf(&msg, "│ %-12s │   %s   │ %-18s │\n", client, status, nextRun)
 	}
 
 	msg.WriteString("└──────────────┴────────┴────────────────────┘\n```")
