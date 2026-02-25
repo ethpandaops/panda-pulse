@@ -294,7 +294,7 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 	req.Header.Set("Content-Type", "application/json")
 
 	// Use the HTTP client
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}

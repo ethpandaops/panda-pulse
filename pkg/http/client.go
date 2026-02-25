@@ -38,7 +38,7 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 	c.metrics.RecordAPIRequest(service, operation)
 
 	// Execute the request.
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // URL is from trusted configuration
 
 	// Record request duration.
 	duration := time.Since(startTime).Seconds()

@@ -19,6 +19,7 @@ func main() {
 		keepGuild  = flag.Bool("keep-guild", true, "Keep guild-specific commands")
 		keepGlobal = flag.Bool("keep-global", false, "Keep global commands")
 	)
+
 	flag.Parse()
 
 	if *token == "" {

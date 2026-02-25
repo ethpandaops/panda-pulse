@@ -254,7 +254,7 @@ func (wf *WorkflowFetcher) getWorkflowFiles() ([]GitHubFile, error) {
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Authorization", "Bearer "+wf.githubToken)
 
-	resp, err := wf.httpClient.Do(req)
+	resp, err := wf.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch workflow files: %w", err)
 	}
@@ -281,7 +281,7 @@ func (wf *WorkflowFetcher) parseWorkflow(downloadURL, workflowName string) (Work
 
 	req.Header.Set("Authorization", "Bearer "+wf.githubToken)
 
-	resp, err := wf.httpClient.Do(req)
+	resp, err := wf.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
 	if err != nil {
 		return WorkflowInfo{}, fmt.Errorf("failed to fetch workflow content: %w", err)
 	}

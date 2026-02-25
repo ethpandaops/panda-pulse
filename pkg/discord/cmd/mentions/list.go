@@ -157,7 +157,7 @@ func (c *MentionsCommand) buildMentionsTable(mentions map[string]*store.ClientMe
 			}
 		}
 
-		msg.WriteString(fmt.Sprintf("│ %-12s │ %-25s │   %s   │\n", client, mentionsStr, status))
+		fmt.Fprintf(&msg, "│ %-12s │ %-25s │   %s   │\n", client, mentionsStr, status)
 	}
 
 	msg.WriteString("└──────────────┴───────────────────────────┴─────────┘\n```")
