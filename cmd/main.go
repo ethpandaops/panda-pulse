@@ -91,6 +91,7 @@ func setConfig(cfg *service.Config) {
 	} else if guildID := os.Getenv("DISCORD_GUILD_ID"); guildID != "" {
 		cfg.DiscordGuildIDs = []string{guildID}
 	}
+
 	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
 	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	cfg.GithubToken = os.Getenv("GITHUB_TOKEN")

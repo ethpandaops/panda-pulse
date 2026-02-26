@@ -18,6 +18,7 @@ type Config struct {
 func (c *Config) AsRoleConfig() *common.RoleConfig {
 	// Create admin roles map by flattening all role name variants.
 	adminRoles := make(map[string]bool)
+
 	for _, roles := range clients.AdminRoles {
 		for _, role := range roles {
 			adminRoles[strings.ToLower(role)] = true
