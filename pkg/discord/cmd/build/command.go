@@ -25,13 +25,12 @@ const (
 
 // BuildCommand handles the /build command.
 type BuildCommand struct {
-	log             *logrus.Logger
-	bot             common.BotContext
-	githubToken     string
-	httpClient      *http.Client
-	workflowFetcher *WorkflowFetcher
-	commandID       string // Store the registered command ID for updates
-	guildID         string // Store the guild ID for guild-specific registration
+	log                *logrus.Logger
+	bot                common.BotContext
+	githubToken        string
+	httpClient         *http.Client
+	workflowFetcher    *WorkflowFetcher
+	guildRegistrations map[string]string // Maps guild ID to registered command ID for updates
 }
 
 // NewBuildCommand creates a new build command.
@@ -143,9 +142,11 @@ func (c *BuildCommand) Register(session *discordgo.Session) error {
 		return fmt.Errorf("failed to register build command: %w", err)
 	}
 
-	// Store the command ID for future updates
-	c.commandID = cmd.ID
-	c.guildID = "" // Global command
+	if c.guildRegistrations == nil {
+		c.guildRegistrations = make(map[string]string, 1)
+	}
+
+	c.guildRegistrations[""] = cmd.ID
 
 	return nil
 }
@@ -157,9 +158,11 @@ func (c *BuildCommand) RegisterWithGuild(session *discordgo.Session, guildID str
 		return fmt.Errorf("failed to register build command to guild %s: %w", guildID, err)
 	}
 
-	// Store the command ID and guild ID for future updates
-	c.commandID = cmd.ID
-	c.guildID = guildID
+	if c.guildRegistrations == nil {
+		c.guildRegistrations = make(map[string]string, 2)
+	}
+
+	c.guildRegistrations[guildID] = cmd.ID
 
 	c.log.WithField("guild", guildID).Info("Registered build command to guild")
 
@@ -168,9 +171,8 @@ func (c *BuildCommand) RegisterWithGuild(session *discordgo.Session, guildID str
 
 // UpdateChoices updates the command choices by editing the existing command with fresh client and tool data.
 func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
-	// If we don't have a command ID, we can't update choices
-	if c.commandID == "" {
-		c.log.Warn("No command ID stored, cannot update choices")
+	if len(c.guildRegistrations) == 0 {
+		c.log.Warn("No command registrations stored, cannot update choices")
 
 		return nil
 	}
@@ -180,16 +182,18 @@ func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
 		c.log.WithError(err).Warn("Failed to refresh workflow cache, using existing data")
 	}
 
-	// Use the stored guild ID (empty string for global commands)
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
-	if err != nil {
-		return fmt.Errorf("failed to update build command choices for guild %s: %w", c.guildID, err)
-	}
+	definition := c.getCommandDefinition()
 
-	if c.guildID != "" {
-		c.log.WithField("guild", c.guildID).Debug("Updated build command choices for guild")
-	} else {
-		c.log.Debug("Updated build command choices globally")
+	for guildID, commandID := range c.guildRegistrations {
+		if _, err := session.ApplicationCommandEdit(session.State.User.ID, guildID, commandID, definition); err != nil {
+			return fmt.Errorf("failed to update build command choices for guild %s: %w", guildID, err)
+		}
+
+		if guildID != "" {
+			c.log.WithField("guild", guildID).Debug("Updated build command choices for guild")
+		} else {
+			c.log.Debug("Updated build command choices globally")
+		}
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -84,7 +85,13 @@ func setConfig(cfg *service.Config) {
 	cfg.GrafanaBaseURL = os.Getenv("GRAFANA_BASE_URL")
 	cfg.PromDatasourceID = os.Getenv("PROMETHEUS_DATASOURCE_ID")
 	cfg.DiscordToken = os.Getenv("DISCORD_BOT_TOKEN")
-	cfg.DiscordGuildID = os.Getenv("DISCORD_GUILD_ID")
+	// Support comma-separated DISCORD_GUILD_IDS, with fallback to singular DISCORD_GUILD_ID.
+	if guildIDs := os.Getenv("DISCORD_GUILD_IDS"); guildIDs != "" {
+		cfg.DiscordGuildIDs = strings.Split(guildIDs, ",")
+	} else if guildID := os.Getenv("DISCORD_GUILD_ID"); guildID != "" {
+		cfg.DiscordGuildIDs = []string{guildID}
+	}
+
 	cfg.AccessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
 	cfg.SecretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	cfg.GithubToken = os.Getenv("GITHUB_TOKEN")

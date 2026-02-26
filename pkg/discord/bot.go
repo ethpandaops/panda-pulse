@@ -125,12 +125,15 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// Pass guild ID if available for guild-specific registration
-			if registrar, ok := cmd.(interface {
+			registrar, ok := cmd.(interface {
 				RegisterWithGuild(*discordgo.Session, string) error
-			}); ok && b.config.GuildID != "" {
-				if err := registrar.RegisterWithGuild(b.session, b.config.GuildID); err != nil {
-					return fmt.Errorf("failed to register command with guild: %w", err)
+			})
+
+			if ok && len(b.config.GuildIDs) > 0 {
+				for _, guildID := range b.config.GuildIDs {
+					if err := registrar.RegisterWithGuild(b.session, guildID); err != nil {
+						return fmt.Errorf("failed to register command with guild %s: %w", guildID, err)
+					}
 				}
 			} else {
 				if err := cmd.Register(b.session); err != nil {

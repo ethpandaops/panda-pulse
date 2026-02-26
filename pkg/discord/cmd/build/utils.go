@@ -156,9 +156,11 @@ func (c *BuildCommand) hasPermission(member *discordgo.Member, session *discordg
 
 	// Check if user has any team role.
 	for _, roleName := range common.GetRoleNames(member, session, guildID) {
-		for _, teamRole := range config.ClientRoles {
-			if strings.EqualFold(teamRole, strings.ToLower(roleName)) {
-				return true
+		for _, teamRoles := range config.ClientRoles {
+			for _, teamRole := range teamRoles {
+				if strings.EqualFold(teamRole, roleName) {
+					return true
+				}
 			}
 		}
 	}
