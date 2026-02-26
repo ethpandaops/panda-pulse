@@ -616,8 +616,8 @@ func (s *Service) GetNetworksOfType(networkType string) []string {
 	return []string{}
 }
 
-// GetTeamRole returns the team role for a client.
-func (s *Service) GetTeamRole(clientName string) string {
+// GetTeamRoles returns the team roles for a client.
+func (s *Service) GetTeamRoles(clientName string) []string {
 	return clients.TeamRoles[clientName]
 }
 
@@ -637,6 +637,6 @@ func (s *Service) GetELClients() []string {
 }
 
 // GetAdminRoles returns all admin roles.
-func (s *Service) GetAdminRoles() map[string]string {
+func (s *Service) GetAdminRoles() map[string][]string {
 	return clients.AdminRoles
 }

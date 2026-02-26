@@ -14,8 +14,8 @@ import (
 
 // RoleConfig defines the roles required for each permission level.
 type RoleConfig struct {
-	AdminRoles  map[string]bool   // Map of admin role names that have full access
-	ClientRoles map[string]string // Map of client names to their team role names
+	AdminRoles  map[string]bool     // Map of admin role names that have full access
+	ClientRoles map[string][]string // Map of client names to their team role names
 }
 
 // Command represents a Discord slash command.
@@ -85,16 +85,18 @@ func HasPermission(member *discordgo.Member, session *discordgo.Session, guildID
 	// For client team members, we need to check if they're trying to access their own client.
 	clientArg := findClientArgument(cmdData)
 	if clientArg != "" {
-		// Get the required team role for this client.
-		requiredRole := config.ClientRoles[strings.ToLower(clientArg)]
-		if requiredRole == "" {
+		// Get the required team roles for this client.
+		requiredRoles := config.ClientRoles[strings.ToLower(clientArg)]
+		if len(requiredRoles) == 0 {
 			return false // Unknown client.
 		}
 
-		// Check if user has the required team role.
+		// Check if user has any of the required team roles.
 		for _, roleName := range GetRoleNames(member, session, guildID) {
-			if strings.EqualFold(roleName, requiredRole) {
-				return true
+			for _, requiredRole := range requiredRoles {
+				if strings.EqualFold(roleName, requiredRole) {
+					return true
+				}
 			}
 		}
 

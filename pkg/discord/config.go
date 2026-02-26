@@ -16,10 +16,12 @@ type Config struct {
 
 // AsRoleConfig returns the role configuration.
 func (c *Config) AsRoleConfig() *common.RoleConfig {
-	// Create admin roles map.
+	// Create admin roles map by flattening all role name variants.
 	adminRoles := make(map[string]bool)
-	for _, role := range clients.AdminRoles {
-		adminRoles[strings.ToLower(role)] = true
+	for _, roles := range clients.AdminRoles {
+		for _, role := range roles {
+			adminRoles[strings.ToLower(role)] = true
+		}
 	}
 
 	return &common.RoleConfig{
