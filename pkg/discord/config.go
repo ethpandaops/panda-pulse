@@ -9,9 +9,9 @@ import (
 
 // Config represents the configuration for the Discord bot.
 type Config struct {
-	DiscordToken string `yaml:"discordToken"`
-	GithubToken  string `yaml:"githubToken"`
-	GuildID      string `yaml:"guildId"` // Optional: if set, commands will be registered to this guild only
+	DiscordToken string   `yaml:"discordToken"`
+	GithubToken  string   `yaml:"githubToken"`
+	GuildIDs     []string `yaml:"guildIds"` // Optional: if set, commands will be registered to these guilds only
 }
 
 // AsRoleConfig returns the role configuration.

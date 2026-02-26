@@ -13,8 +13,7 @@ type MentionsCommand struct {
 	log                 *logrus.Logger
 	bot                 common.BotContext
 	autocompleteHandler *common.AutocompleteHandler
-	commandID           string // Store the registered command ID for updates
-	guildID             string // Store the guild ID for guild-specific registration
+	guildRegistrations  map[string]string // Maps guild ID to registered command ID for updates
 }
 
 // NewMentionsCommand creates a new MentionsCommand.
@@ -160,9 +159,11 @@ func (c *MentionsCommand) Register(session *discordgo.Session) error {
 		return err
 	}
 
-	// Store the command ID for future updates
-	c.commandID = cmd.ID
-	c.guildID = "" // Global command
+	if c.guildRegistrations == nil {
+		c.guildRegistrations = make(map[string]string, 1)
+	}
+
+	c.guildRegistrations[""] = cmd.ID
 
 	return nil
 }
@@ -174,9 +175,11 @@ func (c *MentionsCommand) RegisterWithGuild(session *discordgo.Session, guildID 
 		return fmt.Errorf("failed to register mentions command to guild %s: %w", guildID, err)
 	}
 
-	// Store the command ID and guild ID for future updates
-	c.commandID = cmd.ID
-	c.guildID = guildID
+	if c.guildRegistrations == nil {
+		c.guildRegistrations = make(map[string]string, 2)
+	}
+
+	c.guildRegistrations[guildID] = cmd.ID
 
 	c.log.WithField("guild", guildID).Info("Registered mentions command to guild")
 
@@ -185,23 +188,24 @@ func (c *MentionsCommand) RegisterWithGuild(session *discordgo.Session, guildID 
 
 // UpdateChoices updates the command choices by editing the existing command with fresh network and client data.
 func (c *MentionsCommand) UpdateChoices(session *discordgo.Session) error {
-	// If we don't have a command ID, we can't update choices
-	if c.commandID == "" {
-		c.log.Warn("No command ID stored, cannot update choices")
+	if len(c.guildRegistrations) == 0 {
+		c.log.Warn("No command registrations stored, cannot update choices")
 
 		return nil
 	}
 
-	// Use the stored guild ID (empty string for global commands)
-	_, err := session.ApplicationCommandEdit(session.State.User.ID, c.guildID, c.commandID, c.getCommandDefinition())
-	if err != nil {
-		return fmt.Errorf("failed to update mentions command choices for guild %s: %w", c.guildID, err)
-	}
+	definition := c.getCommandDefinition()
 
-	if c.guildID != "" {
-		c.log.WithField("guild", c.guildID).Debug("Updated mentions command choices for guild")
-	} else {
-		c.log.Debug("Updated mentions command choices globally")
+	for guildID, commandID := range c.guildRegistrations {
+		if _, err := session.ApplicationCommandEdit(session.State.User.ID, guildID, commandID, definition); err != nil {
+			return fmt.Errorf("failed to update mentions command choices for guild %s: %w", guildID, err)
+		}
+
+		if guildID != "" {
+			c.log.WithField("guild", guildID).Debug("Updated mentions command choices for guild")
+		} else {
+			c.log.Debug("Updated mentions command choices globally")
+		}
 	}
 
 	return nil
