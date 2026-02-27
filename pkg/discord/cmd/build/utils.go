@@ -148,12 +148,22 @@ func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionCh
 const maxChoiceNameLength = 25
 
 // truncateChoiceName truncates a choice name to fit Discord's 25-character limit.
+// It first strips common boilerplate prefixes/suffixes from GitHub workflow names
+// (e.g. "Build lighthouse docker image" → "lighthouse") before truncating.
 func truncateChoiceName(name string) string {
 	if len(name) <= maxChoiceNameLength {
 		return name
 	}
 
-	return name[:maxChoiceNameLength]
+	cleaned := strings.TrimPrefix(name, "Build ")
+	cleaned = strings.TrimSuffix(cleaned, " docker image")
+	cleaned = strings.TrimSuffix(cleaned, " image")
+
+	if len(cleaned) <= maxChoiceNameLength {
+		return cleaned
+	}
+
+	return cleaned[:maxChoiceNameLength]
 }
 
 // hasPermission checks if a member has permission to execute the build command.
