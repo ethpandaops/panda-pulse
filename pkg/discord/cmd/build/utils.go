@@ -129,23 +129,55 @@ func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptio
 	return choices
 }
 
-// getToolsChoices returns the choices for tool workflow selection.
-func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionChoice {
-	workflows := c.getAdditionalWorkflows()
-	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(workflows))
-
-	for key, workflow := range workflows {
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  truncateChoiceName(workflow.Name),
-			Value: key,
-		})
-	}
-
-	return choices
-}
-
 // maxChoiceNameLength is the maximum length for a Discord slash command choice name.
 const maxChoiceNameLength = 25
+
+// handleToolAutocomplete handles autocomplete for the tool workflow option.
+func (c *BuildCommand) handleToolAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+
+	// Find the focused option within the tool subcommand.
+	var inputValue string
+
+	for _, opt := range data.Options {
+		if opt.Name == subcommandTool {
+			for _, subOpt := range opt.Options {
+				if subOpt.Focused && subOpt.Name == optionWorkflow {
+					if subOpt.Value != nil {
+						inputValue = strings.ToLower(subOpt.StringValue())
+					}
+				}
+			}
+		}
+	}
+
+	workflows := c.getAdditionalWorkflows()
+	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
+
+	for key, workflow := range workflows {
+		name := truncateChoiceName(workflow.Name)
+
+		if inputValue == "" || strings.Contains(strings.ToLower(key), inputValue) || strings.Contains(strings.ToLower(name), inputValue) {
+			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+				Name:  name,
+				Value: key,
+			})
+
+			if len(choices) >= 25 {
+				break
+			}
+		}
+	}
+
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{
+			Choices: choices,
+		},
+	}); err != nil {
+		c.log.WithError(err).Error("Failed to respond to tool autocomplete")
+	}
+}
 
 // truncateChoiceName truncates a choice name to fit Discord's 25-character limit.
 // It first strips common boilerplate prefixes/suffixes from GitHub workflow names

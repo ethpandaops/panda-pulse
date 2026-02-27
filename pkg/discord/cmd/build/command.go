@@ -54,7 +54,6 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 	var (
 		clClientChoices = c.getCLClientChoices()
 		elClientChoices = c.getELClientChoices()
-		toolsChoices    = c.getToolsChoices()
 	)
 
 	// Options that are common to all subcommands
@@ -123,11 +122,11 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Options: append([]*discordgo.ApplicationCommandOption{
 					{
-						Name:        optionWorkflow,
-						Description: "Tool workflow to build",
-						Type:        discordgo.ApplicationCommandOptionString,
-						Required:    true,
-						Choices:     toolsChoices,
+						Name:         optionWorkflow,
+						Description:  "Tool workflow to build",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
 					},
 				}, commonOptions...),
 			},
@@ -201,6 +200,12 @@ func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
 
 // Handle handles the /build command.
 func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
+		c.handleToolAutocomplete(s, i)
+
+		return
+	}
+
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
