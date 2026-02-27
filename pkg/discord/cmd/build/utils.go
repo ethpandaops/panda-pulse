@@ -106,7 +106,7 @@ func (c *BuildCommand) getCLClientChoices() []*discordgo.ApplicationCommandOptio
 
 	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  workflow.Name,
+			Name:  truncateChoiceName(workflow.Name),
 			Value: client,
 		})
 	}
@@ -121,7 +121,7 @@ func (c *BuildCommand) getELClientChoices() []*discordgo.ApplicationCommandOptio
 
 	for client, workflow := range clientWorkflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  workflow.Name,
+			Name:  truncateChoiceName(workflow.Name),
 			Value: client,
 		})
 	}
@@ -136,12 +136,24 @@ func (c *BuildCommand) getToolsChoices() []*discordgo.ApplicationCommandOptionCh
 
 	for key, workflow := range workflows {
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-			Name:  workflow.Name,
+			Name:  truncateChoiceName(workflow.Name),
 			Value: key,
 		})
 	}
 
 	return choices
+}
+
+// maxChoiceNameLength is the maximum length for a Discord slash command choice name.
+const maxChoiceNameLength = 25
+
+// truncateChoiceName truncates a choice name to fit Discord's 25-character limit.
+func truncateChoiceName(name string) string {
+	if len(name) <= maxChoiceNameLength {
+		return name
+	}
+
+	return name[:maxChoiceNameLength]
 }
 
 // hasPermission checks if a member has permission to execute the build command.
