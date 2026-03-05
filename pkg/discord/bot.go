@@ -268,8 +268,9 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 			// Set last execution timestamp
 			b.metrics.SetLastCommandTimestamp(cmd.Name(), subcommand, float64(time.Now().Unix()))
 
-			// Skip permission check for /build trigger as it has its own permission handling
-			if cmd.Name() == "build" && len(data.Options) > 0 && data.Options[0].Name == "trigger" {
+			// Skip permission check for commands with their own permission handling
+			isTrigger := len(data.Options) > 0 && data.Options[0].Name == "trigger"
+			if isTrigger && (cmd.Name() == "build" || cmd.Name() == "hive") {
 				cmd.Handle(s, i)
 
 				// Record command execution time
