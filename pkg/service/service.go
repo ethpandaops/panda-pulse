@@ -144,7 +144,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	bot.SetCommands([]common.Command{
 		checks.NewChecksCommand(log, bot),
 		mentions.NewMentionsCommand(log, bot),
-		cmdhive.NewHiveCommand(log, bot),
+		cmdhive.NewHiveCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 	})
 

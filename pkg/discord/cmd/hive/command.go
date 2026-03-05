@@ -3,6 +3,7 @@ package hive
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -23,15 +24,19 @@ const (
 type HiveCommand struct {
 	log                *logrus.Logger
 	bot                common.BotContext
+	githubToken        string
+	httpClient         *http.Client
 	queue              *queue.AlertQueue
 	guildRegistrations map[string]string // Maps guild ID to registered command ID for updates
 }
 
 // NewHiveCommand creates a new hive command.
-func NewHiveCommand(log *logrus.Logger, bot common.BotContext) *HiveCommand {
+func NewHiveCommand(log *logrus.Logger, bot common.BotContext, githubToken string, httpClient *http.Client) *HiveCommand {
 	cmd := &HiveCommand{
-		log: log,
-		bot: bot,
+		log:         log,
+		bot:         bot,
+		githubToken: githubToken,
+		httpClient:  httpClient,
 	}
 
 	return cmd
@@ -136,6 +141,38 @@ func (c *HiveCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 					},
 				},
 			},
+			{
+				Name:        "trigger",
+				Description: "Trigger a Hive test workflow on GitHub",
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Name:        optionNameRepo,
+						Description: "GitHub repository (e.g. ethpandaops/bal-devnets)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+					},
+					{
+						Name:        optionNameWorkflow,
+						Description: "Workflow filename (e.g. hive-devnet-3-quick.yaml)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    true,
+					},
+					{
+						Name:         optionNameClient,
+						Description:  "Client to test (e.g. go-ethereum)",
+						Type:         discordgo.ApplicationCommandOptionString,
+						Required:     true,
+						Autocomplete: true,
+					},
+					{
+						Name:        optionNameRef,
+						Description: "Branch or tag (defaults to master)",
+						Type:        discordgo.ApplicationCommandOptionString,
+						Required:    false,
+					},
+				},
+			},
 		},
 	}
 }
@@ -217,6 +254,8 @@ func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreat
 					c.handleNetworkAutocomplete(s, i)
 				case optionNameSuite:
 					c.handleSuiteAutocomplete(s, i)
+				case optionNameClient:
+					c.handleClientAutocomplete(s, i)
 				}
 			}
 		}
@@ -253,6 +292,8 @@ func (c *HiveCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreat
 		}
 	case "run":
 		c.handleRun(s, i, subCmd)
+	case "trigger":
+		c.handleTrigger(s, i, subCmd)
 	default:
 		c.respondWithError(s, i, fmt.Sprintf("Unknown subcommand: %s", subCmd.Name))
 	}
