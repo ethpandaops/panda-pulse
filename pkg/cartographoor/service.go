@@ -215,7 +215,7 @@ func (s *Service) fetchAndUpdateData(ctx context.Context) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := s.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to fetch data: %w", err)
 	}
