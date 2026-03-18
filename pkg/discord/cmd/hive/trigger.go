@@ -172,7 +172,7 @@ func (c *HiveCommand) triggerHiveWorkflow(
 	req.Header.Set("Authorization", "Bearer "+c.githubToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is from trusted configuration
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
