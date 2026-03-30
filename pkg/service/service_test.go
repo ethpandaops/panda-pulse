@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -49,6 +50,8 @@ func (h *testHelper) setup(ctx context.Context) {
 			"SERVICES":              "s3",
 			"DEFAULT_REGION":        "us-east-1",
 			"EAGER_SERVICE_LOADING": "1",
+			"LOCALSTACK_AUTH_TOKEN": os.Getenv("LOCALSTACK_AUTH_TOKEN"),
+			"LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT": "1",
 		},
 		ExposedPorts: []string{"4566/tcp"},
 		WaitingFor: wait.ForAll(
