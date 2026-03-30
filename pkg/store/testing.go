@@ -47,8 +47,10 @@ func (h *testHelper) setup(ctx context.Context) {
 	req := testcontainers.ContainerRequest{
 		Image: "localstack/localstack:latest",
 		Env: map[string]string{
-			"SERVICES":       "s3",
-			"DEFAULT_REGION": testRegion,
+			"SERVICES":              "s3",
+			"DEFAULT_REGION":        testRegion,
+			"LOCALSTACK_AUTH_TOKEN": os.Getenv("LOCALSTACK_AUTH_TOKEN"),
+			"LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT": "1",
 		},
 		ExposedPorts: []string{"4566/tcp"},
 		WaitingFor: wait.ForAll(
