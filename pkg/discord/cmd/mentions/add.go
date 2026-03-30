@@ -3,6 +3,7 @@ package mentions
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -76,11 +77,5 @@ func (c *MentionsCommand) handleAdd(
 
 // contains checks if a string slice contains a string.
 func contains(slice []string, str string) bool {
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(slice, str)
 }

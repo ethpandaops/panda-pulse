@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ethpandaops/panda-pulse/pkg/cartographoor"
@@ -410,11 +411,5 @@ func (a *Analyzer) logAnalysisResults(result *AnalysisResult) {
 }
 
 func contains(slice []string, str string) bool {
-	for _, v := range slice {
-		if v == str {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(slice, str)
 }

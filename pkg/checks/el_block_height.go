@@ -88,7 +88,7 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, log *logger.CheckLogger, c
 			Status:      StatusOK,
 			Description: "All EL nodes are advancing properly",
 			Timestamp:   time.Now(),
-			Details: map[string]interface{}{
+			Details: map[string]any{
 				"query": query,
 			},
 			AffectedNodes: []string{},
@@ -101,7 +101,7 @@ func (c *ELBlockHeightCheck) Run(ctx context.Context, log *logger.CheckLogger, c
 		Status:      StatusFail,
 		Description: "The following EL nodes are not advancing",
 		Timestamp:   time.Now(),
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"query":      query,
 			"stuckNodes": strings.Join(stuckNodes, "\n"),
 		},

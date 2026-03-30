@@ -3,6 +3,7 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -109,9 +110,7 @@ func (wf *WorkflowFetcher) GetAllWorkflows() (map[string]WorkflowInfo, error) {
 		// Return cached data
 		result := make(map[string]WorkflowInfo)
 
-		for k, v := range wf.cache {
-			result[k] = v
-		}
+		maps.Copy(result, wf.cache)
 
 		wf.cacheMutex.RUnlock()
 
@@ -131,9 +130,7 @@ func (wf *WorkflowFetcher) GetAllWorkflows() (map[string]WorkflowInfo, error) {
 
 			result := make(map[string]WorkflowInfo)
 
-			for k, v := range wf.cache {
-				result[k] = v
-			}
+			maps.Copy(result, wf.cache)
 
 			wf.cacheMutex.RUnlock()
 

@@ -118,7 +118,7 @@ func (c *HiveCommand) handleList(
 		// For the first network, edit the response
 		if firstMessage {
 			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: pointer(msg.String()),
+				Content: new(msg.String()),
 			})
 			if err != nil {
 				c.log.WithError(err).WithField("network", networkName).Error("Failed to edit response for first network")
@@ -292,9 +292,4 @@ func formatNextRun(t time.Time) string {
 	hours := int(diff.Hours()) % 24
 
 	return fmt.Sprintf("%dd %dh", days, hours)
-}
-
-// pointer returns a pointer to the given string.
-func pointer(s string) *string {
-	return &s
 }

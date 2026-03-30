@@ -76,7 +76,7 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 		}
 
 		if _, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("%s: %v", errorMsg, runErr)),
+			Content: new(fmt.Sprintf("%s: %v", errorMsg, runErr)),
 		}); editErr != nil {
 			c.log.WithError(editErr).Error("Failed to edit initial response")
 		}
@@ -93,7 +93,7 @@ func (c *HiveCommand) handleRun(s *discordgo.Session, i *discordgo.InteractionCr
 	}
 
 	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: stringPtr(successMsg),
+		Content: new(successMsg),
 	}); err != nil {
 		c.log.WithError(err).Error("Failed to edit initial response")
 	}

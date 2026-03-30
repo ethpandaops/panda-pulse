@@ -77,7 +77,7 @@ func (c *HiveCommand) handleTrigger(
 
 	if err := c.triggerHiveWorkflow(repository, workflow, ref, client); err != nil {
 		if _, editErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf(
+			Content: new(fmt.Sprintf(
 				"❌ Failed to trigger Hive workflow **%s**: %s",
 				workflow, err,
 			)),
@@ -128,7 +128,7 @@ func (c *HiveCommand) handleTrigger(
 	}
 
 	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: stringPtr(""),
+		Content: new(""),
 		Embeds:  &[]*discordgo.MessageEmbed{embed},
 	}); err != nil {
 		c.log.WithError(err).Error("Failed to edit response with embed")

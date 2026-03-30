@@ -38,7 +38,7 @@ type NetworksData struct {
 	Clients         map[string]ClientData      `json:"clients"`
 	LastUpdate      string                     `json:"lastUpdate,omitempty"`
 	Duration        float64                    `json:"duration,omitempty"`
-	Providers       []interface{}              `json:"providers,omitempty"`
+	Providers       []any                      `json:"providers,omitempty"`
 }
 
 // NetworkMetadata represents metadata about network types.
@@ -74,9 +74,9 @@ type NetworkInfo struct {
 	Status        string        `json:"status"` // "active" or "inactive"
 	LastUpdated   string        `json:"lastUpdated,omitempty"`
 	ChainID       int64         `json:"chainId,omitempty"`
-	GenesisConfig interface{}   `json:"genesisConfig,omitempty"`
-	ServiceURLs   ServiceURLs   `json:"serviceUrls,omitempty"`
-	Images        NetworkImages `json:"images,omitempty"`
+	GenesisConfig any           `json:"genesisConfig,omitempty"`
+	ServiceURLs   ServiceURLs   `json:"serviceUrls"`
+	Images        NetworkImages `json:"images"`
 }
 
 // ClientData represents the structure of a client in the networks.json file.

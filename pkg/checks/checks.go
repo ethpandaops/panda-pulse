@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ type Result struct {
 	Status        Status
 	Description   string
 	Timestamp     time.Time
-	Details       map[string]interface{}
+	Details       map[string]any
 	AffectedNodes []string
 }
 
@@ -184,7 +185,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context) error {
 				Status:        result.Status,
 				Description:   result.Description,
 				Timestamp:     result.Timestamp,
-				Details:       make(map[string]interface{}),
+				Details:       make(map[string]any),
 				AffectedNodes: make([]string, 0),
 			}
 
@@ -210,7 +211,7 @@ func (r *defaultRunner) RunChecks(ctx context.Context) error {
 					if str, ok := v.(string); ok {
 						filtered := make([]string, 0)
 
-						for _, line := range strings.Split(str, "\n") {
+						for line := range strings.SplitSeq(str, "\n") {
 							if strings.Contains(line, client) {
 								filtered = append(filtered, line)
 							}
@@ -286,13 +287,7 @@ func hasClientIssue(client string, issues []string) bool {
 
 // contains checks if a string slice contains a value.
 func contains(slice []string, str string) bool {
-	for _, v := range slice {
-		if v == str {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(slice, str)
 }
 
 // generateCheckID generates a unique ID for a check run.

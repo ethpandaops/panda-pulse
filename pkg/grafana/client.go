@@ -81,7 +81,7 @@ func (c *client) createRequest(ctx context.Context, refID, expr, legendFormat st
 		Queries: []query{
 			{
 				RefID: refID,
-				Datasource: map[string]interface{}{
+				Datasource: map[string]any{
 					"uid": c.dataSourceID,
 				},
 				Expr:          expr,

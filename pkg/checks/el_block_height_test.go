@@ -30,7 +30,7 @@ func TestELBlockHeightCheck_Run(t *testing.T) {
 							},
 						},
 						Data: grafana.QueryData{
-							Values: []interface{}{1.0},
+							Values: []any{1.0},
 						},
 					},
 				},

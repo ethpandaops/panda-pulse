@@ -234,8 +234,3 @@ func getClientToWorkflowName(clientName string) string {
 		return clientName
 	}
 }
-
-// stringPtr returns a pointer to the given string.
-func stringPtr(s string) *string {
-	return &s
-}
