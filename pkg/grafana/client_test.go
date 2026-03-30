@@ -27,7 +27,7 @@ func TestQuery(t *testing.T) {
 							},
 						},
 						Data: QueryData{
-							Values: []interface{}{1.0},
+							Values: []any{1.0},
 						},
 					},
 				},
@@ -38,7 +38,7 @@ func TestQuery(t *testing.T) {
 	tests := []struct {
 		name          string
 		query         string
-		mockResponse  interface{}
+		mockResponse  any
 		mockStatus    int
 		expectedError string
 	}{

@@ -79,7 +79,7 @@ func (c *HeadSlotCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Co
 			Status:      StatusOK,
 			Description: "All CL nodes are advancing properly",
 			Timestamp:   time.Now(),
-			Details: map[string]interface{}{
+			Details: map[string]any{
 				"query": query,
 			},
 			AffectedNodes: []string{},
@@ -92,7 +92,7 @@ func (c *HeadSlotCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Co
 		Status:      StatusFail,
 		Description: "The following CL nodes are not advancing their head slot",
 		Timestamp:   time.Now(),
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"query":      query,
 			"stuckNodes": strings.Join(stuckNodes, "\n"),
 		},

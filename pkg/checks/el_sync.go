@@ -79,7 +79,7 @@ func (c *ELSyncCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Conf
 			Status:      StatusOK,
 			Description: "All EL nodes are synced",
 			Timestamp:   time.Now(),
-			Details: map[string]interface{}{
+			Details: map[string]any{
 				"query": query,
 			},
 			AffectedNodes: []string{},
@@ -92,7 +92,7 @@ func (c *ELSyncCheck) Run(ctx context.Context, log *logger.CheckLogger, cfg Conf
 		Status:      StatusFail,
 		Description: "The following EL nodes are not synced",
 		Timestamp:   time.Now(),
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"query":          query,
 			"notSyncedNodes": strings.Join(notSyncedNodes, "\n"),
 		},

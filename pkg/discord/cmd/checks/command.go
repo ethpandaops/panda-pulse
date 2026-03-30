@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -365,12 +366,8 @@ func (c *ChecksCommand) sendResults(ctx context.Context, alert *store.MonitorAle
 	isHiveAvailable, _ := c.bot.GetHive().IsAvailable(context.Background(), alert.Network)
 
 	// Check if this client is a root cause.
-	for _, rootCause := range analysis.RootCause {
-		if rootCause == alert.Client {
-			isRootCause = true
-
-			break
-		}
+	if slices.Contains(analysis.RootCause, alert.Client) {
+		isRootCause = true
 	}
 
 	// Check for unexplained issues specific to this client.

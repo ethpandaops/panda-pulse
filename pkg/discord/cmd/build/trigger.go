@@ -107,7 +107,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 			c.log.WithError(err).Error("Failed to fetch workflows for repository resolution")
 
 			if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: stringPtr(fmt.Sprintf("❌ Failed to fetch workflow data for **%s**", targetDisplayName)),
+				Content: new(fmt.Sprintf("❌ Failed to fetch workflow data for **%s**", targetDisplayName)),
 			}); interactionErr != nil {
 				return fmt.Errorf("failed to edit response: %w", interactionErr)
 			}
@@ -124,7 +124,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		if repository == "" {
 			// Repository is required but not found
 			if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: stringPtr(fmt.Sprintf("❌ Repository not found for **%s**", targetDisplayName)),
+				Content: new(fmt.Sprintf("❌ Repository not found for **%s**", targetDisplayName)),
 			}); interactionErr != nil {
 				return fmt.Errorf("failed to edit response: %w", interactionErr)
 			}
@@ -163,7 +163,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	workflowURL, err := c.triggerWorkflow(targetName, repository, ref, dockerTag, buildArgs)
 	if err != nil {
 		if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: stringPtr(fmt.Sprintf("❌ Failed to trigger build for **%s**: %s", targetDisplayName, err)),
+			Content: new(fmt.Sprintf("❌ Failed to trigger build for **%s**: %s", targetDisplayName, err)),
 		}); interactionErr != nil {
 			return fmt.Errorf("failed to edit response with error: %w (original error: %s)", interactionErr, err)
 		}
@@ -231,7 +231,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 
 	// Edit message with success embed.
 	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: stringPtr(""),
+		Content: new(""),
 		Embeds:  &[]*discordgo.MessageEmbed{embed},
 	}); err != nil {
 		return fmt.Errorf("failed to edit response: %w", err)
@@ -251,7 +251,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 // triggerWorkflow triggers the GitHub workflow for the given build target.
 func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag string, buildArgs string) (string, error) {
 	// Prepare the workflow inputs.
-	inputs := map[string]interface{}{
+	inputs := map[string]any{
 		"repository": repository,
 		"ref":        ref,
 	}
@@ -264,7 +264,7 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 		inputs["build_args"] = buildArgs
 	}
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"ref":    "master", // `master` of DefaultRepository.
 		"inputs": inputs,
 	}

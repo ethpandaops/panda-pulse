@@ -88,7 +88,7 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, log *logger.CheckLogger
 			Status:      StatusOK,
 			Description: "All CL nodes are finalizing properly",
 			Timestamp:   time.Now(),
-			Details: map[string]interface{}{
+			Details: map[string]any{
 				"query": query,
 			},
 			AffectedNodes: []string{},
@@ -101,7 +101,7 @@ func (c *CLFinalizedEpochCheck) Run(ctx context.Context, log *logger.CheckLogger
 		Status:      StatusFail,
 		Description: "The following CL nodes are not finalizing",
 		Timestamp:   time.Now(),
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"query":      query,
 			"stuckNodes": strings.Join(stuckNodes, "\n"),
 		},

@@ -31,8 +31,7 @@ func TestQueue(t *testing.T) {
 		}
 
 		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		q.Start(ctx)
 
 		alerts := []*store.MonitorAlert{
@@ -60,8 +59,7 @@ func TestQueue(t *testing.T) {
 		}
 
 		q := NewQueue[*store.MonitorAlert](logrus.New(), worker, NewMetrics("test"))
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		q.Start(ctx)
 
 		alert := &store.MonitorAlert{Network: "net1", Client: "client1"}

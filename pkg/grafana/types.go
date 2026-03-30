@@ -19,7 +19,7 @@ type QuerySchema struct {
 
 // QueryData represents the data in the Grafana response.
 type QueryData struct {
-	Values []interface{} `json:"values"`
+	Values []any `json:"values"`
 }
 
 // QueryFrame represents a frame in the Grafana response.
@@ -51,11 +51,11 @@ type queryPayload struct {
 }
 
 type query struct {
-	RefID         string                 `json:"refId"`
-	Datasource    map[string]interface{} `json:"datasource"`
-	Expr          string                 `json:"expr"`
-	MaxDataPoints int                    `json:"maxDataPoints"`
-	IntervalMs    int                    `json:"intervalMs"`
-	Interval      string                 `json:"interval"`
-	LegendFormat  string                 `json:"legendFormat,omitempty"`
+	RefID         string         `json:"refId"`
+	Datasource    map[string]any `json:"datasource"`
+	Expr          string         `json:"expr"`
+	MaxDataPoints int            `json:"maxDataPoints"`
+	IntervalMs    int            `json:"intervalMs"`
+	Interval      string         `json:"interval"`
+	LegendFormat  string         `json:"legendFormat,omitempty"`
 }

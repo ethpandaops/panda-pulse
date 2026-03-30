@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -87,20 +88,21 @@ func (b *AlertMessageBuilder) BuildMainMessage() *discordgo.MessageSend {
 func (b *AlertMessageBuilder) BuildThreadMessages(category checks.Category, failedChecks []*checks.Result) []string {
 	var messages []string
 
-	header := fmt.Sprintf(
+	var header strings.Builder
+	fmt.Fprintf(&header,
 		"\n\n**%s %s Issues**\n------------------------------------------\n",
 		b.getCategoryEmoji(category),
 		category.String(),
 	)
 
-	header += "**Issues detected**\n"
+	header.WriteString("**Issues detected**\n")
 
 	names := b.getUniqueCheckNames(failedChecks)
 	for name := range names {
-		header += fmt.Sprintf("- %s\n", name)
+		fmt.Fprintf(&header, "- %s\n", name)
 	}
 
-	messages = append(messages, header)
+	messages = append(messages, header.String())
 
 	instances := b.extractInstances(failedChecks)
 	if len(instances) > 0 {
@@ -179,18 +181,12 @@ func (b *AlertMessageBuilder) extractInstancesFromCheck(check *checks.Result, in
 
 // isRelevantDetailKey checks if the detail key is one we care about.
 func (b *AlertMessageBuilder) isRelevantDetailKey(key string) bool {
-	for _, k := range relevantDetailKeys {
-		if key == k {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(relevantDetailKeys, key)
 }
 
 // parseInstancesFromString parses instances from a multiline string.
 func (b *AlertMessageBuilder) parseInstancesFromString(str string, instances map[string]bool) {
-	for _, line := range strings.Split(str, "\n") {
+	for line := range strings.SplitSeq(str, "\n") {
 		if instance := b.parseInstanceFromLine(line); instance != "" {
 			instances[instance] = true
 		}

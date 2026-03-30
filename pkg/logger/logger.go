@@ -24,12 +24,12 @@ func NewCheckLogger(id string) *CheckLogger {
 }
 
 // Printf logs a formatted message.
-func (l *CheckLogger) Printf(format string, v ...interface{}) {
+func (l *CheckLogger) Printf(format string, v ...any) {
 	l.logger.Printf(format, v...)
 }
 
 // Print logs a message.
-func (l *CheckLogger) Print(v ...interface{}) {
+func (l *CheckLogger) Print(v ...any) {
 	l.logger.Print(v...)
 }
 
