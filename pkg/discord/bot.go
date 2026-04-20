@@ -3,6 +3,7 @@ package discord
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -236,6 +237,38 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 
 				return
 			}
+		}
+
+		return
+	}
+
+	// Route message component interactions (buttons, select menus) to the
+	// command that owns the custom_id. We expect the id to be prefixed with
+	// "<command>:" — e.g. "build:copy:…".
+	if i.Type == discordgo.InteractionMessageComponent {
+		customID := i.MessageComponentData().CustomID
+
+		idx := strings.Index(customID, ":")
+		if idx <= 0 {
+			return
+		}
+
+		name := customID[:idx]
+		for _, cmd := range b.commands {
+			if cmd.Name() != name {
+				continue
+			}
+
+			handler, ok := cmd.(interface {
+				HandleComponent(*discordgo.Session, *discordgo.InteractionCreate)
+			})
+			if !ok {
+				return
+			}
+
+			handler.HandleComponent(s, i)
+
+			return
 		}
 
 		return

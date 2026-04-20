@@ -23,6 +23,16 @@ type WorkflowInfo struct {
 	Name         string
 	BuildArgs    string
 	HasBuildArgs bool
+	UpstreamRepo string         // upstream_repository passed to the docker-tag action
+	Manifests    []ManifestInfo // combined-arch manifest jobs, if the workflow follows the pattern
+}
+
+// ManifestInfo describes a manifest job that produces a combined-arch docker image.
+type ManifestInfo struct {
+	JobName    string // e.g. "manifest", "manifest-beacon-minimal"
+	Repository string // target_repository, e.g. "ethpandaops/prysm-beacon-chain"
+	TagSuffix  string // literal suffix after ${{ needs.prepare.outputs.target_tag }}, e.g. "" or "-minimal"
+	Variant    string // human label derived from the job name, e.g. "" or "beacon-minimal"
 }
 
 // GitHubFile represents a file from GitHub API.
@@ -59,6 +69,20 @@ type Workflow struct {
 			Inputs WorkflowInputs `yaml:"inputs"`
 		} `yaml:"workflow_dispatch"`
 	} `yaml:"on"`
+	Jobs map[string]WorkflowJob `yaml:"jobs"`
+}
+
+// WorkflowJob is the subset of a job definition we parse. Most fields are
+// intentionally omitted since we only care about step invocations of the
+// shared manifest and docker-tag composite actions.
+type WorkflowJob struct {
+	Steps []WorkflowStep `yaml:"steps"`
+}
+
+// WorkflowStep is the subset of a step we parse.
+type WorkflowStep struct {
+	Uses string         `yaml:"uses"`
+	With map[string]any `yaml:"with"`
 }
 
 // WorkflowFetcher handles fetching and caching workflow information.
@@ -300,6 +324,8 @@ func (wf *WorkflowFetcher) parseWorkflow(downloadURL, workflowName string) (Work
 		Branch:       inputs.Ref.Default,
 		Name:         workflowName,
 		HasBuildArgs: inputs.BuildArgs != nil,
+		UpstreamRepo: extractUpstreamRepository(workflow.Jobs),
+		Manifests:    extractManifests(workflow.Jobs),
 	}
 
 	// Extract default build args if present
@@ -319,4 +345,120 @@ func (wf *WorkflowFetcher) parseWorkflow(downloadURL, workflowName string) (Work
 	info.Name = displayName
 
 	return info, nil
+}
+
+const (
+	manifestActionSuffix = "/.github/actions/manifest"
+	dockerTagActionUses  = "./.github/actions/docker-tag"
+	tagExprMarker        = "needs.prepare.outputs.target_tag"
+)
+
+// extractUpstreamRepository returns the upstream_repository input passed to
+// the docker-tag composite action, if any.
+func extractUpstreamRepository(jobs map[string]WorkflowJob) string {
+	for _, job := range jobs {
+		for _, step := range job.Steps {
+			if step.Uses != dockerTagActionUses {
+				continue
+			}
+
+			if upstream, ok := stringFromWith(step.With, "upstream_repository"); ok {
+				return upstream
+			}
+		}
+	}
+
+	return ""
+}
+
+// extractManifests scans the workflow jobs for steps that invoke the manifest
+// composite action with a target_tag expression that is a literal suffix on
+// top of the base target_tag. It skips deploy/per-arch steps whose target_tag
+// embeds ${{ matrix.slug }} or similar dynamic expressions.
+func extractManifests(jobs map[string]WorkflowJob) []ManifestInfo {
+	manifests := make([]ManifestInfo, 0, len(jobs))
+
+	for jobName, job := range jobs {
+		for _, step := range job.Steps {
+			if !strings.HasSuffix(step.Uses, manifestActionSuffix) {
+				continue
+			}
+
+			repo, ok := stringFromWith(step.With, "target_repository")
+			if !ok || repo == "" {
+				continue
+			}
+
+			tagExpr, ok := stringFromWith(step.With, "target_tag")
+			if !ok {
+				continue
+			}
+
+			suffix, ok := findTagSuffix(tagExpr)
+			if !ok {
+				continue
+			}
+
+			manifests = append(manifests, ManifestInfo{
+				JobName:    jobName,
+				Repository: repo,
+				TagSuffix:  suffix,
+				Variant:    manifestVariant(jobName),
+			})
+		}
+	}
+
+	return manifests
+}
+
+// findTagSuffix returns the literal text that follows
+// ${{ needs.prepare.outputs.target_tag }} inside a target_tag expression. It
+// rejects expressions that still contain dynamic interpolations (such as
+// ${{ matrix.slug }}) after the marker — those are per-arch deploy tags.
+func findTagSuffix(expr string) (string, bool) {
+	idx := strings.Index(expr, tagExprMarker)
+	if idx < 0 {
+		return "", false
+	}
+
+	closeIdx := strings.Index(expr[idx:], "}}")
+	if closeIdx < 0 {
+		return "", false
+	}
+
+	suffix := expr[idx+closeIdx+2:]
+	if strings.Contains(suffix, "${{") {
+		return "", false
+	}
+
+	return suffix, true
+}
+
+// manifestVariant strips the leading "manifest" token from a manifest job
+// name to produce a short human label. "manifest" -> "", "manifest-beacon" ->
+// "beacon", "manifest-beacon-minimal" -> "beacon-minimal".
+func manifestVariant(jobName string) string {
+	trimmed := strings.TrimPrefix(jobName, "manifest")
+
+	return strings.TrimPrefix(trimmed, "-")
+}
+
+func stringFromWith(with map[string]any, key string) (string, bool) {
+	if with == nil {
+		return "", false
+	}
+
+	raw, ok := with[key]
+	if !ok {
+		return "", false
+	}
+
+	switch v := raw.(type) {
+	case string:
+		return v, true
+	case fmt.Stringer:
+		return v.String(), true
+	default:
+		return "", false
+	}
 }

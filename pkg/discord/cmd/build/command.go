@@ -208,6 +208,13 @@ func (c *BuildCommand) UpdateChoices(session *discordgo.Session) error {
 	return nil
 }
 
+// HandleComponent handles button and select-menu interactions that originate
+// from the build completion DM. It's wired from bot.handleInteraction for any
+// component custom_id that starts with "build:".
+func (c *BuildCommand) HandleComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	c.watcher.HandleComponent(s, i)
+}
+
 // Handle handles the /build command.
 func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type == discordgo.InteractionApplicationCommandAutocomplete {
