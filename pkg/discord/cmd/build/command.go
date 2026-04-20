@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -30,6 +31,7 @@ type BuildCommand struct {
 	githubToken        string
 	httpClient         *http.Client
 	workflowFetcher    *WorkflowFetcher
+	watcher            *BuildWatcher
 	guildRegistrations map[string]string // Maps guild ID to registered command ID for updates
 }
 
@@ -41,7 +43,15 @@ func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken stri
 		githubToken:     githubToken,
 		httpClient:      client,
 		workflowFetcher: NewWorkflowFetcher(client, githubToken, log, bot),
+		watcher:         NewBuildWatcher(log, bot.GetSession(), client, githubToken),
 	}
+}
+
+// Start starts background tasks owned by the command.
+func (c *BuildCommand) Start(ctx context.Context) error {
+	c.watcher.Start(ctx)
+
+	return nil
 }
 
 // Name returns the name of the command.

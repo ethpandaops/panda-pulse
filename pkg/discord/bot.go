@@ -143,6 +143,20 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		}
 	}
 
+	// Start background tasks owned by commands (e.g. build watcher DM poller).
+	for _, cmd := range b.commands {
+		starter, ok := cmd.(interface {
+			Start(context.Context) error
+		})
+		if !ok {
+			continue
+		}
+
+		if err := starter.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start command %s: %w", cmd.Name(), err)
+		}
+	}
+
 	// If we have any existing monitor alerts configured, schedule them.
 	if err := b.scheduleExistingAlerts(); err != nil {
 		return fmt.Errorf("failed to schedule existing alerts: %w", err)

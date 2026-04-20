@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -159,8 +161,12 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		buildArgs = c.GetDefaultBuildArgs(targetName)
 	}
 
+	// Generate a correlation ID so we can locate the resulting workflow run and
+	// DM the invoker when it finishes.
+	correlationID := uuid.NewString()
+
 	// Trigger the workflow.
-	workflowURL, err := c.triggerWorkflow(targetName, repository, ref, dockerTag, buildArgs)
+	workflowURL, err := c.triggerWorkflow(targetName, repository, ref, dockerTag, buildArgs, correlationID)
 	if err != nil {
 		if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: new(fmt.Sprintf("❌ Failed to trigger build for **%s**: %s", targetDisplayName, err)),
@@ -169,6 +175,26 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		}
 
 		return nil // Already handled error by editing message.
+	}
+
+	// Kick off an asynchronous claim so we can DM the invoker on completion.
+	// Best-effort: if we can't determine the user or the run never surfaces,
+	// the trigger itself has already succeeded.
+	if userID := interactionUserID(i); userID != "" {
+		workflowFile := fmt.Sprintf("build-push-%s.yml", getClientToWorkflowName(targetName))
+
+		go func() {
+			claimCtx, cancel := context.WithTimeout(context.Background(), claimTimeout)
+			defer cancel()
+
+			if claimErr := c.watcher.Claim(claimCtx, userID, targetDisplayName, workflowFile, correlationID, workflowURL); claimErr != nil {
+				c.log.WithError(claimErr).WithFields(logrus.Fields{
+					"workflow":       workflowFile,
+					"correlation_id": correlationID,
+					"user":           userID,
+				}).Warn("Failed to claim build run for completion DM")
+			}
+		}()
 	}
 
 	// Create success embed.
@@ -249,7 +275,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 }
 
 // triggerWorkflow triggers the GitHub workflow for the given build target.
-func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag string, buildArgs string) (string, error) {
+func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag, buildArgs, correlationID string) (string, error) {
 	// Prepare the workflow inputs.
 	inputs := map[string]any{
 		"repository": repository,
@@ -262,6 +288,10 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 
 	if buildArgs != "" {
 		inputs["build_args"] = buildArgs
+	}
+
+	if correlationID != "" {
+		inputs["correlation_id"] = correlationID
 	}
 
 	body := map[string]any{
@@ -306,4 +336,22 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag s
 	}
 
 	return fmt.Sprintf("https://github.com/%s/actions/workflows/build-push-%s.yml", DefaultRepository, workflowName), nil
+}
+
+// interactionUserID extracts the invoking user's Discord ID from an interaction,
+// handling both guild and DM contexts.
+func interactionUserID(i *discordgo.InteractionCreate) string {
+	if i == nil {
+		return ""
+	}
+
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+
+	if i.User != nil {
+		return i.User.ID
+	}
+
+	return ""
 }
