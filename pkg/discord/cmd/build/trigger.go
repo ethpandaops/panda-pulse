@@ -16,6 +16,10 @@ import (
 const (
 	fallbackDefaultBranch = "main"
 	buildEmbedColor       = 0x7289DA
+	// inlineClaimTimeout is how long handleBuild waits for the run-id lookup
+	// before responding without a Run link. The background watcher keeps
+	// trying for the full claimTimeout and relinks the embed when it lands.
+	inlineClaimTimeout = 12 * time.Second
 )
 
 // handleBuild handles the build subcommands (client-cl, client-el, tool).
@@ -73,16 +77,16 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		}
 	}
 
-	// Send immediate response, discord requires an ACK with 3s, sometimes triggering
-	// the build can blow out, and then things will fall apart.
+	// Defer the ACK so we have up to 15 minutes to send the final embed.
+	// Discord requires an ACK within 3s; deferring buys us time to dispatch
+	// the workflow and inline-claim the run before showing anything.
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("🔄 Triggering build for **%s**...", targetDisplayName),
-			Flags:   discordgo.MessageFlagsEphemeral,
+			Flags: discordgo.MessageFlagsEphemeral,
 		},
 	}); err != nil {
-		return fmt.Errorf("failed to send initial response: %w", err)
+		return fmt.Errorf("failed to send deferred ack: %w", err)
 	}
 
 	// Get optional parameters.
@@ -177,17 +181,102 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		return nil // Already handled error by editing message.
 	}
 
-	// Kick off an asynchronous claim so we can DM the invoker on completion.
-	// Best-effort: if we can't determine the user or the run never surfaces,
-	// the trigger itself has already succeeded.
-	if userID := interactionUserID(i); userID != "" {
-		workflowFile := fmt.Sprintf("build-push-%s.yml", getClientToWorkflowName(targetName))
+	// Build the claim request up-front; we'll attempt an inline claim before
+	// responding so the embed can include the run URL when GitHub is fast.
+	userID := interactionUserID(i)
 
+	workflowName := getClientToWorkflowName(targetName)
+	workflowFile := fmt.Sprintf("build-push-%s.yml", workflowName)
+
+	var (
+		upstreamRepo string
+		manifests    []ManifestInfo
+	)
+
+	if allWorkflows, wfErr := c.workflowFetcher.GetAllWorkflows(); wfErr == nil {
+		if workflow, exists := allWorkflows[workflowName]; exists {
+			upstreamRepo = workflow.UpstreamRepo
+			manifests = workflow.Manifests
+		}
+	}
+
+	claimReq := ClaimRequest{
+		UserID:          userID,
+		TargetDisplay:   targetDisplayName,
+		WorkflowFile:    workflowFile,
+		CorrelationID:   correlationID,
+		HTMLURL:         workflowURL,
+		RepositoryInput: repository,
+		RefInput:        ref,
+		DockerTagInput:  dockerTag,
+		UpstreamRepo:    upstreamRepo,
+		Manifests:       manifests,
+	}
+
+	// Try to resolve the run URL inline (short timeout). If GitHub is slow,
+	// we render without a link and let the background claim relink later.
+	var (
+		inlineRunURL  string
+		inlineClaimed bool
+	)
+
+	if userID != "" {
+		inlineCtx, inlineCancel := context.WithTimeout(context.Background(), inlineClaimTimeout)
+
+		runURL, claimErr := c.watcher.Claim(inlineCtx, claimReq)
+
+		inlineCancel()
+
+		if claimErr == nil {
+			inlineRunURL = runURL
+			inlineClaimed = true
+		} else {
+			c.log.WithError(claimErr).WithFields(logrus.Fields{
+				"workflow":       workflowFile,
+				"correlation_id": correlationID,
+			}).Debug("Inline claim timed out; falling back to background claim")
+		}
+	}
+
+	embed := buildTriggeredEmbed(triggeredEmbedInput{
+		targetName:        targetName,
+		targetDisplayName: targetDisplayName,
+		repository:        repository,
+		ref:               ref,
+		dockerTag:         dockerTag,
+		buildArgs:         buildArgs,
+		runURL:            inlineRunURL,
+		isClient:          isClient,
+		cartographoor:     c.bot.GetCartographoor(),
+	})
+
+	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: new(""),
+		Embeds:  &[]*discordgo.MessageEmbed{embed},
+	}); err != nil {
+		return fmt.Errorf("failed to edit response: %w", err)
+	}
+
+	c.log.WithFields(logrus.Fields{
+		"workflow":     targetName,
+		"repository":   repository,
+		"ref":          ref,
+		"docker_tag":   dockerTag,
+		"build_args":   buildArgs,
+		"inline_claim": inlineClaimed,
+	}).Info("Build triggered")
+
+	// If the inline claim didn't land (timeout or unknown user), keep claiming
+	// in the background so the run still gets tracked for the completion DM.
+	// We deliberately do NOT edit the triggered message again — the inline
+	// embed is the user's single, final reply. They'll get the run URL via
+	// the completion DM when the build finishes.
+	if userID != "" && !inlineClaimed {
 		go func() {
 			claimCtx, cancel := context.WithTimeout(context.Background(), claimTimeout)
 			defer cancel()
 
-			if claimErr := c.watcher.Claim(claimCtx, userID, targetDisplayName, workflowFile, correlationID, workflowURL); claimErr != nil {
+			if _, claimErr := c.watcher.Claim(claimCtx, claimReq); claimErr != nil {
 				c.log.WithError(claimErr).WithFields(logrus.Fields{
 					"workflow":       workflowFile,
 					"correlation_id": correlationID,
@@ -197,81 +286,87 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 		}()
 	}
 
-	// Create success embed.
+	return nil
+}
+
+// triggeredEmbedInput bundles the values used to render the
+// "Build Triggered" embed, including an optional run URL that is included as
+// a "Run" field only when non-empty.
+type triggeredEmbedInput struct {
+	targetName        string
+	targetDisplayName string
+	repository        string
+	ref               string
+	dockerTag         string
+	buildArgs         string
+	runURL            string
+	isClient          bool
+	cartographoor     cartographoorService
+}
+
+// cartographoorService captures the subset of *cartographoor.Service that
+// buildTriggeredEmbed needs, so the helper stays decoupled from the bot.
+type cartographoorService interface {
+	IsELClient(string) bool
+	IsCLClient(string) bool
+	GetClientLogo(string) string
+}
+
+func buildTriggeredEmbed(in triggeredEmbedInput) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
-		Title: fmt.Sprintf("🏗️ Build Triggered: %s", targetDisplayName),
+		Title: fmt.Sprintf("🏗️ Build Triggered: %s", in.targetDisplayName),
 		Color: buildEmbedColor,
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:   "Repository",
-				Value:  fmt.Sprintf("`%s`", repository),
+				Value:  fmt.Sprintf("`%s`", in.repository),
 				Inline: true,
 			},
 			{
 				Name:   "Branch/Tag",
-				Value:  fmt.Sprintf("`%s`", ref),
+				Value:  fmt.Sprintf("`%s`", in.ref),
 				Inline: true,
 			},
-			{
-				Name:   "Workflow",
-				Value:  fmt.Sprintf("[View Build Status](%s)", workflowURL),
-				Inline: false,
-			},
 		},
-		URL:       workflowURL,
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	// Add docker tag if specified.
-	if dockerTag != "" {
+	if in.runURL != "" {
+		embed.URL = in.runURL
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "Run",
+			Value:  fmt.Sprintf("[View on GitHub](%s)", in.runURL),
+			Inline: false,
+		})
+	}
+
+	if in.dockerTag != "" {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 			Name:   "Docker Tag",
-			Value:  fmt.Sprintf("`%s`", dockerTag),
+			Value:  fmt.Sprintf("`%s`", in.dockerTag),
 			Inline: true,
 		})
 	}
 
-	// Add build args if specified.
-	if buildArgs != "" {
+	if in.buildArgs != "" {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 			Name:   "Build Args",
-			Value:  fmt.Sprintf("`%s`", buildArgs),
+			Value:  fmt.Sprintf("`%s`", in.buildArgs),
 			Inline: true,
 		})
 	}
 
-	// Add thumbnail.
-	cartographoor := c.bot.GetCartographoor()
-	if isClient && (cartographoor.IsELClient(targetName) || cartographoor.IsCLClient(targetName)) {
-		if logo := cartographoor.GetClientLogo(targetName); logo != "" {
-			embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
-				URL: logo,
-			}
+	if in.isClient && in.cartographoor != nil && (in.cartographoor.IsELClient(in.targetName) || in.cartographoor.IsCLClient(in.targetName)) {
+		if logo := in.cartographoor.GetClientLogo(in.targetName); logo != "" {
+			embed.Thumbnail = &discordgo.MessageEmbedThumbnail{URL: logo}
 		}
 	} else {
-		// Default logo for non-client workflows.
 		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{
 			URL: "https://pbs.twimg.com/profile_images/1772523356123959296/e9mkwqVp_400x400.jpg",
 		}
 	}
 
-	// Edit message with success embed.
-	if _, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: new(""),
-		Embeds:  &[]*discordgo.MessageEmbed{embed},
-	}); err != nil {
-		return fmt.Errorf("failed to edit response: %w", err)
-	}
-
-	c.log.WithFields(logrus.Fields{
-		"workflow":   targetName,
-		"repository": repository,
-		"ref":        ref,
-		"docker_tag": dockerTag,
-		"build_args": buildArgs,
-	}).Info("Build triggered")
-
-	return nil
+	return embed
 }
 
 // triggerWorkflow triggers the GitHub workflow for the given build target.
