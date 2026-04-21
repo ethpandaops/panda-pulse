@@ -515,60 +515,31 @@ func buildCompletionEmbed(b *trackedBuild, conclusion string, images []dockerIma
 	return embed
 }
 
-// buildCompletionComponents returns the copy button + (optional) select menu
-// that accompany the DM.
+// buildCompletionComponents returns the copy button that accompanies the DM.
+// Clicking it produces an ephemeral reply with one code block per image tag,
+// so each tag can be copied independently via Discord's per-block copy icon.
 func buildCompletionComponents(runID int64, images []dockerImage) []discordgo.MessageComponent {
 	if len(images) == 0 {
 		return nil
 	}
 
-	components := make([]discordgo.MessageComponent, 0, 2)
-
-	components = append(components, discordgo.ActionsRow{
-		Components: []discordgo.MessageComponent{
-			discordgo.Button{
-				Label:    "Copy tag",
-				Style:    discordgo.PrimaryButton,
-				Emoji:    &discordgo.ComponentEmoji{Name: "📋"},
-				CustomID: fmt.Sprintf("build:copy:%d:0", runID),
-			},
-		},
-	})
-
+	label := "Copy tag"
 	if len(images) > 1 {
-		options := make([]discordgo.SelectMenuOption, 0, len(images))
-
-		for idx, img := range images {
-			description := img.Reference()
-			if len(description) > 100 {
-				description = description[:97] + "..."
-			}
-
-			label := img.Label()
-			if len(label) > 100 {
-				label = label[:97] + "..."
-			}
-
-			options = append(options, discordgo.SelectMenuOption{
-				Label:       label,
-				Value:       strconv.Itoa(idx),
-				Description: description,
-			})
-		}
-
-		components = append(components, discordgo.ActionsRow{
-			Components: []discordgo.MessageComponent{
-				discordgo.SelectMenu{
-					MenuType:    discordgo.StringSelectMenu,
-					CustomID:    fmt.Sprintf("build:sel:%d", runID),
-					Placeholder: "Show another image…",
-					Options:     options,
-				},
-			},
-		})
+		label = "Copy tags"
 	}
 
-	return components
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{
+					Label:    label,
+					Style:    discordgo.PrimaryButton,
+					Emoji:    &discordgo.ComponentEmoji{Name: "📋"},
+					CustomID: fmt.Sprintf("build:copy:%d", runID),
+				},
+			},
+		},
+	}
 }
 
 // HandleComponent responds to component interactions dispatched from the DM.
@@ -579,7 +550,7 @@ func (w *BuildWatcher) HandleComponent(s *discordgo.Session, i *discordgo.Intera
 
 	data := i.MessageComponentData()
 
-	runID, idx, ok := parseComponentID(data.CustomID, data.Values)
+	runID, ok := parseComponentID(data.CustomID)
 	if !ok {
 		w.respondEphemeral(s, i, "Sorry, couldn't decode that interaction.")
 
@@ -593,59 +564,41 @@ func (w *BuildWatcher) HandleComponent(s *discordgo.Session, i *discordgo.Intera
 		return
 	}
 
-	if idx < 0 || idx >= len(completed.images) {
-		w.respondEphemeral(s, i, "Unknown image selection.")
+	if len(completed.images) == 0 {
+		w.respondEphemeral(s, i, "No images produced for this build.")
 
 		return
 	}
 
-	img := completed.images[idx]
-	content := fmt.Sprintf("[`%s`](%s)\n```\n%s\n```", img.Reference(), img.HubURL(), img.Reference())
+	var buf strings.Builder
 
-	w.respondEphemeral(s, i, content)
+	buf.Grow(len(completed.images) * 64)
+
+	for idx, img := range completed.images {
+		if idx > 0 {
+			buf.WriteByte('\n')
+		}
+
+		fmt.Fprintf(&buf, "```\n%s\n```", img.Reference())
+	}
+
+	w.respondEphemeral(s, i, buf.String())
 }
 
-// parseComponentID parses a custom_id produced by buildCompletionComponents.
-//
-//	build:copy:{runID}:{idx}   -> idx is encoded in the custom_id
-//	build:sel:{runID}          -> idx is taken from the selected value
-func parseComponentID(customID string, values []string) (int64, int, bool) {
+// parseComponentID parses a custom_id of the form "build:copy:{runID}"
+// produced by buildCompletionComponents.
+func parseComponentID(customID string) (int64, bool) {
 	parts := strings.Split(customID, ":")
-	if len(parts) < 3 || parts[0] != "build" {
-		return 0, 0, false
+	if len(parts) != 3 || parts[0] != "build" || parts[1] != "copy" {
+		return 0, false
 	}
 
 	runID, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
-		return 0, 0, false
+		return 0, false
 	}
 
-	switch parts[1] {
-	case "copy":
-		if len(parts) < 4 {
-			return 0, 0, false
-		}
-
-		idx, err := strconv.Atoi(parts[3])
-		if err != nil {
-			return 0, 0, false
-		}
-
-		return runID, idx, true
-	case "sel":
-		if len(values) == 0 {
-			return 0, 0, false
-		}
-
-		idx, err := strconv.Atoi(values[0])
-		if err != nil {
-			return 0, 0, false
-		}
-
-		return runID, idx, true
-	default:
-		return 0, 0, false
-	}
+	return runID, true
 }
 
 func (w *BuildWatcher) respondEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
