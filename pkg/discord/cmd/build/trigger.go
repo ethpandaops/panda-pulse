@@ -3,6 +3,7 @@ package build
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,7 +21,15 @@ const (
 	// before responding without a Run link. The background watcher keeps
 	// trying for the full claimTimeout and relinks the embed when it lands.
 	inlineClaimTimeout = 12 * time.Second
+	// refValidationTimeout caps the pre-dispatch GitHub call that verifies the
+	// user's repository + ref resolve to a commit before we spin up a workflow.
+	refValidationTimeout = 5 * time.Second
 )
+
+// errRefNotFound is returned by validateRef when GitHub explicitly rejects the
+// repository + ref pair (404/422). Other errors indicate a transient probe
+// failure and the caller should proceed with dispatch rather than block on us.
+var errRefNotFound = errors.New("ref not found in repository")
 
 // handleBuild handles the build subcommands (client-cl, client-el, tool).
 //
@@ -163,6 +172,33 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	// Use default build args if provided and user didn't specify any.
 	if buildArgs == "" && c.HasBuildArgs(targetName) {
 		buildArgs = c.GetDefaultBuildArgs(targetName)
+	}
+
+	// Probe GitHub to confirm the repository + ref resolve to a commit before
+	// we dispatch. Catches typo'd branches, deleted tags, and bad SHAs in the
+	// same ephemeral reply instead of letting the user wait on a queued run
+	// that will fail at checkout.
+	validateCtx, validateCancel := context.WithTimeout(context.Background(), refValidationTimeout)
+
+	validateErr := c.validateRef(validateCtx, repository, ref)
+
+	validateCancel()
+
+	if errors.Is(validateErr, errRefNotFound) {
+		if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: new(fmt.Sprintf("❌ Build not dispatched — ref `%s` not found in `%s`.", ref, repository)),
+		}); interactionErr != nil {
+			return fmt.Errorf("failed to edit response: %w", interactionErr)
+		}
+
+		return nil
+	}
+
+	if validateErr != nil {
+		c.log.WithError(validateErr).WithFields(logrus.Fields{
+			"repository": repository,
+			"ref":        ref,
+		}).Warn("Pre-dispatch ref validation failed; proceeding with dispatch")
 	}
 
 	// Generate a correlation ID so we can locate the resulting workflow run and
@@ -367,6 +403,39 @@ func buildTriggeredEmbed(in triggeredEmbedInput) *discordgo.MessageEmbed {
 	}
 
 	return embed
+}
+
+// validateRef probes GitHub's commits endpoint to confirm that `ref` resolves
+// to a commit in `repository`. The endpoint accepts branches, tags, and SHAs,
+// so a single call covers every shape the /build command accepts. Returns
+// errRefNotFound for 404/422 (definitively bad ref) and a wrapped error for
+// any other failure (transient — caller should proceed with dispatch).
+func (c *BuildCommand) validateRef(ctx context.Context, repository, ref string) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/commits/%s", repository, ref)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create ref validation request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Authorization", "Bearer "+c.githubToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send ref validation request: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusNotFound, http.StatusUnprocessableEntity:
+		return errRefNotFound
+	default:
+		return fmt.Errorf("unexpected status %d from github commits lookup", resp.StatusCode)
+	}
 }
 
 // triggerWorkflow triggers the GitHub workflow for the given build target.
