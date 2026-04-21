@@ -23,15 +23,6 @@ func (i dockerImage) HubURL() string {
 	return fmt.Sprintf("https://hub.docker.com/r/%s/tags?name=%s", i.Repository, i.Tag)
 }
 
-// Label returns a short user-facing label for dropdown options.
-func (i dockerImage) Label() string {
-	if i.Variant == "" {
-		return i.Reference()
-	}
-
-	return fmt.Sprintf("%s (%s)", i.Reference(), i.Variant)
-}
-
 var (
 	dockerTagInvalidChars  = regexp.MustCompile(`[^a-zA-Z0-9._]`)
 	dockerTagLeadingDashes = regexp.MustCompile(`^-+`)
