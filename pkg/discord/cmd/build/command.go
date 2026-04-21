@@ -22,6 +22,7 @@ const (
 	// Option names.
 	optionClient   = "client"
 	optionWorkflow = "workflow"
+	optionPR       = "pr"
 )
 
 // BuildCommand handles the /build command.
@@ -110,6 +111,7 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Required:    true,
 						Choices:     clClientChoices,
 					},
+					prOption(),
 				}, commonOptions...),
 			},
 			{
@@ -124,6 +126,7 @@ func (c *BuildCommand) getCommandDefinition() *discordgo.ApplicationCommand {
 						Required:    true,
 						Choices:     elClientChoices,
 					},
+					prOption(),
 				}, commonOptions...),
 			},
 			{
