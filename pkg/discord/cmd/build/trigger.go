@@ -24,12 +24,22 @@ const (
 	// refValidationTimeout caps the pre-dispatch GitHub call that verifies the
 	// user's repository + ref resolve to a commit before we spin up a workflow.
 	refValidationTimeout = 5 * time.Second
+	// repoValidationTimeout caps the pre-dispatch GitHub call that verifies the
+	// user's repository is compatible with the selected build target.
+	repoValidationTimeout = 5 * time.Second
 )
 
 // errRefNotFound is returned by validateRef when GitHub explicitly rejects the
 // repository + ref pair (404/422). Other errors indicate a transient probe
 // failure and the caller should proceed with dispatch rather than block on us.
 var errRefNotFound = errors.New("ref not found in repository")
+
+// errRepoMismatch is returned by validateRepository when the supplied
+// repository is not the workflow's default repository and isn't a fork of it.
+// This blocks a hard fail — the dispatch is aborted rather than triggered
+// against an unrelated repo (e.g. running a Lighthouse workflow against
+// ethereum/go-ethereum).
+var errRepoMismatch = errors.New("repository not compatible with selected build target")
 
 // handleBuild handles the build subcommands (client-cl, client-el, tool).
 //
@@ -200,6 +210,41 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	// Use default build args if provided and user didn't specify any.
 	if buildArgs == "" && c.HasBuildArgs(targetName) {
 		buildArgs = c.GetDefaultBuildArgs(targetName)
+	}
+
+	// Sanity-check that the (possibly overridden) repository is a valid source
+	// for the selected build target. Blocks e.g. /build client-cl lighthouse
+	// repository:ethereum/go-ethereum from ever reaching dispatch. Accepts the
+	// workflow's default repository or any fork whose root source matches it.
+	repoCtx, repoCancel := context.WithTimeout(context.Background(), repoValidationTimeout)
+
+	expectedRepo, repoErr := c.validateRepository(repoCtx, targetName, repository)
+
+	repoCancel()
+
+	if errors.Is(repoErr, errRepoMismatch) {
+		msg := fmt.Sprintf(
+			"❌ Build not dispatched — repository `%s` is not a valid source for **%s**.",
+			repository, targetDisplayName,
+		)
+		if expectedRepo != "" {
+			msg += fmt.Sprintf(" Expected `%s` or a fork of it.", expectedRepo)
+		}
+
+		if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: new(msg),
+		}); interactionErr != nil {
+			return fmt.Errorf("failed to edit response: %w", interactionErr)
+		}
+
+		return nil
+	}
+
+	if repoErr != nil {
+		c.log.WithError(repoErr).WithFields(logrus.Fields{
+			"target":     targetName,
+			"repository": repository,
+		}).Warn("Pre-dispatch repository validation failed; proceeding with dispatch")
 	}
 
 	// Probe GitHub to confirm the repository + ref resolve to a commit before
@@ -464,6 +509,111 @@ func (c *BuildCommand) validateRef(ctx context.Context, repository, ref string) 
 	default:
 		return fmt.Errorf("unexpected status %d from github commits lookup", resp.StatusCode)
 	}
+}
+
+// repoLookupResponse is the subset of GitHub's Repos API response we consume
+// to decide whether an overridden repository is a fork of the expected one.
+type repoLookupResponse struct {
+	Fork   bool          `json:"fork"`
+	Source *repoShortRef `json:"source"`
+	Parent *repoShortRef `json:"parent"`
+}
+
+// repoShortRef captures the minimal repo identity GitHub returns inside the
+// `source` and `parent` fields of a fork response.
+//
+//nolint:tagliatelle // Github defined structure.
+type repoShortRef struct {
+	FullName string `json:"full_name"`
+}
+
+// validateRepository confirms that `repository` is a valid source for the
+// given build target. A repository is valid when it equals the workflow's
+// default repository (as declared in build-push-<target>.yml) or is a fork
+// whose root source matches it. Returns the expected repository as the first
+// value in all cases so the caller can surface it in the error message.
+//
+// Returns errRepoMismatch for a definitive mismatch, nil when compatible, and
+// a wrapped error for transient probe failures (caller should warn and proceed
+// with dispatch, matching validateRef's pattern).
+func (c *BuildCommand) validateRepository(ctx context.Context, targetName, repository string) (string, error) {
+	allWorkflows, err := c.workflowFetcher.GetAllWorkflows()
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch workflows for repo validation: %w", err)
+	}
+
+	workflowName := getClientToWorkflowName(targetName)
+
+	workflow, exists := allWorkflows[workflowName]
+	if !exists {
+		return "", fmt.Errorf("no workflow found for target %q", workflowName)
+	}
+
+	expected := strings.TrimSpace(workflow.Repository)
+	if expected == "" {
+		return "", nil
+	}
+
+	if equalRepo(repository, expected) {
+		return expected, nil
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s", repository)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return expected, fmt.Errorf("failed to create repo validation request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Authorization", "Bearer "+c.githubToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return expected, fmt.Errorf("failed to send repo validation request: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return expected, errRepoMismatch
+	default:
+		return expected, fmt.Errorf("unexpected status %d from github repos lookup", resp.StatusCode)
+	}
+
+	var info repoLookupResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return expected, fmt.Errorf("failed to decode repo response: %w", err)
+	}
+
+	if info.Fork {
+		if info.Source != nil && equalRepo(info.Source.FullName, expected) {
+			return expected, nil
+		}
+
+		if info.Parent != nil && equalRepo(info.Parent.FullName, expected) {
+			return expected, nil
+		}
+	}
+
+	return expected, errRepoMismatch
+}
+
+// equalRepo compares two GitHub repo full names case-insensitively, tolerating
+// a trailing `.git` suffix. GitHub treats "Sigp/Lighthouse" and "sigp/lighthouse"
+// as the same repo, and users sometimes paste clone URLs ending in `.git`.
+func equalRepo(a, b string) bool {
+	norm := func(s string) string {
+		s = strings.TrimSpace(s)
+		s = strings.TrimSuffix(s, ".git")
+
+		return strings.ToLower(s)
+	}
+
+	return norm(a) == norm(b)
 }
 
 // triggerWorkflow triggers the GitHub workflow for the given build target.
