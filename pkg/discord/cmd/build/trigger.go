@@ -99,7 +99,7 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 	}
 
 	// Get optional parameters.
-	var repository, ref, dockerTag, buildArgs string
+	var repository, ref, dockerTag, buildArgs, prInput string
 
 	for _, opt := range option.Options {
 		switch opt.Name {
@@ -111,7 +111,35 @@ func (c *BuildCommand) handleBuild(s *discordgo.Session, i *discordgo.Interactio
 			dockerTag = opt.StringValue()
 		case "build_args":
 			buildArgs = opt.StringValue()
+		case optionPR:
+			prInput = opt.StringValue()
 		}
+	}
+
+	// If a PR was provided, resolve it to repo/ref. This overrides any
+	// repository/ref the user also passed — the PR is the more specific intent.
+	if prInput != "" {
+		fallbackRepo := c.prFallbackRepo(targetName)
+
+		resolution, resolveErr := c.resolvePR(prInput, fallbackRepo)
+		if resolveErr != nil {
+			if _, interactionErr := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: new(fmt.Sprintf("❌ Failed to resolve PR for **%s**: %v", targetDisplayName, resolveErr)),
+			}); interactionErr != nil {
+				return fmt.Errorf("failed to edit response with PR error: %w", interactionErr)
+			}
+
+			return nil
+		}
+
+		repository = resolution.Repository
+		ref = resolution.Ref
+
+		c.log.WithFields(logrus.Fields{
+			"pr_input":   prInput,
+			"repository": repository,
+			"ref":        ref,
+		}).Info("Resolved PR reference")
 	}
 
 	// Use defaults if not provided.
