@@ -293,7 +293,6 @@ func (w *BuildWatcher) tickOnce(ctx context.Context) {
 
 		w.finalize(ctx, b, run.Conclusion)
 	}
-
 }
 
 func (w *BuildWatcher) finalize(ctx context.Context, b *trackedBuild, conclusion string) {
