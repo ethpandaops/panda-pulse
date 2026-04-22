@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -408,7 +409,35 @@ func extractManifests(jobs map[string]WorkflowJob) []ManifestInfo {
 		}
 	}
 
+	sort.SliceStable(manifests, func(i, j int) bool {
+		ri, rj := manifestRank(manifests[i].Variant), manifestRank(manifests[j].Variant)
+		if ri != rj {
+			return ri < rj
+		}
+
+		return manifests[i].Variant < manifests[j].Variant
+	})
+
 	return manifests
+}
+
+// manifestRank returns a sort priority for a manifest variant so that related
+// images are printed in a predictable order: main beacon first, then validator,
+// then their minimal counterparts, with unknown variants falling through to
+// alphabetical ordering at the end.
+func manifestRank(variant string) int {
+	switch variant {
+	case "", "beacon":
+		return 0
+	case "validator":
+		return 1
+	case "beacon-minimal":
+		return 2
+	case "validator-minimal":
+		return 3
+	default:
+		return 4
+	}
 }
 
 // findTagSuffix returns the literal text that follows
