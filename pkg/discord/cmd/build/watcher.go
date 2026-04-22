@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,10 +22,6 @@ const (
 	claimPollInterval = 2 * time.Second
 	// runTimeout is an upper bound after which we stop watching a build.
 	runTimeout = 3 * time.Hour
-	// completedRetention is how long we keep a build's resolved images around so
-	// that Copy-button and dropdown interactions from the DM still work after the
-	// notification has been sent.
-	completedRetention = 2 * time.Hour
 )
 
 // ClaimRequest captures everything the watcher needs to resolve the set of
@@ -58,15 +53,6 @@ type trackedBuild struct {
 	dockerTagInput  string
 	upstreamRepo    string
 	manifests       []ManifestInfo
-}
-
-// completedBuild retains the resolved image list for a completed run so the
-// DM's Copy button and dropdown can respond with the exact tags even after
-// the poller has untracked the run.
-type completedBuild struct {
-	targetDisplay string
-	images        []dockerImage
-	expiresAt     time.Time
 }
 
 // workflowRun is the subset of the GitHub workflow run payload we use.
@@ -107,9 +93,8 @@ type BuildWatcher struct {
 	httpClient  *http.Client
 	githubToken string
 
-	mu        sync.Mutex
-	tracks    map[int64]*trackedBuild
-	completed map[int64]*completedBuild
+	mu     sync.Mutex
+	tracks map[int64]*trackedBuild
 
 	wg sync.WaitGroup
 }
@@ -122,7 +107,6 @@ func NewBuildWatcher(log logrus.FieldLogger, session *discordgo.Session, client 
 		httpClient:  client,
 		githubToken: githubToken,
 		tracks:      make(map[int64]*trackedBuild, 8),
-		completed:   make(map[int64]*completedBuild, 8),
 	}
 }
 
@@ -310,7 +294,6 @@ func (w *BuildWatcher) tickOnce(ctx context.Context) {
 		w.finalize(ctx, b, run.Conclusion)
 	}
 
-	w.sweepCompleted()
 }
 
 func (w *BuildWatcher) finalize(ctx context.Context, b *trackedBuild, conclusion string) {
@@ -320,14 +303,6 @@ func (w *BuildWatcher) finalize(ctx context.Context, b *trackedBuild, conclusion
 
 	w.mu.Lock()
 	delete(w.tracks, b.runID)
-
-	if len(images) > 0 {
-		w.completed[b.runID] = &completedBuild{
-			targetDisplay: b.targetDisplay,
-			images:        images,
-			expiresAt:     time.Now().Add(completedRetention),
-		}
-	}
 	w.mu.Unlock()
 }
 
@@ -431,37 +406,6 @@ func (w *BuildWatcher) fetchJobs(ctx context.Context, runID int64) ([]workflowJo
 	return body.Jobs, nil
 }
 
-func (w *BuildWatcher) sweepCompleted() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	now := time.Now()
-	for id, c := range w.completed {
-		if now.After(c.expiresAt) {
-			delete(w.completed, id)
-		}
-	}
-}
-
-// lookupCompleted returns the retained images for a completed run, if any.
-func (w *BuildWatcher) lookupCompleted(runID int64) (*completedBuild, bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	c, ok := w.completed[runID]
-	if !ok {
-		return nil, false
-	}
-
-	if time.Now().After(c.expiresAt) {
-		delete(w.completed, runID)
-
-		return nil, false
-	}
-
-	return c, true
-}
-
 func (w *BuildWatcher) notify(b *trackedBuild, conclusion string, images []dockerImage) {
 	channel, err := w.session.UserChannelCreate(b.userID)
 	if err != nil {
@@ -471,11 +415,9 @@ func (w *BuildWatcher) notify(b *trackedBuild, conclusion string, images []docke
 	}
 
 	embed := buildCompletionEmbed(b, conclusion, images)
-	components := buildCompletionComponents(b.runID, images)
 
 	send := &discordgo.MessageSend{
-		Embeds:     []*discordgo.MessageEmbed{embed},
-		Components: components,
+		Embeds: []*discordgo.MessageEmbed{embed},
 	}
 
 	if _, err := w.session.ChannelMessageSendComplex(channel.ID, send); err != nil {
@@ -483,7 +425,9 @@ func (w *BuildWatcher) notify(b *trackedBuild, conclusion string, images []docke
 	}
 }
 
-// buildCompletionEmbed builds the DM embed shown to the invoker.
+// buildCompletionEmbed builds the DM embed shown to the invoker. Image tags
+// are inlined as fenced code blocks so each can be copied via Discord's
+// per-block copy icon, and are grouped into main and minimal sections.
 func buildCompletionEmbed(b *trackedBuild, conclusion string, images []dockerImage) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title: fmt.Sprintf("%s Build %s: %s", conclusionEmoji(conclusion), conclusionLabel(conclusion), b.targetDisplay),
@@ -503,11 +447,20 @@ func buildCompletionEmbed(b *trackedBuild, conclusion string, images []dockerIma
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	if len(images) > 0 {
-		primary := images[0]
+	main, minimal := partitionImages(images)
+
+	if value := formatImageBlocks(main); value != "" {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   "Image",
-			Value:  fmt.Sprintf("[`%s`](%s)", primary.Reference(), primary.HubURL()),
+			Name:   "Images",
+			Value:  value,
+			Inline: false,
+		})
+	}
+
+	if value := formatImageBlocks(minimal); value != "" {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "Minimal images",
+			Value:  value,
 			Inline: false,
 		})
 	}
@@ -515,66 +468,35 @@ func buildCompletionEmbed(b *trackedBuild, conclusion string, images []dockerIma
 	return embed
 }
 
-// buildCompletionComponents returns the copy button that accompanies the DM.
-// Clicking it produces an ephemeral reply with one code block per image tag,
-// so each tag can be copied independently via Discord's per-block copy icon.
-func buildCompletionComponents(runID int64, images []dockerImage) []discordgo.MessageComponent {
-	if len(images) == 0 {
-		return nil
+// partitionImages splits images into main and minimal groups based on whether
+// the manifest variant carries the "minimal" marker.
+func partitionImages(images []dockerImage) (main, minimal []dockerImage) {
+	main = make([]dockerImage, 0, len(images))
+	minimal = make([]dockerImage, 0, len(images))
+
+	for _, img := range images {
+		if strings.Contains(img.Variant, "minimal") {
+			minimal = append(minimal, img)
+		} else {
+			main = append(main, img)
+		}
 	}
 
-	label := "Copy tag"
-	if len(images) > 1 {
-		label = "Copy tags"
-	}
-
-	return []discordgo.MessageComponent{
-		discordgo.ActionsRow{
-			Components: []discordgo.MessageComponent{
-				discordgo.Button{
-					Label:    label,
-					Style:    discordgo.PrimaryButton,
-					Emoji:    &discordgo.ComponentEmoji{Name: "📋"},
-					CustomID: fmt.Sprintf("build:copy:%d", runID),
-				},
-			},
-		},
-	}
+	return main, minimal
 }
 
-// HandleComponent responds to component interactions dispatched from the DM.
-func (w *BuildWatcher) HandleComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Type != discordgo.InteractionMessageComponent {
-		return
-	}
-
-	data := i.MessageComponentData()
-
-	runID, ok := parseComponentID(data.CustomID)
-	if !ok {
-		w.respondEphemeral(s, i, "Sorry, couldn't decode that interaction.")
-
-		return
-	}
-
-	completed, ok := w.lookupCompleted(runID)
-	if !ok {
-		w.respondEphemeral(s, i, "This build is no longer in cache — open the image on Docker Hub from the link above.")
-
-		return
-	}
-
-	if len(completed.images) == 0 {
-		w.respondEphemeral(s, i, "No images produced for this build.")
-
-		return
+// formatImageBlocks renders each image as its own fenced code block so
+// Discord shows a per-block copy icon on hover.
+func formatImageBlocks(images []dockerImage) string {
+	if len(images) == 0 {
+		return ""
 	}
 
 	var buf strings.Builder
 
-	buf.Grow(len(completed.images) * 64)
+	buf.Grow(len(images) * 64)
 
-	for idx, img := range completed.images {
+	for idx, img := range images {
 		if idx > 0 {
 			buf.WriteByte('\n')
 		}
@@ -582,35 +504,7 @@ func (w *BuildWatcher) HandleComponent(s *discordgo.Session, i *discordgo.Intera
 		fmt.Fprintf(&buf, "```\n%s\n```", img.Reference())
 	}
 
-	w.respondEphemeral(s, i, buf.String())
-}
-
-// parseComponentID parses a custom_id of the form "build:copy:{runID}"
-// produced by buildCompletionComponents.
-func parseComponentID(customID string) (int64, bool) {
-	parts := strings.Split(customID, ":")
-	if len(parts) != 3 || parts[0] != "build" || parts[1] != "copy" {
-		return 0, false
-	}
-
-	runID, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-
-	return runID, true
-}
-
-func (w *BuildWatcher) respondEphemeral(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	}); err != nil {
-		w.log.WithError(err).Warn("Failed to respond to component interaction")
-	}
+	return buf.String()
 }
 
 func conclusionEmoji(conclusion string) string {
