@@ -7,6 +7,15 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 )
 
+// extraClientsByType lists clients that should appear in the build dropdowns
+// even though Cartographoor's remote data has not yet caught up. Entries are
+// only surfaced when a matching build-push-<client>.yml workflow exists in
+// the eth-client-docker-image-builder repo, so unknown additions silently
+// drop off rather than producing dead choices.
+var extraClientsByType = map[string][]string{
+	"execution": {"ethrex"},
+}
+
 // getAdditionalWorkflows returns workflow information, dynamically fetched from GitHub.
 func (c *BuildCommand) getAdditionalWorkflows() map[string]WorkflowInfo {
 	workflows, err := c.workflowFetcher.GetToolWorkflows()
@@ -39,6 +48,21 @@ func (c *BuildCommand) getClientWorkflows(clientType string) map[string]Workflow
 		clients = cartographoor.GetCLClients()
 	default:
 		return make(map[string]WorkflowInfo)
+	}
+
+	// Merge in clients we know about that Cartographoor hasn't published yet.
+	seen := make(map[string]struct{}, len(clients))
+	for _, name := range clients {
+		seen[name] = struct{}{}
+	}
+
+	for _, name := range extraClientsByType[clientType] {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+
+		clients = append(clients, name)
+		seen[name] = struct{}{}
 	}
 
 	// Filter workflows to only include clients that exist in both Cartographoor and GitHub workflows.

@@ -201,6 +201,15 @@ func (wf *WorkflowFetcher) GetToolWorkflows() (map[string]WorkflowInfo, error) {
 		knownWorkflows[workflowName] = true
 	}
 
+	// Add clients we know about that Cartographoor hasn't published yet so
+	// they don't leak into the tool list.
+	for _, clientList := range extraClientsByType {
+		for _, client := range clientList {
+			workflowName := wf.getClientToWorkflowName(client)
+			knownWorkflows[workflowName] = true
+		}
+	}
+
 	// Filter out known client workflows
 	toolWorkflows := make(map[string]WorkflowInfo)
 
