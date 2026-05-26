@@ -315,9 +315,8 @@ func (b *DiscordBot) handleInteraction(s *discordgo.Session, i *discordgo.Intera
 			// Set last execution timestamp
 			b.metrics.SetLastCommandTimestamp(cmd.Name(), subcommand, float64(time.Now().Unix()))
 
-			// Skip permission check for commands with their own permission handling
-			isTrigger := len(data.Options) > 0 && data.Options[0].Name == "trigger"
-			if isTrigger && (cmd.Name() == "build" || cmd.Name() == "hive") {
+			// Skip permission check for commands with their own permission handling.
+			if commandSelfChecksPermission(cmd.Name(), &data) {
 				cmd.Handle(s, i)
 
 				// Record command execution time
@@ -542,4 +541,19 @@ func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
 	b.log.Info("Scheduled bot command refresh")
 
 	return nil
+}
+
+// commandSelfChecksPermission reports whether the named command performs its own
+// permission gating and should bypass the dispatcher's generic check. /build
+// applies its own permissive rule (any team-tagged user can trigger any build),
+// and /hive trigger has bespoke per-subcommand handling.
+func commandSelfChecksPermission(cmdName string, data *discordgo.ApplicationCommandInteractionData) bool {
+	switch cmdName {
+	case "build":
+		return true
+	case "hive":
+		return data != nil && len(data.Options) > 0 && data.Options[0].Name == "trigger"
+	default:
+		return false
+	}
 }
