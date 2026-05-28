@@ -45,8 +45,8 @@ linters:
     errcheck:
       check-type-assertions: true
     goconst:
-      min-len: 2
-      min-occurrences: 3
+      min-len: 5
+      min-occurrences: 12
     gocritic:
       enabled-tags:
         - diagnostic
