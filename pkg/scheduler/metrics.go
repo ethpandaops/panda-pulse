@@ -2,6 +2,12 @@ package scheduler
 
 import "github.com/prometheus/client_golang/prometheus"
 
+const (
+	subsystem     = "scheduler"
+	labelName     = "name"
+	labelSchedule = "schedule"
+)
+
 type Metrics struct {
 	jobsTotal       *prometheus.CounterVec
 	jobExecutions   *prometheus.CounterVec
@@ -15,46 +21,46 @@ func NewMetrics(namespace string) *Metrics {
 	m := &Metrics{
 		jobsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "jobs_total",
 			Help:      "Total number of jobs registered",
-		}, []string{"schedule"}),
+		}, []string{labelSchedule}),
 
 		jobExecutions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "job_executions_total",
 			Help:      "Total number of job executions",
-		}, []string{"name", "schedule"}),
+		}, []string{labelName, labelSchedule}),
 
 		jobFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "job_failures_total",
 			Help:      "Total number of job failures",
-		}, []string{"name", "schedule"}),
+		}, []string{labelName, labelSchedule}),
 
 		activeJobs: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "active_jobs",
 			Help:      "Current number of active jobs",
 		}),
 
 		executionTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "job_execution_duration_seconds",
 			Help:      "Time taken to execute jobs",
 			Buckets:   []float64{0.1, 0.5, 1, 2, 5, 10, 30},
-		}, []string{"name"}),
+		}, []string{labelName}),
 
 		lastExecutionTS: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: namespace,
-			Subsystem: "scheduler",
+			Subsystem: subsystem,
 			Name:      "job_last_execution_timestamp",
 			Help:      "Timestamp of last job execution",
-		}, []string{"name", "schedule"}),
+		}, []string{labelName, labelSchedule}),
 	}
 
 	prometheus.MustRegister(

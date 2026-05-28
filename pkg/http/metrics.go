@@ -2,6 +2,12 @@ package http
 
 import "github.com/prometheus/client_golang/prometheus"
 
+const (
+	apiSubsystem   = "api"
+	labelService   = "service"
+	labelOperation = "operation"
+)
+
 // Metrics for API connections.
 type Metrics struct {
 	apiRequestsTotal   *prometheus.CounterVec
@@ -14,25 +20,25 @@ func NewMetrics(namespace string) *Metrics {
 	m := &Metrics{
 		apiRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "api",
+			Subsystem: apiSubsystem,
 			Name:      "requests_total",
 			Help:      "Total number of API requests made",
-		}, []string{"service", "operation"}),
+		}, []string{labelService, labelOperation}),
 
 		apiRequestsErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Subsystem: "api",
+			Subsystem: apiSubsystem,
 			Name:      "request_errors_total",
 			Help:      "Total number of API request errors",
-		}, []string{"service", "operation", "error_type"}),
+		}, []string{labelService, labelOperation, "error_type"}),
 
 		apiRequestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
-			Subsystem: "api",
+			Subsystem: apiSubsystem,
 			Name:      "request_duration_seconds",
 			Help:      "Duration of API requests in seconds",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-		}, []string{"service", "operation"}),
+		}, []string{labelService, labelOperation}),
 	}
 
 	prometheus.MustRegister(

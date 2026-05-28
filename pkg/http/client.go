@@ -8,6 +8,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	logFieldURL      = "url"
+	logFieldMethod   = "method"
+	logFieldDuration = "duration"
+)
+
 // ClientWrapper wraps an HTTP client with metrics instrumentation.
 type ClientWrapper struct {
 	client  *http.Client
@@ -38,7 +44,7 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 	c.metrics.RecordAPIRequest(service, operation)
 
 	// Execute the request.
-	resp, err := c.client.Do(req) //nolint:gosec // URL is from trusted configuration
+	resp, err := c.client.Do(req)
 
 	// Record request duration.
 	duration := time.Since(startTime).Seconds()
@@ -47,12 +53,12 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 	// Handle errors.
 	if err != nil {
 		c.log.WithFields(logrus.Fields{
-			"service":   service,
-			"operation": operation,
-			"error":     err,
-			"url":       req.URL.String(),
-			"method":    req.Method,
-			"duration":  duration,
+			labelService:     service,
+			labelOperation:   operation,
+			"error":          err,
+			logFieldURL:      req.URL.String(),
+			logFieldMethod:   req.Method,
+			logFieldDuration: duration,
 		}).Error("API request error")
 
 		c.metrics.RecordAPIError(service, operation, "network_error")
@@ -71,12 +77,12 @@ func (c *ClientWrapper) Do(req *http.Request, service, operation string) (*http.
 		}
 
 		c.log.WithFields(logrus.Fields{
-			"service":     service,
-			"operation":   operation,
-			"status_code": resp.StatusCode,
-			"url":         req.URL.String(),
-			"method":      req.Method,
-			"duration":    duration,
+			labelService:     service,
+			labelOperation:   operation,
+			"status_code":    resp.StatusCode,
+			logFieldURL:      req.URL.String(),
+			logFieldMethod:   req.Method,
+			logFieldDuration: duration,
 		}).Error("API response error")
 
 		c.metrics.RecordAPIError(service, operation, errType)
@@ -128,7 +134,7 @@ func NewMetricsRoundTripper(next http.RoundTripper, metrics *Metrics, log *logru
 		next:    next,
 		metrics: metrics,
 		log:     log,
-		service: "api", // Default service name
+		service: apiSubsystem, // Default service name
 	}
 
 	// Apply options
@@ -157,12 +163,12 @@ func (t *MetricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	// Handle errors.
 	if err != nil {
 		t.log.WithFields(logrus.Fields{
-			"service":   t.service,
-			"operation": operation,
-			"error":     err,
-			"url":       req.URL.String(),
-			"method":    req.Method,
-			"duration":  duration,
+			labelService:     t.service,
+			labelOperation:   operation,
+			"error":          err,
+			logFieldURL:      req.URL.String(),
+			logFieldMethod:   req.Method,
+			logFieldDuration: duration,
 		}).Error("API request error")
 
 		t.metrics.RecordAPIError(t.service, operation, "network_error")
@@ -181,12 +187,12 @@ func (t *MetricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		}
 
 		t.log.WithFields(logrus.Fields{
-			"service":     t.service,
-			"operation":   operation,
-			"status_code": resp.StatusCode,
-			"url":         req.URL.String(),
-			"method":      req.Method,
-			"duration":    duration,
+			labelService:     t.service,
+			labelOperation:   operation,
+			"status_code":    resp.StatusCode,
+			logFieldURL:      req.URL.String(),
+			logFieldMethod:   req.Method,
+			logFieldDuration: duration,
 		}).Error("API response error")
 
 		t.metrics.RecordAPIError(t.service, operation, errType)
