@@ -22,24 +22,30 @@ func (c ClientType) String() string {
 	}
 }
 
+const (
+	clientNimbus     = "nimbus"
+	clientNimbusEL   = "nimbusel"
+	clientEthereumJS = "ethereumjs"
+)
+
 var (
 	// TeamRoles maps clients to their respective team's Discord roles.
 	// Multiple role names are supported to allow the bot to operate across different servers.
 	TeamRoles = map[string][]string{
-		"lighthouse": {"sigmaprime", "lighthouse"},
-		"prysm":      {"prysmatic", "prysm"},
-		"lodestar":   {"chainsafe", "lodestar"},
-		"nimbus":     {"nimbus"},
-		"teku":       {"teku"},
-		"grandine":   {"grandine"},
-		"nethermind": {"nethermind"},
-		"nimbusel":   {"nimbus", "nimbusel"},
-		"besu":       {"besu"},
-		"geth":       {"geth"},
-		"reth":       {"reth"},
-		"erigon":     {"erigon"},
-		"ethereumjs": {"ethereumjs"},
-		"ethrex":     {"ethrex"},
+		"lighthouse":     {"sigmaprime", "lighthouse"},
+		"prysm":          {"prysmatic", "prysm"},
+		"lodestar":       {"chainsafe", "lodestar"},
+		clientNimbus:     {clientNimbus},
+		"teku":           {"teku"},
+		"grandine":       {"grandine"},
+		"nethermind":     {"nethermind"},
+		clientNimbusEL:   {clientNimbus, clientNimbusEL},
+		"besu":           {"besu"},
+		"geth":           {"geth"},
+		"reth":           {"reth"},
+		"erigon":         {"erigon"},
+		clientEthereumJS: {clientEthereumJS},
+		"ethrex":         {"ethrex"},
 	}
 	// AdminRoles maps admin roles to their respective Discord roles.
 	// Multiple role names are supported to allow the bot to operate across different servers.
@@ -51,8 +57,8 @@ var (
 	}
 	// Pre-production clients.
 	PreProductionClients = map[string]bool{
-		"ethereumjs": true,
-		"nimbusel":   true,
-		"erigonTwo":  true, // Not in standard client list but tracked for pre-production.
+		clientEthereumJS: true,
+		clientNimbusEL:   true,
+		"erigonTwo":      true, // Not in standard client list but tracked for pre-production.
 	}
 )

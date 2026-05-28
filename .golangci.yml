@@ -73,6 +73,7 @@ linters:
       - std-error-handling
     rules:
       - linters:
+          - goconst
           - gocritic
           - gosec
           - wsl_v5
