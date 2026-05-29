@@ -34,10 +34,6 @@ type Config struct {
 	WatchtowerToken string
 	// InventoryURL overrides the cartographoor inventory base URL.
 	InventoryURL string
-	// BasicAuthUser and BasicAuthPass authenticate beacon health checks behind
-	// nginx basic auth (the bn-* vhosts) — only used when Dora is unavailable.
-	BasicAuthUser string
-	BasicAuthPass string
 	// DoraURL overrides the Dora health source; empty derives it from the
 	// network (https://dora.<network>.ethpandaops.io).
 	DoraURL string
@@ -58,7 +54,7 @@ func NewRollCommand(log *logrus.Logger, bot common.BotContext, cfg Config) *Comm
 		log:      log,
 		bot:      bot,
 		cfg:      cfg,
-		provider: rollpkg.NewInventoryProvider(cfg.InventoryURL, "https", providerCacheTTL),
+		provider: rollpkg.NewInventoryProvider(cfg.InventoryURL, providerCacheTTL),
 	}
 }
 

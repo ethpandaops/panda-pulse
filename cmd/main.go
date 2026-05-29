@@ -104,8 +104,6 @@ func setConfig(cfg *service.Config) {
 	cfg.HealthCheckAddress = os.Getenv("HEALTH_CHECK_ADDRESS")
 	cfg.MetricsAddress = os.Getenv("METRICS_ADDRESS")
 	cfg.WatchtowerAPIToken = os.Getenv("WATCHTOWER_HTTP_API_TOKEN")
-	cfg.NodeBasicAuthUser = os.Getenv("ROLL_BASIC_AUTH_USER")
-	cfg.NodeBasicAuthPass = os.Getenv("ROLL_BASIC_AUTH_PASS")
 
 	if cfg.GrafanaBaseURL == "" {
 		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL

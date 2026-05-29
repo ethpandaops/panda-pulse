@@ -9,14 +9,14 @@ func testInventory() *inventoryData {
 	return &inventoryData{
 		Network: "glamsterdam-devnet-4",
 		ConsensusClients: []clientInfo{
-			{ClientName: "lighthouse-ethrex-1", ClientType: "lighthouse", SSH: "devops@lighthouse-ethrex-1.example.io", BeaconAPI: "bn-lighthouse-ethrex-1.example.io"},
-			{ClientName: "lighthouse-nethermind-1", ClientType: "lighthouse", SSH: "devops@lighthouse-nethermind-1.example.io", BeaconAPI: "bn-lighthouse-nethermind-1.example.io"},
-			{ClientName: "prysm-ethrex-1", ClientType: "prysm", SSH: "devops@prysm-ethrex-1.example.io", BeaconAPI: "bn-prysm-ethrex-1.example.io"},
+			{ClientName: "lighthouse-ethrex-1", ClientType: "lighthouse"},
+			{ClientName: "lighthouse-nethermind-1", ClientType: "lighthouse"},
+			{ClientName: "prysm-ethrex-1", ClientType: "prysm"},
 		},
 		ExecutionClients: []clientInfo{
-			{ClientName: "lighthouse-ethrex-1", ClientType: "ethrex", SSH: "devops@lighthouse-ethrex-1.example.io"},
-			{ClientName: "lighthouse-nethermind-1", ClientType: "nethermind", SSH: "devops@lighthouse-nethermind-1.example.io"},
-			{ClientName: "prysm-ethrex-1", ClientType: "ethrex", SSH: "devops@prysm-ethrex-1.example.io"},
+			{ClientName: "lighthouse-ethrex-1", ClientType: "ethrex"},
+			{ClientName: "lighthouse-nethermind-1", ClientType: "nethermind"},
+			{ClientName: "prysm-ethrex-1", ClientType: "ethrex"},
 		},
 	}
 }
@@ -31,7 +31,7 @@ func targetNames(ts []Target) []string {
 }
 
 func TestResolveTargets(t *testing.T) {
-	targets := ResolveTargets(testInventory(), "https")
+	targets := ResolveTargets(testInventory())
 	if len(targets) != 3 {
 		t.Fatalf("want 3 targets, got %d (%v)", len(targets), targetNames(targets))
 	}
@@ -42,10 +42,6 @@ func TestResolveTargets(t *testing.T) {
 		if tg.Name == "lighthouse-ethrex-1" {
 			lh = tg
 		}
-	}
-
-	if lh.BeaconURL != "https://bn-lighthouse-ethrex-1.example.io" {
-		t.Errorf("beacon url = %q", lh.BeaconURL)
 	}
 
 	got := map[string]bool{}
@@ -61,7 +57,7 @@ func TestResolveTargets(t *testing.T) {
 }
 
 func TestSelect(t *testing.T) {
-	targets := ResolveTargets(testInventory(), "https")
+	targets := ResolveTargets(testInventory())
 
 	cases := []struct {
 		expr string
@@ -87,7 +83,7 @@ func TestSelect(t *testing.T) {
 }
 
 func TestSuggestionsScope(t *testing.T) {
-	targets := ResolveTargets(testInventory(), "https")
+	targets := ResolveTargets(testInventory())
 
 	set := map[string]bool{}
 	for _, s := range Suggestions(targets, "", "lighthouse", 25) {

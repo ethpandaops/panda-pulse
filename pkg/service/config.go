@@ -28,8 +28,6 @@ type Config struct {
 	MetricsAddress     string // Defaults to :9091
 	HealthCheckAddress string // Defaults to :9191
 	WatchtowerAPIToken string // watchtower API token for the /roll command
-	NodeBasicAuthUser  string // basic auth user for beacon health endpoints (bn-* vhosts)
-	NodeBasicAuthPass  string // basic auth password for beacon health endpoints
 }
 
 // AsS3Config converts the configuration to an S3Config.

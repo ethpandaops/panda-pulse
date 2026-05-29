@@ -13,9 +13,8 @@ const defaultProviderTTL = 30 * time.Second
 // InventoryProvider fetches and caches per-network targets from cartographoor,
 // so autocomplete and rollouts don't refetch on every Discord interaction.
 type InventoryProvider struct {
-	baseURL      string
-	beaconScheme string
-	ttl          time.Duration
+	baseURL string
+	ttl     time.Duration
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
@@ -26,15 +25,11 @@ type cacheEntry struct {
 	fetched time.Time
 }
 
-// NewInventoryProvider returns a provider. Empty baseURL/beaconScheme use
-// defaults; non-positive ttl uses a 30s default.
-func NewInventoryProvider(baseURL, beaconScheme string, ttl time.Duration) *InventoryProvider {
+// NewInventoryProvider returns a provider. Empty baseURL uses the default;
+// non-positive ttl uses a 30s default.
+func NewInventoryProvider(baseURL string, ttl time.Duration) *InventoryProvider {
 	if baseURL == "" {
 		baseURL = DefaultInventoryBaseURL
-	}
-
-	if beaconScheme == "" {
-		beaconScheme = "https"
 	}
 
 	if ttl <= 0 {
@@ -42,10 +37,9 @@ func NewInventoryProvider(baseURL, beaconScheme string, ttl time.Duration) *Inve
 	}
 
 	return &InventoryProvider{
-		baseURL:      baseURL,
-		beaconScheme: beaconScheme,
-		ttl:          ttl,
-		cache:        map[string]cacheEntry{},
+		baseURL: baseURL,
+		ttl:     ttl,
+		cache:   map[string]cacheEntry{},
 	}
 }
 
@@ -65,7 +59,7 @@ func (p *InventoryProvider) Targets(ctx context.Context, network string) ([]Targ
 		return nil, err
 	}
 
-	targets := ResolveTargets(inv, p.beaconScheme)
+	targets := ResolveTargets(inv)
 
 	p.mu.Lock()
 	p.cache[network] = cacheEntry{targets: targets, fetched: time.Now()}

@@ -4,63 +4,42 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-// APIActuator rolls by calling a node's watchtower HTTP API at its public vhost
-// (e.g. watchtower-<host>) with a bearer token. It requires the watchtower API
-// to be reachable (vhost-exposed); no SSH access is needed.
+// WatchtowerURLForNode returns the watchtower API base URL for a node on an
+// ethpandaops network, e.g.
+// https://watchtower-lighthouse-ethrex-1.srv.glamsterdam-devnet-4.ethpandaops.io
+func WatchtowerURLForNode(network, node string) string {
+	return fmt.Sprintf("https://watchtower-%s.srv.%s.ethpandaops.io", node, network)
+}
+
+// APIActuator rolls by calling each node's watchtower HTTP API at its public
+// vhost with a bearer token. The watchtower vhost is bearer-auth only.
 type APIActuator struct {
 	token      string
-	scheme     string
-	port       int
-	hostPrefix string
+	network    string
 	httpClient *http.Client
 }
 
-// NewAPIActuator returns an APIActuator targeting each node's watchtower vhost
-// (hostPrefix + the node host, e.g. "watchtower-<host>"). scheme defaults to
-// "https"; hostPrefix defaults to "watchtower-"; port 0 omits the port (so 443
-// for https). The watchtower vhost is bearer-auth only — no basic auth.
-func NewAPIActuator(token, scheme string, port int, hostPrefix string) *APIActuator {
-	if scheme == "" {
-		scheme = "https"
-	}
-
-	if hostPrefix == "" {
-		hostPrefix = "watchtower-"
-	}
-
+// NewAPIActuator returns an APIActuator for the given network and bearer token.
+func NewAPIActuator(token, network string) *APIActuator {
 	return &APIActuator{
 		token:      token,
-		scheme:     scheme,
-		port:       port,
-		hostPrefix: hostPrefix,
+		network:    network,
 		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
 // Name implements Actuator.
-func (a *APIActuator) Name() string { return "api" }
+func (a *APIActuator) Name() string { return "watchtower" }
 
-// Roll implements Actuator: POST /v1/update to the target's watchtower API.
+// Roll implements Actuator: POST /v1/update to the node's watchtower vhost.
 func (a *APIActuator) Roll(ctx context.Context, target Target, image string) error {
-	host := sshHost(target.SSH)
-	if host == "" {
-		return fmt.Errorf("invalid target %q", target.SSH)
-	}
-
-	host = a.hostPrefix + host
-
-	endpoint := fmt.Sprintf("%s://%s/v1/update", a.scheme, host)
-	if a.port != 0 {
-		endpoint = fmt.Sprintf("%s://%s:%d/v1/update", a.scheme, host, a.port)
-	}
-
+	endpoint := WatchtowerURLForNode(a.network, target.Name) + "/v1/update"
 	if image != "" {
 		endpoint += "?image=" + url.QueryEscape(image)
 	}
@@ -84,18 +63,4 @@ func (a *APIActuator) Roll(ctx context.Context, target Target, image string) err
 	}
 
 	return nil
-}
-
-// sshHost extracts the host (FQDN) from an "user@host[:port]" SSH value.
-func sshHost(target string) string {
-	host := target
-	if at := strings.Index(host, "@"); at >= 0 {
-		host = host[at+1:]
-	}
-
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		return h
-	}
-
-	return host
 }

@@ -149,8 +149,6 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 		cmdroll.NewRollCommand(log, bot, cmdroll.Config{
 			WatchtowerToken: cfg.WatchtowerAPIToken,
-			BasicAuthUser:   cfg.NodeBasicAuthUser,
-			BasicAuthPass:   cfg.NodeBasicAuthPass,
 		}),
 	})
 

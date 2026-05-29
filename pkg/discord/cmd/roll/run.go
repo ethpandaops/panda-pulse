@@ -71,7 +71,7 @@ func (c *Command) run(s *discordgo.Session, i *discordgo.InteractionCreate, data
 		return nil
 	}
 
-	actuator, err := c.actuator()
+	actuator, err := c.actuator(network)
 	if err != nil {
 		c.respondEphemeral(s, i, fmt.Sprintf("❌ Roll not configured: %v", err))
 
@@ -109,13 +109,11 @@ func (c *Command) run(s *discordgo.Session, i *discordgo.InteractionCreate, data
 	}
 
 	runErr := rollpkg.NewEngine(actuator, c.log).Run(ctx, targets, rollpkg.Options{
-		Image:               image,
-		DryRun:              dryRun,
-		SkipHealth:          force,
-		DelayBetweenNodes:   delay,
-		DoraURL:             doraURL,
-		BeaconBasicAuthUser: c.cfg.BasicAuthUser,
-		BeaconBasicAuthPass: c.cfg.BasicAuthPass,
+		Image:             image,
+		DryRun:            dryRun,
+		SkipHealth:        force,
+		DelayBetweenNodes: delay,
+		DoraURL:           doraURL,
 		OnProgress: func(p rollpkg.Progress) {
 			ui.update(p)
 			edit(false)
@@ -159,12 +157,12 @@ func mentionUser(i *discordgo.InteractionCreate) string {
 	}
 }
 
-func (c *Command) actuator() (rollpkg.Actuator, error) {
+func (c *Command) actuator(network string) (rollpkg.Actuator, error) {
 	if c.cfg.WatchtowerToken == "" {
 		return nil, fmt.Errorf("watchtower token not configured (WATCHTOWER_HTTP_API_TOKEN)")
 	}
 
-	return rollpkg.NewAPIActuator(c.cfg.WatchtowerToken, "https", 0, "watchtower-"), nil
+	return rollpkg.NewAPIActuator(c.cfg.WatchtowerToken, network), nil
 }
 
 // rollUI accumulates per-host progress into a renderable Discord message.

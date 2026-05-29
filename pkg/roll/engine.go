@@ -19,45 +19,17 @@ type Options struct {
 	PostTriggerWait time.Duration
 	// WaitTimeout is the per-node recovery timeout; exceeding it aborts the rollout.
 	WaitTimeout time.Duration
-	// HealthCheckInterval is how often to poll beacon health while waiting.
+	// HealthCheckInterval is how often to poll Dora health while waiting.
 	HealthCheckInterval time.Duration
-	// MaxSyncDistance is the largest sync distance (slots) still considered healthy.
-	MaxSyncDistance uint64
-	// SkipHealth disables beacon health gating (trigger-and-go).
+	// DoraURL is the Dora explorer used as the health source of truth.
+	DoraURL string
+	// SkipHealth disables health gating (force; trigger-and-go even if unhealthy).
 	SkipHealth bool
 	// DryRun logs intent without triggering rolls.
 	DryRun bool
-	// DoraURL, if set, makes health checks use Dora (matched by node name) as the
-	// source of truth instead of per-node beacon calls. Preferred — one
-	// unauthenticated call covers the fleet.
-	DoraURL string
-	// BeaconBasicAuthUser and BeaconBasicAuthPass authenticate beacon health
-	// checks when Dora is not used and the beacon is behind nginx basic auth.
-	BeaconBasicAuthUser string
-	BeaconBasicAuthPass string
 	// OnProgress, if set, is invoked at each rollout milestone (for UIs such as
 	// the Discord command). It must be cheap and non-blocking.
 	OnProgress func(Progress)
-}
-
-// Phase is a rollout milestone for progress reporting.
-type Phase string
-
-const (
-	PhaseTriggering Phase = "triggering"
-	PhaseHealthy    Phase = "healthy"
-	PhaseFailed     Phase = "failed"
-	PhaseSkipped    Phase = "skipped"
-	PhaseDone       Phase = "done"
-)
-
-// Progress is a rollout milestone delivered to Options.OnProgress.
-type Progress struct {
-	Node    string
-	Index   int // 1-based; 0 for fleet-level events
-	Total   int
-	Phase   Phase
-	Message string
 }
 
 func (o *Options) applyDefaults() {
@@ -76,17 +48,32 @@ func (o *Options) applyDefaults() {
 	if o.HealthCheckInterval == 0 {
 		o.HealthCheckInterval = 10 * time.Second
 	}
-
-	if o.MaxSyncDistance == 0 {
-		o.MaxSyncDistance = 4
-	}
 }
 
-// Engine performs gated, sequential rollouts via an Actuator, gating on beacon
+// Phase is a rollout milestone for progress reporting.
+type Phase string
+
+const (
+	PhaseTriggering Phase = "triggering"
+	PhaseHealthy    Phase = "healthy"
+	PhaseFailed     Phase = "failed"
+	PhaseSkipped    Phase = "skipped"
+	PhaseDone       Phase = "done"
+)
+
+// Progress is a rollout milestone delivered to Options.OnProgress.
+type Progress struct {
+	Node    string
+	Index   int
+	Total   int
+	Phase   Phase
+	Message string
+}
+
+// Engine performs gated, sequential rollouts via an Actuator, gating on Dora
 // health between nodes and aborting on the first node that fails to recover.
 type Engine struct {
 	actuator Actuator
-	health   *BeaconHealth
 	dora     *DoraHealth
 	log      logrus.FieldLogger
 }
@@ -97,28 +84,22 @@ func NewEngine(actuator Actuator, log logrus.FieldLogger) *Engine {
 		log = logrus.New()
 	}
 
-	return &Engine{actuator: actuator, health: NewBeaconHealth(), log: log}
+	return &Engine{actuator: actuator, log: log}
 }
 
-// checkHealth gates on Dora when a Dora URL is configured (the preferred,
-// unauthenticated source of truth), otherwise falls back to the node's beacon.
-func (e *Engine) checkHealth(ctx context.Context, target Target, maxSyncDistance uint64) (bool, string, error) {
-	if e.dora != nil {
-		return e.dora.Healthy(ctx, target.Name)
+// checkHealth reports whether a node is healthy according to Dora.
+func (e *Engine) checkHealth(ctx context.Context, target Target) (bool, string, error) {
+	if e.dora == nil {
+		return false, "", errors.New("no health source configured (set DoraURL)")
 	}
 
-	if target.BeaconURL == "" {
-		return false, "no health source (set server doraURL or node beaconUrl)", nil
-	}
-
-	return e.health.Healthy(ctx, target.BeaconURL, maxSyncDistance)
+	return e.dora.Healthy(ctx, target.Name)
 }
 
 // Run rolls the targets in order. It aborts on the first node that fails to
 // recover, leaving the remaining targets untouched.
 func (e *Engine) Run(ctx context.Context, targets []Target, opts Options) error {
 	opts.applyDefaults()
-	e.health.SetBasicAuth(opts.BeaconBasicAuthUser, opts.BeaconBasicAuthPass)
 
 	if opts.DoraURL != "" {
 		e.dora = NewDoraHealth(opts.DoraURL)
@@ -136,7 +117,7 @@ func (e *Engine) Run(ctx context.Context, targets []Target, opts Options) error 
 	}).Info("roll: starting")
 
 	if !opts.SkipHealth {
-		if err := e.preflight(ctx, targets, opts); err != nil {
+		if err := e.preflight(ctx, targets); err != nil {
 			return fmt.Errorf("pre-flight: %w", err)
 		}
 	}
@@ -203,7 +184,7 @@ func (e *Engine) emit(opts Options, p Progress, phase Phase, msg string) {
 
 func (e *Engine) rollOne(ctx context.Context, entry logrus.FieldLogger, target Target, opts Options) error {
 	if !opts.SkipHealth {
-		ok, reason, err := e.checkHealth(ctx, target, opts.MaxSyncDistance)
+		ok, reason, err := e.checkHealth(ctx, target)
 		if err != nil {
 			return fmt.Errorf("pre-update health check: %w", err)
 		}
@@ -241,7 +222,7 @@ func (e *Engine) waitHealthy(ctx context.Context, entry logrus.FieldLogger, targ
 	defer ticker.Stop()
 
 	for {
-		ok, reason, err := e.checkHealth(ctx, target, opts.MaxSyncDistance)
+		ok, reason, err := e.checkHealth(ctx, target)
 		switch {
 		case err != nil:
 			entry.WithError(err).Debug("roll: health check failed, retrying")
@@ -265,11 +246,11 @@ func (e *Engine) waitHealthy(ctx context.Context, entry logrus.FieldLogger, targ
 	}
 }
 
-func (e *Engine) preflight(ctx context.Context, targets []Target, opts Options) error {
+func (e *Engine) preflight(ctx context.Context, targets []Target) error {
 	var unhealthy []string
 
 	for _, target := range targets {
-		ok, reason, err := e.checkHealth(ctx, target, opts.MaxSyncDistance)
+		ok, reason, err := e.checkHealth(ctx, target)
 		entry := e.log.WithField("node", target.Name)
 
 		switch {

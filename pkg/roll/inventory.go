@@ -1,7 +1,7 @@
 // Package roll performs gated, sequential container image rollouts across an
 // Ethereum node fleet. Targets are resolved from cartographoor's published
-// per-network inventory; the roll itself is executed by a pluggable Actuator
-// (SSH-to-local-watchtower by default).
+// per-network inventory, health is gated on Dora, and rolls are triggered via
+// each node's watchtower HTTP API vhost.
 package roll
 
 import (
@@ -17,16 +17,10 @@ import (
 // DefaultInventoryBaseURL is where cartographoor publishes per-network inventory.
 const DefaultInventoryBaseURL = "https://ethpandaops-platform-production-cartographoor.ams3.digitaloceanspaces.com"
 
-// clientInfo mirrors the relevant fields of cartographoor's inventory ClientInfo.
+// clientInfo mirrors the fields we need from a cartographoor inventory client.
 type clientInfo struct {
-	ClientName  string `json:"clientName"`
-	ClientType  string `json:"clientType"`
-	Version     string `json:"version"`
-	DockerImage string `json:"dockerImage"`
-	SSH         string `json:"ssh"`
-	BeaconAPI   string `json:"bn"`
-	RPC         string `json:"rpc"`
-	Status      string `json:"status"`
+	ClientName string `json:"clientName"`
+	ClientType string `json:"clientType"`
 }
 
 type inventoryData struct {
@@ -35,18 +29,14 @@ type inventoryData struct {
 	ExecutionClients []clientInfo `json:"executionClients"`
 }
 
-// Target is a single host to roll, grouped from the inventory by its SSH host.
+// Target is a single node to roll.
 type Target struct {
-	// Name is the host/node identifier (derived from the SSH host).
+	// Name is the node identifier (e.g. lighthouse-ethrex-1).
 	Name string
-	// SSH is the cartographoor ssh value, e.g. "devops@host".
-	SSH string
-	// BeaconURL is the host's beacon API base URL for health gating (may be empty).
-	BeaconURL string
-	// Clients are the client names running on this host (CL and EL).
+	// Clients are the client types running on this node (CL and EL).
 	Clients []string
-	// tokens are the lowercased selectable identifiers for this host: node name,
-	// client types, and the cl_el group. Used by the --limit/--client matcher.
+	// tokens are the lowercased selectable identifiers for this node — node
+	// name, client types, and the cl_el group — used by the --client matcher.
 	tokens []string
 }
 
@@ -81,79 +71,59 @@ func FetchInventory(ctx context.Context, baseURL, network string) (*inventoryDat
 	return &data, nil
 }
 
-// ResolveTargets groups the inventory by SSH host into roll targets, computing
-// match tokens (node name, CL/EL client types, and the cl_el group) for
-// Ansible-style selection. beaconScheme (e.g. "https") is prepended to the bare
-// beacon hostname from the consensus client entry.
-func ResolveTargets(inv *inventoryData, beaconScheme string) []Target {
-	if beaconScheme == "" {
-		beaconScheme = "https"
-	}
-
+// ResolveTargets groups the inventory by node into roll targets, computing match
+// tokens (node name, CL/EL client types, and the cl_el group) for selection.
+func ResolveTargets(inv *inventoryData) []Target {
 	type agg struct {
-		ssh     string
-		beacon  string
-		clients []string
 		clTypes []string
 		elTypes []string
 	}
 
-	byHost := map[string]*agg{}
+	byNode := map[string]*agg{}
 	order := []string{}
 
-	get := func(ssh string) *agg {
-		a, ok := byHost[ssh]
+	get := func(name string) *agg {
+		a, ok := byNode[name]
 		if !ok {
-			a = &agg{ssh: ssh}
-			byHost[ssh] = a
-			order = append(order, ssh)
+			a = &agg{}
+			byNode[name] = a
+			order = append(order, name)
 		}
 
 		return a
 	}
 
 	for _, c := range inv.ConsensusClients {
-		if c.SSH == "" {
+		if c.ClientName == "" || c.ClientType == "" {
 			continue
 		}
 
-		a := get(c.SSH)
-		if c.ClientName != "" {
-			a.clients = append(a.clients, c.ClientName)
-		}
-
-		if c.ClientType != "" {
-			a.clTypes = append(a.clTypes, c.ClientType)
-		}
-
-		if c.BeaconAPI != "" && a.beacon == "" {
-			a.beacon = beaconScheme + "://" + c.BeaconAPI
-		}
+		a := get(c.ClientName)
+		a.clTypes = append(a.clTypes, c.ClientType)
 	}
 
 	for _, c := range inv.ExecutionClients {
-		if c.SSH == "" {
+		if c.ClientName == "" || c.ClientType == "" {
 			continue
 		}
 
-		a := get(c.SSH)
-		if c.ClientType != "" {
-			a.elTypes = append(a.elTypes, c.ClientType)
-		}
+		a := get(c.ClientName)
+		a.elTypes = append(a.elTypes, c.ClientType)
 	}
 
 	targets := make([]Target, 0, len(order))
 
-	for _, ssh := range order {
-		a := byHost[ssh]
-		name := hostName(ssh)
+	for _, name := range order {
+		a := byNode[name]
+
+		clients := make([]string, 0, len(a.clTypes)+len(a.elTypes))
+		clients = append(clients, a.clTypes...)
+		clients = append(clients, a.elTypes...)
 
 		targets = append(targets, Target{
-			Name:      name,
-			SSH:       ssh,
-			BeaconURL: a.beacon,
-			Clients:   a.clients,
-			tokens:    buildTokens(name, a.clTypes, a.elTypes),
+			Name:    name,
+			Clients: clients,
+			tokens:  buildTokens(name, a.clTypes, a.elTypes),
 		})
 	}
 
@@ -163,7 +133,7 @@ func ResolveTargets(inv *inventoryData, beaconScheme string) []Target {
 }
 
 // buildTokens returns the lowercased, deduped set of selectable tokens for a
-// host: its node name, each client type, and each cl_el group pairing.
+// node: its name, each client type, and each cl_el group pairing.
 func buildTokens(name string, clTypes, elTypes []string) []string {
 	seen := map[string]bool{}
 	tokens := []string{}
@@ -193,18 +163,4 @@ func buildTokens(name string, clTypes, elTypes []string) []string {
 	}
 
 	return tokens
-}
-
-// hostName derives a short host identifier from an "user@host.domain" SSH value.
-func hostName(ssh string) string {
-	host := ssh
-	if at := strings.Index(host, "@"); at >= 0 {
-		host = host[at+1:]
-	}
-
-	if dot := strings.Index(host, "."); dot >= 0 {
-		host = host[:dot]
-	}
-
-	return host
 }
