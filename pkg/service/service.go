@@ -13,6 +13,7 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
+	cmdroll "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/roll"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	httpclient "github.com/ethpandaops/panda-pulse/pkg/http"
@@ -146,6 +147,13 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		mentions.NewMentionsCommand(log, bot),
 		cmdhive.NewHiveCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
+		cmdroll.NewRollCommand(log, bot, cmdroll.Config{
+			Actuator:        "api",
+			WatchtowerToken: cfg.WatchtowerAPIToken,
+			SSHKeyPath:      cfg.RollSSHKeyPath,
+			BasicAuthUser:   cfg.NodeBasicAuthUser,
+			BasicAuthPass:   cfg.NodeBasicAuthPass,
+		}),
 	})
 
 	return &Service{
