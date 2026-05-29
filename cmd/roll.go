@@ -20,9 +20,7 @@ func newRollCommand(log *logrus.Logger) *cobra.Command {
 		network          string
 		client           string
 		image            string
-		actuatorKind     string
 		inventoryURL     string
-		sshKeyPath       string
 		watchtowerPort   int
 		watchtowerToken  string
 		watchtowerScheme string
@@ -63,7 +61,7 @@ func newRollCommand(log *logrus.Logger) *cobra.Command {
 				return fmt.Errorf("no targets matched (network=%s client=%q)", network, client)
 			}
 
-			actuator, err := buildActuator(actuatorKind, sshKeyPath, watchtowerToken, watchtowerScheme, watchtowerPrefix, watchtowerPort, log)
+			actuator, err := buildActuator(watchtowerToken, watchtowerScheme, watchtowerPrefix, watchtowerPort)
 			if err != nil {
 				return err
 			}
@@ -96,10 +94,8 @@ func newRollCommand(log *logrus.Logger) *cobra.Command {
 	f.StringVar(&network, "network", "", "network name as published by cartographoor (required)")
 	f.StringVar(&client, "client", "", "host pattern: client/group/node with globs, ! to exclude, 'all' (e.g. 'lighthouse', 'lighthouse_ethrex', 'lighthouse-*:!*-1')")
 	f.StringVar(&image, "image", "", "scope the roll to this image (empty = all watched containers)")
-	f.StringVar(&actuatorKind, "actuator", "ssh", "how to trigger the roll: ssh|api")
 	f.StringVar(&inventoryURL, "inventory-url", roll.DefaultInventoryBaseURL, "cartographoor inventory base URL")
-	f.StringVar(&sshKeyPath, "ssh-key", os.Getenv("ROLL_SSH_KEY"), "SSH private key path (ssh actuator; env ROLL_SSH_KEY)")
-	f.IntVar(&watchtowerPort, "watchtower-port", 0, "watchtower API port (api actuator; 0 = default for the scheme)")
+	f.IntVar(&watchtowerPort, "watchtower-port", 0, "watchtower API port (0 = default for the scheme)")
 	f.StringVar(&watchtowerToken, "watchtower-token", os.Getenv("WATCHTOWER_HTTP_API_TOKEN"), "watchtower API token (api actuator; env WATCHTOWER_HTTP_API_TOKEN)")
 	f.StringVar(&watchtowerScheme, "watchtower-scheme", "https", "watchtower API scheme (api actuator)")
 	f.StringVar(&watchtowerPrefix, "watchtower-prefix", "watchtower-", "vhost prefix for the watchtower API (api actuator)")
@@ -119,22 +115,10 @@ func newRollCommand(log *logrus.Logger) *cobra.Command {
 	return cmd
 }
 
-func buildActuator(kind, sshKeyPath, token, scheme, prefix string, port int, log *logrus.Logger) (roll.Actuator, error) {
-	switch kind {
-	case "ssh":
-		return roll.NewSSHActuator(roll.SSHConfig{
-			PrivateKeyPath: sshKeyPath,
-			ContainerName:  roll.DefaultWatchtowerContainer,
-			Port:           roll.DefaultWatchtowerPort,
-			Log:            log,
-		})
-	case "api":
-		if token == "" {
-			return nil, fmt.Errorf("--watchtower-token (or WATCHTOWER_HTTP_API_TOKEN) is required for the api actuator")
-		}
-
-		return roll.NewAPIActuator(token, scheme, port, prefix), nil
-	default:
-		return nil, fmt.Errorf("unknown actuator %q (want ssh or api)", kind)
+func buildActuator(token, scheme, prefix string, port int) (roll.Actuator, error) {
+	if token == "" {
+		return nil, fmt.Errorf("--watchtower-token (or WATCHTOWER_HTTP_API_TOKEN) is required")
 	}
+
+	return roll.NewAPIActuator(token, scheme, port, prefix), nil
 }

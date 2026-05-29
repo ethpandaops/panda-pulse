@@ -29,6 +29,7 @@ func (b *BeaconHealth) SetBasicAuth(user, pass string) {
 	b.pass = pass
 }
 
+//nolint:tagliatelle // beacon API uses snake_case
 type syncingResponse struct {
 	Data struct {
 		HeadSlot     string `json:"head_slot"`
@@ -65,8 +66,8 @@ func (b *BeaconHealth) Healthy(ctx context.Context, beaconURL string, maxSyncDis
 	}
 
 	var body syncingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return false, "", fmt.Errorf("decode /syncing: %w", err)
+	if decErr := json.NewDecoder(resp.Body).Decode(&body); decErr != nil {
+		return false, "", fmt.Errorf("decode /syncing: %w", decErr)
 	}
 
 	dist, err := strconv.ParseUint(body.Data.SyncDistance, 10, 64)

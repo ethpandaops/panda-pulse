@@ -30,6 +30,7 @@ type DoraHealth struct {
 	fetched time.Time
 }
 
+//nolint:tagliatelle // Dora API uses snake_case
 type doraClient struct {
 	Name     string `json:"client_name"`
 	Status   string `json:"status"`

@@ -11,10 +11,9 @@ import (
 	"time"
 )
 
-// APIActuator rolls by calling a node's watchtower HTTP API directly. This
-// requires the watchtower API to be reachable from where this runs (i.e.
-// publicly/VPN-exposed) and a shared token. Prefer SSHActuator unless you
-// specifically want to avoid SSH access.
+// APIActuator rolls by calling a node's watchtower HTTP API at its public vhost
+// (e.g. watchtower-<host>) with a bearer token. It requires the watchtower API
+// to be reachable (vhost-exposed); no SSH access is needed.
 type APIActuator struct {
 	token      string
 	scheme     string

@@ -26,21 +26,14 @@ const (
 	autocompleteLimit = 25
 	providerCacheTTL  = 30 * time.Second
 	autocompleteTime  = 2 * time.Second
-
-	actuatorSSH = "ssh"
-	actuatorAPI = "api"
 )
 
 // Config configures the roll command's actuator and inventory source.
 type Config struct {
-	// SSHKeyPath is the SSH private key used by the ssh actuator.
-	SSHKeyPath string
-	// WatchtowerToken is the bearer token used by the api actuator.
+	// WatchtowerToken is the bearer token for the watchtower HTTP API.
 	WatchtowerToken string
 	// InventoryURL overrides the cartographoor inventory base URL.
 	InventoryURL string
-	// Actuator selects how rolls are triggered: "ssh" or "api" (default).
-	Actuator string
 	// BasicAuthUser and BasicAuthPass authenticate beacon health checks behind
 	// nginx basic auth (the bn-* vhosts) — only used when Dora is unavailable.
 	BasicAuthUser string
@@ -61,10 +54,6 @@ type Command struct {
 
 // NewRollCommand creates the /roll command.
 func NewRollCommand(log *logrus.Logger, bot common.BotContext, cfg Config) *Command {
-	if cfg.Actuator == "" {
-		cfg.Actuator = actuatorSSH
-	}
-
 	return &Command{
 		log:      log,
 		bot:      bot,

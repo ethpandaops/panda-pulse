@@ -64,15 +64,19 @@ func (o *Options) applyDefaults() {
 	if o.DelayBetweenNodes == 0 {
 		o.DelayBetweenNodes = time.Minute
 	}
+
 	if o.PostTriggerWait == 0 {
 		o.PostTriggerWait = 30 * time.Second
 	}
+
 	if o.WaitTimeout == 0 {
 		o.WaitTimeout = 10 * time.Minute
 	}
+
 	if o.HealthCheckInterval == 0 {
 		o.HealthCheckInterval = 10 * time.Second
 	}
+
 	if o.MaxSyncDistance == 0 {
 		o.MaxSyncDistance = 4
 	}
@@ -232,6 +236,7 @@ func (e *Engine) rollOne(ctx context.Context, entry logrus.FieldLogger, target T
 
 func (e *Engine) waitHealthy(ctx context.Context, entry logrus.FieldLogger, target Target, opts Options) error {
 	deadline := time.Now().Add(opts.WaitTimeout)
+
 	ticker := time.NewTicker(opts.HealthCheckInterval)
 	defer ticker.Stop()
 
@@ -270,9 +275,11 @@ func (e *Engine) preflight(ctx context.Context, targets []Target, opts Options) 
 		switch {
 		case err != nil:
 			entry.WithError(err).Warn("roll: pre-flight health error")
+
 			unhealthy = append(unhealthy, target.Name)
 		case !ok:
 			entry.WithField("status", reason).Warn("roll: pre-flight not healthy")
+
 			unhealthy = append(unhealthy, target.Name)
 		default:
 			entry.WithField("status", reason).Info("roll: pre-flight healthy")

@@ -103,7 +103,6 @@ func setConfig(cfg *service.Config) {
 	cfg.S3EndpointURL = os.Getenv("AWS_ENDPOINT_URL")
 	cfg.HealthCheckAddress = os.Getenv("HEALTH_CHECK_ADDRESS")
 	cfg.MetricsAddress = os.Getenv("METRICS_ADDRESS")
-	cfg.RollSSHKeyPath = os.Getenv("ROLL_SSH_KEY")
 	cfg.WatchtowerAPIToken = os.Getenv("WATCHTOWER_HTTP_API_TOKEN")
 	cfg.NodeBasicAuthUser = os.Getenv("ROLL_BASIC_AUTH_USER")
 	cfg.NodeBasicAuthPass = os.Getenv("ROLL_BASIC_AUTH_PASS")

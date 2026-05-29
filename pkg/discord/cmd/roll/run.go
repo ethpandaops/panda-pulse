@@ -160,15 +160,11 @@ func mentionUser(i *discordgo.InteractionCreate) string {
 }
 
 func (c *Command) actuator() (rollpkg.Actuator, error) {
-	if c.cfg.Actuator == actuatorAPI {
-		if c.cfg.WatchtowerToken == "" {
-			return nil, fmt.Errorf("watchtower token not configured (WATCHTOWER_HTTP_API_TOKEN)")
-		}
-
-		return rollpkg.NewAPIActuator(c.cfg.WatchtowerToken, "https", 0, "watchtower-"), nil
+	if c.cfg.WatchtowerToken == "" {
+		return nil, fmt.Errorf("watchtower token not configured (WATCHTOWER_HTTP_API_TOKEN)")
 	}
 
-	return rollpkg.NewSSHActuator(rollpkg.SSHConfig{PrivateKeyPath: c.cfg.SSHKeyPath, Log: c.log})
+	return rollpkg.NewAPIActuator(c.cfg.WatchtowerToken, "https", 0, "watchtower-"), nil
 }
 
 // rollUI accumulates per-host progress into a renderable Discord message.

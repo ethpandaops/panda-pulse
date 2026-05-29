@@ -27,8 +27,7 @@ type Config struct {
 	ClientsDataURL     string
 	MetricsAddress     string // Defaults to :9091
 	HealthCheckAddress string // Defaults to :9191
-	RollSSHKeyPath     string // SSH key path for the /roll command's ssh actuator
-	WatchtowerAPIToken string // watchtower API token for the /roll command's api actuator
+	WatchtowerAPIToken string // watchtower API token for the /roll command
 	NodeBasicAuthUser  string // basic auth user for beacon health endpoints (bn-* vhosts)
 	NodeBasicAuthPass  string // basic auth password for beacon health endpoints
 }
