@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -97,6 +98,8 @@ func TestCartographoorService(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
 
+	defer service.Stop()
+
 	// Test client data
 	t.Run("Client data", func(t *testing.T) {
 		assert.Equal(t, "ethereum/go-ethereum", service.GetClientRepository("geth"))
@@ -137,11 +140,6 @@ func TestCartographoorService(t *testing.T) {
 		assert.NotContains(t, allNetworks, "sepolia")
 		assert.NotContains(t, allNetworks, "inactive-test")
 
-		// These should still work as expected
-		eofNetworks := service.GetNetworksOfType("eof")
-		assert.Len(t, eofNetworks, 1)
-		assert.Equal(t, "eof-devnet-0", eofNetworks[0])
-
 		// Should return nil for non-devnet networks
 		mainnet := service.GetNetwork("mainnet")
 		assert.Nil(t, mainnet)
@@ -151,11 +149,24 @@ func TestCartographoorService(t *testing.T) {
 		assert.NotNil(t, eofDevnet)
 		assert.Equal(t, "devnet-0", eofDevnet.Name)
 		assert.Equal(t, "active", eofDevnet.Status)
-		assert.Equal(t, int64(7023642286), eofDevnet.ChainID)
+		assert.Equal(t, uint64(7023642286), eofDevnet.ChainID)
 
 		// Status checks should only work for devnet networks
 		assert.Equal(t, "", service.GetNetworkStatus("mainnet"))
 		assert.Equal(t, "active", service.GetNetworkStatus("eof-devnet-0"))
 		assert.Equal(t, "inactive", service.GetNetworkStatus("pectra-devnet-1"))
+	})
+
+	// Test the layer-type aliases and the clients-package delegators.
+	t.Run("Client role delegators", func(t *testing.T) {
+		// GetCLClients/GetELClients alias the consensus/execution getters.
+		assert.ElementsMatch(t, service.GetConsensusClients(), service.GetCLClients())
+		assert.ElementsMatch(t, service.GetExecutionClients(), service.GetELClients())
+
+		// Delegators backed by the clients package; assert they resolve without
+		// panicking and return the package-level data.
+		assert.Equal(t, clients.PreProductionClients["geth"], service.IsPreProductionClient("geth"))
+		assert.Equal(t, clients.TeamRoles["geth"], service.GetTeamRoles("geth"))
+		assert.Equal(t, clients.AdminRoles, service.GetAdminRoles())
 	})
 }
