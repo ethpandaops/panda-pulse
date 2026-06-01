@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -145,15 +144,10 @@ func TestServiceRefresh(t *testing.T) {
 // MemoryProvider: its ticker re-fetches a changing HTTP source and our watcher
 // propagates the new data into the local snapshot, with no manual notification.
 //
-// It is opt-in because the provider enforces a 1-minute minimum refresh
-// interval, so the test must wait for a real tick (~60s). Run it with:
-//
-//	CARTOGRAPHOOR_E2E_REFRESH=1 go test ./pkg/cartographoor/... -run TestServiceRefreshEndToEnd
+// The provider enforces a 1-minute minimum refresh interval, so this test waits
+// for a real tick (~60s). It runs unconditionally so a broken refresh chain is
+// always caught.
 func TestServiceRefreshEndToEnd(t *testing.T) {
-	if os.Getenv("CARTOGRAPHOOR_E2E_REFRESH") == "" {
-		t.Skip("set CARTOGRAPHOOR_E2E_REFRESH=1 to run the ~60s end-to-end refresh test")
-	}
-
 	const (
 		initialBody = `{"networks":{"foo-devnet-0":{"name":"devnet-0","status":"active"}},"clients":{}}`
 		updatedBody = `{"networks":{"foo-devnet-0":{"name":"devnet-0","status":"active"},` +
