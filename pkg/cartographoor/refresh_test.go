@@ -2,7 +2,12 @@ package cartographoor
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,4 +139,62 @@ func TestServiceRefresh(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "snapshot should reflect provider refresh")
 
 	require.Equal(t, []string{"foo-devnet-0"}, svc.GetInactiveNetworks())
+}
+
+// TestServiceRefreshEndToEnd drives the full refresh chain through the *real*
+// MemoryProvider: its ticker re-fetches a changing HTTP source and our watcher
+// propagates the new data into the local snapshot, with no manual notification.
+//
+// It is opt-in because the provider enforces a 1-minute minimum refresh
+// interval, so the test must wait for a real tick (~60s). Run it with:
+//
+//	CARTOGRAPHOOR_E2E_REFRESH=1 go test ./pkg/cartographoor/... -run TestServiceRefreshEndToEnd
+func TestServiceRefreshEndToEnd(t *testing.T) {
+	if os.Getenv("CARTOGRAPHOOR_E2E_REFRESH") == "" {
+		t.Skip("set CARTOGRAPHOOR_E2E_REFRESH=1 to run the ~60s end-to-end refresh test")
+	}
+
+	const (
+		initialBody = `{"networks":{"foo-devnet-0":{"name":"devnet-0","status":"active"}},"clients":{}}`
+		updatedBody = `{"networks":{"foo-devnet-0":{"name":"devnet-0","status":"active"},` +
+			`"bar-devnet-1":{"name":"devnet-1","status":"active"}},"clients":{}}`
+	)
+
+	var fetches atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// First fetch is the initial blocking load; every fetch after that
+		// (driven by the provider's ticker) returns the expanded network set.
+		body := updatedBody
+		if fetches.Add(1) == 1 {
+			body = initialBody
+		}
+
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+
+	svc, err := NewService(ctx, ServiceConfig{
+		SourceURL:       server.URL,
+		RefreshInterval: time.Minute, // the provider's minimum
+		Logger:          logrus.New(),
+	})
+	require.NoError(t, err)
+
+	svc.Start(ctx)
+	defer svc.Stop()
+
+	// Initial load: only the first devnet is present.
+	require.Equal(t, []string{"foo-devnet-0"}, svc.GetActiveNetworks())
+
+	// Wait for the ticker to fire a real re-fetch and the watcher to apply it.
+	require.Eventually(t, func() bool {
+		return len(svc.GetActiveNetworks()) == 2
+	}, 90*time.Second, time.Second, "ticker-driven refresh should surface the second devnet")
+
+	require.GreaterOrEqual(t, fetches.Load(), int32(2), "expected at least one ticker-driven re-fetch")
 }
