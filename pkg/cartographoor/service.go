@@ -2,7 +2,6 @@ package cartographoor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,123 +9,32 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethpandaops/cartographoor/pkg/client"
+	"github.com/ethpandaops/cartographoor/pkg/discovery"
 	"github.com/ethpandaops/panda-pulse/pkg/clients"
 	"github.com/sirupsen/logrus"
 )
 
 const (
 	active                 = "active"
+	devnet                 = "devnet"
 	defaultRefreshInterval = 1 * time.Hour
 	defaultRequestTimeout  = 30 * time.Second
 )
 
-// Service provides access to cartographoor data with automatic updates from a remote source.
+// Service provides access to cartographoor data with automatic updates from a
+// remote source. It wraps the official cartographoor client, layering on the
+// devnet-only filtering and client-role lookups panda-pulse needs, while keeping
+// a local snapshot so callers can query synchronously without a context.
 type Service struct {
-	log           *logrus.Logger
-	sourceURL     string
-	refreshTicker *time.Ticker
-	httpClient    *http.Client
-	stopChan      chan struct{}
-	dataMu        sync.RWMutex
-	remoteData    *NetworksData
-}
+	log      *logrus.Logger
+	provider client.Provider
+	done     chan struct{}
+	wg       sync.WaitGroup
 
-// NetworksData represents the structure of the networks.json file.
-type NetworksData struct {
-	NetworkMetadata map[string]NetworkMetadata `json:"networkMetadata,omitempty"`
-	Networks        map[string]NetworkInfo     `json:"networks"`
-	Clients         map[string]ClientData      `json:"clients"`
-	LastUpdate      string                     `json:"lastUpdate,omitempty"`
-	Duration        float64                    `json:"duration,omitempty"`
-	Providers       []any                      `json:"providers,omitempty"`
-}
-
-// NetworkMetadata represents metadata about network types.
-type NetworkMetadata struct {
-	DisplayName string       `json:"displayName"`
-	Description string       `json:"description"`
-	Links       []Link       `json:"links"`
-	Image       string       `json:"image"`
-	Stats       NetworkStats `json:"stats"`
-}
-
-// Link represents a hyperlink with title and URL.
-type Link struct {
-	Title string `json:"title"`
-	URL   string `json:"url"`
-}
-
-// NetworkStats contains statistics about a network type.
-type NetworkStats struct {
-	TotalNetworks    int      `json:"totalNetworks"`
-	ActiveNetworks   int      `json:"activeNetworks"`
-	InactiveNetworks int      `json:"inactiveNetworks"`
-	NetworkNames     []string `json:"networkNames"`
-}
-
-// NetworkInfo represents information about a specific network.
-type NetworkInfo struct {
-	Name          string        `json:"name"`
-	Description   string        `json:"description,omitempty"`
-	Repository    string        `json:"repository,omitempty"`
-	Path          string        `json:"path,omitempty"`
-	URL           string        `json:"url,omitempty"`
-	Status        string        `json:"status"` // "active" or "inactive"
-	LastUpdated   string        `json:"lastUpdated,omitempty"`
-	ChainID       int64         `json:"chainId,omitempty"`
-	GenesisConfig any           `json:"genesisConfig,omitempty"`
-	ServiceURLs   ServiceURLs   `json:"serviceUrls"`
-	Images        NetworkImages `json:"images"`
-}
-
-// ClientData represents the structure of a client in the networks.json file.
-type ClientData struct {
-	Name          string `json:"name"`
-	DisplayName   string `json:"displayName"`
-	Repository    string `json:"repository"`
-	Type          string `json:"type"`
-	Branch        string `json:"branch"`
-	Logo          string `json:"logo"`
-	LatestVersion string `json:"latestVersion"`
-	WebsiteURL    string `json:"websiteUrl"`
-	DocsURL       string `json:"docsUrl"`
-}
-
-// ServiceURLs contains URLs to various services for a network.
-type ServiceURLs struct {
-	JSONRPC        string `json:"jsonRpc,omitempty"`
-	BeaconRPC      string `json:"beaconRpc,omitempty"`
-	Explorer       string `json:"explorer,omitempty"`
-	BeaconExplorer string `json:"beaconExplorer,omitempty"`
-	Forkmon        string `json:"forkmon,omitempty"`
-	Assertoor      string `json:"assertoor,omitempty"`
-	Dora           string `json:"dora,omitempty"`
-	CheckpointSync string `json:"checkpointSync,omitempty"`
-	Blobscan       string `json:"blobscan,omitempty"`
-	BlobArchive    string `json:"blobArchive,omitempty"`
-	Ethstats       string `json:"ethstats,omitempty"`
-	DevnetSpec     string `json:"devnetSpec,omitempty"`
-	Forky          string `json:"forky,omitempty"`
-	Tracoor        string `json:"tracoor,omitempty"`
-}
-
-// NetworkImages contains image information for a network.
-type NetworkImages struct {
-	URL     string        `json:"url,omitempty"`
-	Clients []ClientImage `json:"clients,omitempty"`
-	Tools   []ToolImage   `json:"tools,omitempty"`
-}
-
-// ClientImage represents a client docker image.
-type ClientImage struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
-// ToolImage represents a tool docker image.
-type ToolImage struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	dataMu   sync.RWMutex
+	networks map[string]discovery.Network
+	clients  map[string]discovery.ClientInfo
 }
 
 // ServiceConfig contains the configuration for the cartographoor service.
@@ -137,143 +45,80 @@ type ServiceConfig struct {
 	HTTPClient      *http.Client
 }
 
-// NewService creates a new cartographoor service.
+// NewService creates a new cartographoor service and performs the initial
+// (blocking) data fetch. It returns an error if the initial fetch fails so the
+// caller can fail fast at startup.
 func NewService(ctx context.Context, config ServiceConfig) (*Service, error) {
-	if config.SourceURL == "" {
-		config.SourceURL = "https://ethpandaops-platform-production-cartographoor.ams3.cdn.digitaloceanspaces.com/networks.json"
+	if config.Logger == nil {
+		config.Logger = logrus.New()
 	}
 
 	if config.RefreshInterval == 0 {
 		config.RefreshInterval = defaultRefreshInterval
 	}
 
-	if config.Logger == nil {
-		config.Logger = logrus.New()
+	// An empty SourceURL falls back to the client's default production endpoint,
+	// which matches the URL panda-pulse used previously.
+	provider, err := client.NewMemoryProvider(client.Config{
+		SourceURL:       config.SourceURL,
+		RefreshInterval: config.RefreshInterval,
+		RequestTimeout:  defaultRequestTimeout,
+		HTTPClient:      config.HTTPClient,
+	}, config.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cartographoor provider: %w", err)
 	}
 
-	httpClient := config.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{
-			Timeout: defaultRequestTimeout,
-		}
+	// Initial (blocking) fetch plus the provider's own background refresh loop.
+	if err := provider.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start cartographoor provider: %w", err)
 	}
 
-	service := &Service{
-		log:           config.Logger,
-		sourceURL:     config.SourceURL,
-		refreshTicker: time.NewTicker(config.RefreshInterval),
-		httpClient:    httpClient,
-		stopChan:      make(chan struct{}),
-	}
-
-	// Perform initial fetch
-	if err := service.fetchAndUpdateData(ctx); err != nil {
-		return nil, fmt.Errorf("initial data fetch failed: %w", err)
-	}
-
-	return service, nil
+	return newService(ctx, config.Logger, provider)
 }
 
-// Start begins the periodic refresh of cartographoor data.
+// newService wraps an already-started provider and loads the initial snapshot.
+// It is the injection seam used by tests to supply a controllable provider.
+func newService(ctx context.Context, log *logrus.Logger, provider client.Provider) (*Service, error) {
+	if log == nil {
+		log = logrus.New()
+	}
+
+	s := &Service{
+		log:      log,
+		provider: provider,
+		done:     make(chan struct{}),
+		networks: make(map[string]discovery.Network),
+		clients:  make(map[string]discovery.ClientInfo),
+	}
+
+	if err := s.rebuild(ctx); err != nil {
+		return nil, fmt.Errorf("failed to load initial cartographoor data: %w", err)
+	}
+
+	return s, nil
+}
+
+// Start begins watching the provider for updates, refreshing the local snapshot
+// whenever new data is fetched.
 func (s *Service) Start(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-s.refreshTicker.C:
-				if err := s.fetchAndUpdateData(ctx); err != nil {
-					s.log.WithError(err).Error("Failed to refresh cartographoor data")
-				}
-			case <-s.stopChan:
-				s.log.Info("Cartographoor service stopped")
-
-				return
-			case <-ctx.Done():
-				s.log.Info("Cartographoor service context done")
-
-				return
-			}
-		}
-	}()
+	s.wg.Go(func() {
+		s.watch(ctx)
+	})
 
 	s.log.Info("Cartographoor service started")
 }
 
-// Stop halts the periodic refresh of cartographoor data.
+// Stop halts the update watcher and the underlying provider.
 func (s *Service) Stop() {
-	s.refreshTicker.Stop()
+	close(s.done)
+	s.wg.Wait()
 
-	close(s.stopChan)
-}
-
-// fetchAndUpdateData retrieves the latest data from the remote source.
-func (s *Service) fetchAndUpdateData(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, defaultRequestTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.sourceURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	if err := s.provider.Stop(); err != nil {
+		s.log.WithError(err).Warn("Error stopping cartographoor provider")
 	}
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to fetch data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var data NetworksData
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return fmt.Errorf("failed to decode data: %w", err)
-	}
-
-	s.dataMu.Lock()
-	s.remoteData = &data
-	s.dataMu.Unlock()
-
-	// Count statistics for logging
-	var (
-		activeNetworksCount   = 0
-		inactiveNetworksCount = 0
-		consensusClientsCount = 0
-		executionClientsCount = 0
-		unknownClientsCount   = 0
-	)
-
-	for _, network := range data.Networks {
-		// We only want devnets, so make sure the name contains "devnet".
-		if network.Status == active && strings.Contains(network.Name, "devnet") {
-			activeNetworksCount++
-		} else {
-			inactiveNetworksCount++
-		}
-	}
-
-	for _, client := range data.Clients {
-		switch client.Type {
-		case string(clients.ClientTypeCL):
-			consensusClientsCount++
-		case string(clients.ClientTypeEL):
-			executionClientsCount++
-		default:
-			unknownClientsCount++
-		}
-	}
-
-	s.log.WithFields(logrus.Fields{
-		"networks_count":    len(data.Networks),
-		"active_networks":   activeNetworksCount,
-		"inactive_networks": inactiveNetworksCount,
-		"clients_count":     len(data.Clients),
-		"consensus_clients": consensusClientsCount,
-		"execution_clients": executionClientsCount,
-		"unknown_type":      unknownClientsCount,
-	}).Info("Cartographoor updated")
-
-	return nil
+	s.log.Info("Cartographoor service stopped")
 }
 
 // GetClientRepository returns the repository for a client.
@@ -281,12 +126,8 @@ func (s *Service) GetClientRepository(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.Repository
+	if c, ok := s.clients[clientName]; ok {
+		return c.Repository
 	}
 
 	return ""
@@ -297,12 +138,8 @@ func (s *Service) GetClientBranch(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.Branch
+	if c, ok := s.clients[clientName]; ok {
+		return c.Branch
 	}
 
 	return ""
@@ -313,12 +150,8 @@ func (s *Service) GetClientLogo(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok && client.Logo != "" {
-		return client.Logo
+	if c, ok := s.clients[clientName]; ok && c.Logo != "" {
+		return c.Logo
 	}
 
 	return ""
@@ -329,12 +162,8 @@ func (s *Service) GetClientLatestVersion(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.LatestVersion
+	if c, ok := s.clients[clientName]; ok {
+		return c.LatestVersion
 	}
 
 	return ""
@@ -345,12 +174,8 @@ func (s *Service) GetClientWebsiteURL(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.WebsiteURL
+	if c, ok := s.clients[clientName]; ok {
+		return c.WebsiteURL
 	}
 
 	return ""
@@ -361,12 +186,8 @@ func (s *Service) GetClientDocsURL(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.DocsURL
+	if c, ok := s.clients[clientName]; ok {
+		return c.DocsURL
 	}
 
 	return ""
@@ -377,12 +198,8 @@ func (s *Service) IsCLClient(clientName string) bool {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return false
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.Type == string(clients.ClientTypeCL)
+	if c, ok := s.clients[clientName]; ok {
+		return c.Type == string(clients.ClientTypeCL)
 	}
 
 	return false
@@ -393,12 +210,8 @@ func (s *Service) IsELClient(clientName string) bool {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return false
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.Type == string(clients.ClientTypeEL)
+	if c, ok := s.clients[clientName]; ok {
+		return c.Type == string(clients.ClientTypeEL)
 	}
 
 	return false
@@ -409,12 +222,8 @@ func (s *Service) GetClientDisplayName(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return clientName
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok && client.DisplayName != "" {
-		return client.DisplayName
+	if c, ok := s.clients[clientName]; ok && c.DisplayName != "" {
+		return c.DisplayName
 	}
 
 	return clientName
@@ -425,12 +234,8 @@ func (s *Service) GetClientType(clientName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if client, ok := s.remoteData.Clients[clientName]; ok {
-		return client.Type
+	if c, ok := s.clients[clientName]; ok {
+		return c.Type
 	}
 
 	return ""
@@ -438,42 +243,12 @@ func (s *Service) GetClientType(clientName string) string {
 
 // GetConsensusClients returns all consensus clients from the remote data.
 func (s *Service) GetConsensusClients() []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	clientsList := make([]string, 0)
-
-	for name, client := range s.remoteData.Clients {
-		if client.Type == string(clients.ClientTypeCL) {
-			clientsList = append(clientsList, name)
-		}
-	}
-
-	return clientsList
+	return s.clientsOfType(clients.ClientTypeCL)
 }
 
 // GetExecutionClients returns all execution clients from the remote data.
 func (s *Service) GetExecutionClients() []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	clientsList := make([]string, 0)
-
-	for name, client := range s.remoteData.Clients {
-		if client.Type == string(clients.ClientTypeEL) {
-			clientsList = append(clientsList, name)
-		}
-	}
-
-	return clientsList
+	return s.clientsOfType(clients.ClientTypeEL)
 }
 
 // GetAllClients returns all known client names.
@@ -481,139 +256,59 @@ func (s *Service) GetAllClients() []string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	clientsList := make([]string, 0, len(s.remoteData.Clients))
-	for name := range s.remoteData.Clients {
+	clientsList := make([]string, 0, len(s.clients))
+	for name := range s.clients {
 		clientsList = append(clientsList, name)
 	}
 
 	return clientsList
 }
 
-// GetActiveNetworks returns all active networks sorted alphabetically.
+// GetActiveNetworks returns all active devnets sorted alphabetically.
 func (s *Service) GetActiveNetworks() []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	networks := make([]string, 0)
-
-	for key, network := range s.remoteData.Networks {
-		if network.Status == active && strings.Contains(key, "devnet") {
-			networks = append(networks, key)
-		}
-	}
-
-	sort.Strings(networks)
-
-	return networks
+	return s.devnetsMatching(func(n discovery.Network) bool {
+		return n.Status == active
+	})
 }
 
-// GetInactiveNetworks returns all inactive networks sorted alphabetically.
+// GetInactiveNetworks returns all inactive devnets sorted alphabetically.
 func (s *Service) GetInactiveNetworks() []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	networks := make([]string, 0)
-
-	for key, network := range s.remoteData.Networks {
-		if network.Status != active && strings.Contains(key, "devnet") {
-			networks = append(networks, key)
-		}
-	}
-
-	sort.Strings(networks)
-
-	return networks
+	return s.devnetsMatching(func(n discovery.Network) bool {
+		return n.Status != active
+	})
 }
 
-// GetAllNetworks returns all networks regardless of status.
+// GetAllNetworks returns all devnets regardless of status, sorted alphabetically.
 func (s *Service) GetAllNetworks() []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	networks := make([]string, 0, len(s.remoteData.Networks))
-
-	for key := range s.remoteData.Networks {
-		if strings.Contains(key, "devnet") {
-			networks = append(networks, key)
-		}
-	}
-
-	return networks
+	return s.devnetsMatching(func(discovery.Network) bool {
+		return true
+	})
 }
 
-// GetNetwork returns information about a specific network.
-func (s *Service) GetNetwork(networkName string) *NetworkInfo {
+// GetNetwork returns information about a specific devnet, or nil if the network
+// is unknown or is not a devnet.
+func (s *Service) GetNetwork(networkName string) *discovery.Network {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return nil
-	}
-
-	if network, ok := s.remoteData.Networks[networkName]; ok {
-		if strings.Contains(networkName, "devnet") {
-			return &network
-		}
+	if network, ok := s.networks[networkName]; ok && strings.Contains(networkName, devnet) {
+		return &network
 	}
 
 	return nil
 }
 
-// GetNetworkStatus returns the status of a network.
+// GetNetworkStatus returns the status of a devnet, or an empty string if the
+// network is unknown or is not a devnet.
 func (s *Service) GetNetworkStatus(networkName string) string {
 	s.dataMu.RLock()
 	defer s.dataMu.RUnlock()
 
-	if s.remoteData == nil {
-		return ""
-	}
-
-	if network, ok := s.remoteData.Networks[networkName]; ok {
-		if strings.Contains(networkName, "devnet") {
-			return network.Status
-		}
+	if network, ok := s.networks[networkName]; ok && strings.Contains(networkName, devnet) {
+		return network.Status
 	}
 
 	return ""
-}
-
-// GetNetworksOfType returns all networks of a specific type.
-func (s *Service) GetNetworksOfType(networkType string) []string {
-	s.dataMu.RLock()
-	defer s.dataMu.RUnlock()
-
-	if s.remoteData == nil {
-		return []string{}
-	}
-
-	if metadata, ok := s.remoteData.NetworkMetadata[networkType]; ok {
-		prefix := networkType + "-"
-		networks := make([]string, 0, len(metadata.Stats.NetworkNames))
-
-		for _, name := range metadata.Stats.NetworkNames {
-			networks = append(networks, prefix+name)
-		}
-
-		return networks
-	}
-
-	return []string{}
 }
 
 // GetTeamRoles returns the team roles for a client.
@@ -639,4 +334,102 @@ func (s *Service) GetELClients() []string {
 // GetAdminRoles returns all admin roles.
 func (s *Service) GetAdminRoles() map[string][]string {
 	return clients.AdminRoles
+}
+
+// watch listens for provider update notifications and refreshes the local
+// snapshot until the service is stopped or the context is cancelled.
+func (s *Service) watch(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			s.log.Info("Cartographoor service context done")
+
+			return
+		case <-s.done:
+			return
+		case <-s.provider.NotifyChannel():
+			if err := s.rebuild(ctx); err != nil {
+				s.log.WithError(err).Error("Failed to refresh cartographoor data")
+			}
+		}
+	}
+}
+
+// rebuild refreshes the local snapshot from the provider.
+func (s *Service) rebuild(ctx context.Context) error {
+	networks, err := s.provider.GetNetworks(ctx)
+	if err != nil {
+		return fmt.Errorf("get networks: %w", err)
+	}
+
+	clientList, err := s.provider.GetClients(ctx)
+	if err != nil {
+		return fmt.Errorf("get clients: %w", err)
+	}
+
+	s.dataMu.Lock()
+	s.networks = networks
+	s.clients = clientList
+	s.dataMu.Unlock()
+
+	var (
+		activeDevnets   = 0
+		inactiveDevnets = 0
+	)
+
+	for name, network := range networks {
+		if !strings.Contains(name, devnet) {
+			continue
+		}
+
+		if network.Status == active {
+			activeDevnets++
+		} else {
+			inactiveDevnets++
+		}
+	}
+
+	s.log.WithFields(logrus.Fields{
+		"networks_count":   len(networks),
+		"active_devnets":   activeDevnets,
+		"inactive_devnets": inactiveDevnets,
+		"clients_count":    len(clientList),
+	}).Info("Cartographoor updated")
+
+	return nil
+}
+
+// clientsOfType returns the names of all clients matching the given type.
+func (s *Service) clientsOfType(clientType clients.ClientType) []string {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	clientsList := make([]string, 0, len(s.clients))
+
+	for name, c := range s.clients {
+		if c.Type == string(clientType) {
+			clientsList = append(clientsList, name)
+		}
+	}
+
+	return clientsList
+}
+
+// devnetsMatching returns the names of all devnets satisfying the predicate,
+// sorted alphabetically.
+func (s *Service) devnetsMatching(match func(discovery.Network) bool) []string {
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
+
+	networks := make([]string, 0, len(s.networks))
+
+	for key, network := range s.networks {
+		if strings.Contains(key, devnet) && match(network) {
+			networks = append(networks, key)
+		}
+	}
+
+	sort.Strings(networks)
+
+	return networks
 }
