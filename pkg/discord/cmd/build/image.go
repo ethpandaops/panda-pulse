@@ -33,6 +33,13 @@ var (
 // repo for this workflow, it returns the tag that `prepare.target_tag`
 // produces at runtime.
 func computeBaseDockerTag(repository, ref, dockerTagOverride, upstreamRepository string) string {
+	// The composite action lowercases every input before processing, so the
+	// resulting tag is always lowercase regardless of the branch name casing.
+	repository = strings.ToLower(repository)
+	ref = strings.ToLower(ref)
+	dockerTagOverride = strings.ToLower(dockerTagOverride)
+	upstreamRepository = strings.ToLower(upstreamRepository)
+
 	input := dockerTagOverride
 	if input == "" {
 		input = ref
