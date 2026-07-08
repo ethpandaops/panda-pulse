@@ -549,7 +549,7 @@ func (b *DiscordBot) scheduleDiscordChoiceRefresh() error {
 // and /hive trigger has bespoke per-subcommand handling.
 func commandSelfChecksPermission(cmdName string, data *discordgo.ApplicationCommandInteractionData) bool {
 	switch cmdName {
-	case "build":
+	case "build", "roll":
 		return true
 	case "hive":
 		return data != nil && len(data.Options) > 0 && data.Options[0].Name == "trigger"
