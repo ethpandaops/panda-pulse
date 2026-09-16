@@ -252,13 +252,7 @@ func (s *Service) startHealthServer() *http.Server {
 		ReadHeaderTimeout: healthReadTimeout,
 	}
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-
-		if _, err := w.Write([]byte("ok")); err != nil {
-			s.log.Errorf("Failed to write health check response: %v", err)
-		}
-	})
+	mux.HandleFunc("/healthz", s.handleHealthz)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -267,6 +261,21 @@ func (s *Service) startHealthServer() *http.Server {
 	}()
 
 	return srv
+}
+
+func (s *Service) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	if err := s.bot.Healthy(); err != nil {
+		s.log.WithError(err).Warn("Health check failed")
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write([]byte("ok")); err != nil {
+		s.log.Errorf("Failed to write health check response: %v", err)
+	}
 }
 
 func (s *Service) startMetricsServer() *http.Server {

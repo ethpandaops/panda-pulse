@@ -202,6 +202,20 @@ func (mr *MockBotMockRecorder) GetSession() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSession", reflect.TypeOf((*MockBot)(nil).GetSession))
 }
 
+// Healthy mocks base method.
+func (m *MockBot) Healthy() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Healthy")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Healthy indicates an expected call of Healthy.
+func (mr *MockBotMockRecorder) Healthy() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Healthy", reflect.TypeOf((*MockBot)(nil).Healthy))
+}
+
 // SetCommands mocks base method.
 func (m *MockBot) SetCommands(commands []common.Command) {
 	m.ctrl.T.Helper()
