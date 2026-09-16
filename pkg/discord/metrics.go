@@ -3,10 +3,11 @@ package discord
 import "github.com/prometheus/client_golang/prometheus"
 
 type Metrics struct {
-	commandsTotal   *prometheus.CounterVec
-	commandErrors   *prometheus.CounterVec
-	commandDuration *prometheus.HistogramVec
-	lastCommandTS   *prometheus.GaugeVec
+	commandsTotal    *prometheus.CounterVec
+	commandErrors    *prometheus.CounterVec
+	commandDuration  *prometheus.HistogramVec
+	lastCommandTS    *prometheus.GaugeVec
+	gatewayConnected prometheus.Gauge
 }
 
 func NewMetrics(namespace string) *Metrics {
@@ -39,6 +40,13 @@ func NewMetrics(namespace string) *Metrics {
 			Name:      "last_command_timestamp",
 			Help:      "Timestamp of last command execution",
 		}, []string{"command", "subcommand"}),
+
+		gatewayConnected: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "discord",
+			Name:      "gateway_connected",
+			Help:      "Whether the Discord gateway websocket session is currently connected (1) or not (0)",
+		}),
 	}
 
 	prometheus.MustRegister(
@@ -46,6 +54,7 @@ func NewMetrics(namespace string) *Metrics {
 		m.commandErrors,
 		m.commandDuration,
 		m.lastCommandTS,
+		m.gatewayConnected,
 	)
 
 	return m
@@ -69,4 +78,15 @@ func (m *Metrics) ObserveCommandDuration(command, subcommand string, duration fl
 // SetLastCommandTimestamp sets the timestamp of the last command execution.
 func (m *Metrics) SetLastCommandTimestamp(command, subcommand string, timestamp float64) {
 	m.lastCommandTS.WithLabelValues(command, subcommand).Set(timestamp)
+}
+
+// SetGatewayConnected records whether the Discord gateway session is connected.
+func (m *Metrics) SetGatewayConnected(connected bool) {
+	if connected {
+		m.gatewayConnected.Set(1)
+
+		return
+	}
+
+	m.gatewayConnected.Set(0)
 }

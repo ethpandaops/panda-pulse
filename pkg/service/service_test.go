@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -163,6 +166,16 @@ func TestService(t *testing.T) {
 		mockBot.EXPECT().GetHive().Return(nil).AnyTimes()
 		mockBot.EXPECT().GetQueues().Return([]queue.Queuer{}).Times(2) // Called during Start and Stop
 
+		var unhealthy atomic.Bool
+
+		mockBot.EXPECT().Healthy().DoAndReturn(func() error {
+			if unhealthy.Load() {
+				return errors.New("discord gateway disconnected")
+			}
+
+			return nil
+		}).AnyTimes()
+
 		svc.bot = mockBot
 
 		// Start service
@@ -178,6 +191,16 @@ func TestService(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		resp.Body.Close()
+
+		// Health endpoint reflects bot health.
+		unhealthy.Store(true)
+
+		resp, err = healthClient.Get("http://127.0.0.1:9191/healthz")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		resp.Body.Close()
+
+		unhealthy.Store(false)
 
 		// Verify metrics endpoint is working
 		metricsClient := &http.Client{Timeout: 5 * time.Second}
@@ -195,4 +218,30 @@ func setupTest(t *testing.T) {
 	t.Helper()
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+}
+
+func TestHandleHealthz(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBot := mock.NewMockBot(ctrl)
+	svc := &Service{log: logrus.New(), bot: mockBot}
+
+	t.Run("ok when bot is healthy", func(t *testing.T) {
+		mockBot.EXPECT().Healthy().Return(nil)
+
+		rec := httptest.NewRecorder()
+		svc.handleHealthz(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "ok", rec.Body.String())
+	})
+
+	t.Run("503 with reason when bot is unhealthy", func(t *testing.T) {
+		mockBot.EXPECT().Healthy().Return(errors.New("discord gateway disconnected for 5m0s"))
+
+		rec := httptest.NewRecorder()
+		svc.handleHealthz(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		assert.Contains(t, rec.Body.String(), "discord gateway disconnected")
+	})
 }

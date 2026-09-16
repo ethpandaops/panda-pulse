@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -26,6 +27,7 @@ type BotCore interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	GetSession() *discordgo.Session
+	Healthy() error
 }
 
 // BotServices is the services interface for the Discord bot.
@@ -64,7 +66,14 @@ type DiscordBot struct {
 	cartographoor   *cartographoor.Service
 	commands        []common.Command
 	metrics         *Metrics
+
+	connMu         sync.RWMutex
+	connected      bool
+	disconnectedAt time.Time
 }
+
+// Disconnects shorter than this are treated as transient reconnects rather than a dead session.
+const disconnectGracePeriod = 5 * time.Minute
 
 // NewBot creates a new Discord bot.
 func NewBot(
@@ -98,13 +107,18 @@ func NewBot(
 		grafana:         grafana,
 		hive:            hive,
 		//clientsService:  clientsService,
-		cartographoor: cartographoor,
-		commands:      make([]common.Command, 0),
-		metrics:       metrics,
+		cartographoor:  cartographoor,
+		commands:       make([]common.Command, 0),
+		metrics:        metrics,
+		disconnectedAt: time.Now(),
 	}
+
+	metrics.SetGatewayConnected(false)
 
 	// Register event handlers.
 	session.AddHandler(bot.handleInteraction)
+	session.AddHandler(bot.handleConnect)
+	session.AddHandler(bot.handleDisconnect)
 
 	return bot, nil
 }
@@ -184,6 +198,45 @@ func (b *DiscordBot) Stop(ctx context.Context) error {
 // GetSession returns the Discord session.
 func (b *DiscordBot) GetSession() *discordgo.Session {
 	return b.session
+}
+
+// Healthy returns an error if the gateway session has been disconnected for longer than the grace period.
+func (b *DiscordBot) Healthy() error {
+	b.connMu.RLock()
+	defer b.connMu.RUnlock()
+
+	if b.connected {
+		return nil
+	}
+
+	down := time.Since(b.disconnectedAt)
+	if down < disconnectGracePeriod {
+		return nil
+	}
+
+	return fmt.Errorf("discord gateway disconnected for %s", down.Truncate(time.Second))
+}
+
+func (b *DiscordBot) handleConnect(_ *discordgo.Session, _ *discordgo.Connect) {
+	b.setConnected(true)
+	b.log.Info("Discord gateway connected")
+}
+
+func (b *DiscordBot) handleDisconnect(_ *discordgo.Session, _ *discordgo.Disconnect) {
+	b.setConnected(false)
+	b.log.Warn("Discord gateway disconnected")
+}
+
+func (b *DiscordBot) setConnected(connected bool) {
+	b.connMu.Lock()
+	defer b.connMu.Unlock()
+
+	if b.connected && !connected {
+		b.disconnectedAt = time.Now()
+	}
+
+	b.connected = connected
+	b.metrics.SetGatewayConnected(connected)
 }
 
 // GetScheduler returns the scheduler.
