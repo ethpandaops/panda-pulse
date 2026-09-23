@@ -81,6 +81,12 @@ All build commands support optional parameters:
 - `enable <network> <client>` - Enable mentions for a monitoring target
 - `disable <network> <client>` - Disable mentions for a monitoring target
 
+### `/rollouts` - rolloor Rollouts
+Only devnets that run rolloor (`https://rolloor.<network>.ethpandaops.io`) are offered.
+- `register <network> <channel>` - Post rollouts started, paused, complete, superseded and aborted; halts ping the client's `/mentions`
+- `deregister <network>` - Stop posting a devnet's rollouts
+- `list` - Show which devnets' rollouts are posted in this server
+
 ## Architecture
 
 ### Core Components

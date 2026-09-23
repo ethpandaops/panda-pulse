@@ -13,9 +13,11 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
 	cmdhive "github.com/ethpandaops/panda-pulse/pkg/discord/cmd/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/mentions"
+	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/rollouts"
 	"github.com/ethpandaops/panda-pulse/pkg/grafana"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	httpclient "github.com/ethpandaops/panda-pulse/pkg/http"
+	"github.com/ethpandaops/panda-pulse/pkg/rolloor"
 	"github.com/ethpandaops/panda-pulse/pkg/scheduler"
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -108,6 +110,11 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		return nil, fmt.Errorf("failed to create hive summary repo: %w", err)
 	}
 
+	rolloutsRepo, err := store.NewRolloutsRepo(ctx, log, cfg.AsS3Config(), storeMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rollouts repo: %w", err)
+	}
+
 	// Create Grafana client with service-specific HTTP client.
 	grafanaClient := grafana.NewClient(cfg.AsGrafanaConfig(), grafanaHTTPClient)
 
@@ -146,6 +153,7 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 		mentions.NewMentionsCommand(log, bot),
 		cmdhive.NewHiveCommand(log, bot, cfg.GithubToken, githubHTTPClient),
 		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
+		rollouts.NewRolloutsCommand(log, bot, rolloutsRepo, rolloor.NewClient(createServiceClient("rolloor"))),
 	})
 
 	return &Service{
