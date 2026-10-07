@@ -81,6 +81,16 @@ All build commands support optional parameters:
 - `enable <network> <client>` - Enable mentions for a monitoring target
 - `disable <network> <client>` - Disable mentions for a monitoring target
 
+### `/rollouts` - rolloor Rollouts
+Only devnets that run rolloor (`https://rolloor.<network>.ethpandaops.io`) are offered.
+- `register <network> <channel>` - Post rollout creation, batch progress, soaks, pauses, disruption-budget waits and terminal events; halts ping the client's `/mentions`
+- `deregister <network>` - Stop posting a devnet's rollouts
+- `list` - Show which devnets' rollouts are posted in this server
+
+Registration starts after the newest existing event, including when history is empty. The watcher polls every 30 seconds and posts events oldest first; a failed Discord post is retried before any later event. If the stored cursor is ahead of the newest event after a database reset, it resumes from the beginning of the new history.
+
+Following empty or recreated history requires rolloor to support oldest-first pagination with an explicit `after=0`; newest-event probes omit `after`.
+
 ## Architecture
 
 ### Core Components

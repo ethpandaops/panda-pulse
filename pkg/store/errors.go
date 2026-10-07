@@ -1,6 +1,12 @@
 package store
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrRolloutAlertNotFound is returned when a network has no rollout alert in a guild.
+var ErrRolloutAlertNotFound = errors.New("rollout alert not found")
 
 // AlertAlreadyRegisteredError represents an error when trying to register an alert that already exists.
 type AlertAlreadyRegisteredError struct {
