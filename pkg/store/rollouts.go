@@ -16,12 +16,12 @@ import (
 )
 
 // RolloutAlert sends a network's rollout events to a channel. LastEventID
-// is the newest rolloor event already handled.
+// is the newest rolloor event already handled; nil means uninitialised.
 type RolloutAlert struct {
 	Network        string    `json:"network"`
 	DiscordGuildID string    `json:"discordGuildId"`
 	DiscordChannel string    `json:"discordChannel"`
-	LastEventID    int64     `json:"lastEventId"`
+	LastEventID    *int64    `json:"lastEventId"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }

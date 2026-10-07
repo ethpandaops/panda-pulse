@@ -27,6 +27,12 @@ func fakeRolloor(t *testing.T, probes *atomic.Int32) *Client {
 		<-r.Context().Done()
 	})
 	mux.HandleFunc("GET /n/on-devnet-1/api/v1/history", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("after") == "0" {
+			_, _ = w.Write([]byte(`[{"id":1,"action":"rollout.created"},{"id":2,"action":"batch.started"}]`))
+
+			return
+		}
+
 		if r.URL.Query().Get("after") == "10" {
 			_, _ = w.Write([]byte(`[{"id":11,"action":"rollout.created","group":"lighthouse"},{"id":12,"action":"batch.started"}]`))
 
@@ -85,7 +91,12 @@ func TestHistoryAndLatest(t *testing.T) {
 	c := fakeRolloor(t, &probes)
 	ctx := context.Background()
 
-	events, err := c.History(ctx, "on-devnet-1", 10, 200)
+	events, err := c.History(ctx, "on-devnet-1", 0, 2)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, []int64{1, 2}, []int64{events[0].ID, events[1].ID})
+
+	events, err = c.History(ctx, "on-devnet-1", 10, 200)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	assert.Equal(t, "rollout.created", events[0].Action)

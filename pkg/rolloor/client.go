@@ -113,15 +113,11 @@ func (c *Client) answers(ctx context.Context, network string) bool {
 	return health.OK && health.Environment != ""
 }
 
-// History returns the events after an id, oldest first. After zero returns
-// the newest events instead, newest first.
+// History returns the events after an id, oldest first, including after zero.
 func (c *Client) History(ctx context.Context, network string, after int64, limit int) ([]Event, error) {
 	q := url.Values{}
 	q.Set("limit", strconv.Itoa(limit))
-
-	if after > 0 {
-		q.Set("after", strconv.FormatInt(after, 10))
-	}
+	q.Set("after", strconv.FormatInt(after, 10))
 
 	var events []Event
 	if err := c.get(ctx, network, "/api/v1/history?"+q.Encode(), &events); err != nil {
@@ -133,7 +129,9 @@ func (c *Client) History(ctx context.Context, network string, after int64, limit
 
 // Latest is the id of a network's newest event, or zero when it has none.
 func (c *Client) Latest(ctx context.Context, network string) (int64, error) {
-	events, err := c.History(ctx, network, 0, 1)
+	var events []Event
+
+	err := c.get(ctx, network, "/api/v1/history?limit=1", &events)
 	if err != nil || len(events) == 0 {
 		return 0, err
 	}

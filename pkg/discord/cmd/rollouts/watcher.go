@@ -69,19 +69,30 @@ func (c *RolloutsCommand) poll(ctx context.Context) {
 func (c *RolloutsCommand) pollOne(ctx context.Context, alert *store.RolloutAlert) {
 	log := c.log.WithField("network", alert.Network)
 
-	if alert.LastEventID == 0 {
-		latest, err := c.rolloor.Latest(ctx, alert.Network)
-		if err != nil || latest == 0 {
-			return
-		}
+	latest, err := c.rolloor.Latest(ctx, alert.Network)
+	if err != nil {
+		log.WithError(err).Debug("rolloor did not answer")
 
-		alert.LastEventID = latest
+		return
+	}
+
+	if alert.LastEventID == nil {
+		alert.LastEventID = new(latest)
 		c.save(ctx, alert)
 
 		return
 	}
 
-	events, err := c.rolloor.History(ctx, alert.Network, alert.LastEventID, pageSize)
+	if *alert.LastEventID > latest {
+		// A recreated history starts at one, even if it is still empty.
+		alert.LastEventID = new(int64(0))
+
+		if !c.save(ctx, alert) {
+			return
+		}
+	}
+
+	events, err := c.rolloor.History(ctx, alert.Network, *alert.LastEventID, pageSize)
 	if err != nil {
 		log.WithError(err).Debug("rolloor did not answer")
 
@@ -92,48 +103,55 @@ func (c *RolloutsCommand) pollOne(ctx context.Context, alert *store.RolloutAlert
 		return
 	}
 
+	last := *alert.LastEventID
+
 	for i := range events {
-		msg := c.message(ctx, alert, &events[i])
-		if msg == nil {
-			continue
-		}
+		if msg := c.message(ctx, alert, &events[i]); msg != nil {
+			if _, err := c.post().ChannelMessageSendComplex(alert.DiscordChannel, msg, discordgo.WithContext(ctx)); err != nil {
+				// Keep the failed event ahead of all later events.
+				log.WithError(err).Warn("Failed to post rollout event")
 
-		if _, err := c.post().ChannelMessageSendComplex(alert.DiscordChannel, msg); err != nil {
-			// Try this event again next time rather than skip it.
-			log.WithError(err).Warn("Failed to post rollout event")
-
-			if i > 0 {
-				alert.LastEventID = events[i-1].ID
-				c.save(ctx, alert)
+				break
 			}
-
-			return
 		}
+
+		last = events[i].ID
 	}
 
-	alert.LastEventID = events[len(events)-1].ID
-	c.save(ctx, alert)
+	if last != *alert.LastEventID {
+		alert.LastEventID = new(last)
+		c.save(ctx, alert)
+	}
 }
 
-func (c *RolloutsCommand) save(ctx context.Context, alert *store.RolloutAlert) {
+func (c *RolloutsCommand) save(ctx context.Context, alert *store.RolloutAlert) bool {
 	alert.UpdatedAt = time.Now()
 
 	if err := c.alerts.Persist(ctx, alert); err != nil {
 		c.log.WithError(err).WithField("network", alert.Network).Warn("Failed to save rollout cursor")
+
+		return false
 	}
+
+	return true
 }
 
-// kinds are the events posted, with their title and colour.
+// Running progress emits batch.started, not rollout.running. Config pauses
+// do not emit rollout.paused.
 var kinds = map[string]struct {
 	title string
 	color int
 }{
-	"rollout.created":    {"🚀 Rollout started", 0x4ea8ff},
-	"rollout.paused":     {"⏸️ Rollout paused", 0xffb547},
-	"rollout.halted":     {"🛑 Rollout halted", 0xff4b3e},
-	"rollout.complete":   {"✅ Rollout complete", 0x39d17c},
-	"rollout.superseded": {"↪️ Rollout superseded by a newer build", 0x8a8f98},
-	"rollout.aborted":    {"⏹️ Rollout aborted", 0x8a8f98},
+	"rollout.created":          {"🚀 Rollout created", 0x4ea8ff},
+	"batch.started":            {"🚀 Batch started", 0x4ea8ff},
+	"batch.passed":             {"✅ Batch passed", 0x39d17c},
+	"rollout.soaking":          {"⏳ Rollout soaking", 0x4ea8ff},
+	"rollout.paused":           {"⏸️ Rollout paused", 0xffb547},
+	"rollout.waitingforbudget": {"⏳ Rollout waiting for disruption budget", 0xffb547},
+	"rollout.halted":           {"🛑 Rollout halted", 0xff4b3e},
+	"rollout.complete":         {"✅ Rollout complete", 0x39d17c},
+	"rollout.superseded":       {"↪️ Rollout superseded", 0x8a8f98},
+	"rollout.aborted":          {"⏹️ Rollout aborted", 0x8a8f98},
 }
 
 // message builds the post for an event, or nil for events not posted.

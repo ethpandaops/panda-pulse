@@ -275,7 +275,7 @@ func (c *RolloutsCommand) register(ctx context.Context, guildID, network string,
 	}
 
 	now := time.Now()
-	alert := &store.RolloutAlert{Network: network, DiscordGuildID: guildID, DiscordChannel: channel.ID, LastEventID: latest, CreatedAt: now, UpdatedAt: now}
+	alert := &store.RolloutAlert{Network: network, DiscordGuildID: guildID, DiscordChannel: channel.ID, LastEventID: new(latest), CreatedAt: now, UpdatedAt: now}
 
 	if existing, err := c.alerts.Get(ctx, network, guildID); err == nil {
 		alert.CreatedAt = existing.CreatedAt

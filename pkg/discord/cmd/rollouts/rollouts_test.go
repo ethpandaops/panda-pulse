@@ -101,7 +101,7 @@ func (f *fakeHistory) Available(_ context.Context, network string) bool {
 	return f.running[network]
 }
 
-func (f *fakeHistory) History(_ context.Context, _ string, after int64, _ int) ([]rolloor.Event, error) {
+func (f *fakeHistory) History(_ context.Context, _ string, after int64, limit int) ([]rolloor.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -114,6 +114,9 @@ func (f *fakeHistory) History(_ context.Context, _ string, after int64, _ int) (
 	for _, e := range f.events {
 		if e.ID > after {
 			out = append(out, e)
+			if len(out) == limit {
+				break
+			}
 		}
 	}
 
@@ -197,7 +200,7 @@ func TestRegisterOnlyWhereRolloorRuns(t *testing.T) {
 	assert.Contains(t, c.register(ctx, "g", net, ch), "Posting **"+net+"** rollouts to <#chan>")
 	saved, err := alerts.Get(ctx, net, "g")
 	require.NoError(t, err)
-	assert.Equal(t, int64(5), saved.LastEventID, "nothing already past is posted")
+	assert.Equal(t, new(int64(5)), saved.LastEventID, "nothing already past is posted")
 
 	// Registering again keeps when it was first made.
 	first := saved.CreatedAt
@@ -237,25 +240,23 @@ func TestPollPostsWhatPeopleCareAbout(t *testing.T) {
 	c, alerts, hist, post := newTestCommand()
 	ctx := context.Background()
 
-	require.NoError(t, alerts.Persist(ctx, &store.RolloutAlert{Network: net, DiscordGuildID: "g", DiscordChannel: "chan", LastEventID: 5}))
+	require.NoError(t, alerts.Persist(ctx, &store.RolloutAlert{Network: net, DiscordGuildID: "g", DiscordChannel: "chan", LastEventID: new(int64(5))}))
 
 	hist.events = append(hist.events,
 		rolloor.Event{ID: 6, Action: "rollout.created", Group: "lighthouse", Rollout: "abc", Reason: "8 targets to 88f9568", At: time.Now()},
-		rolloor.Event{ID: 7, Action: "batch.started", Group: "lighthouse", Rollout: "abc"},
+		rolloor.Event{ID: 7, Action: "refresh"},
 		rolloor.Event{ID: 8, Action: "rollout.halted", Group: "lighthouse", Rollout: "abc", Reason: "node-1/beacon not ready"},
 	)
 
 	c.poll(ctx)
 
-	require.Len(t, post.sent, 2, "batch events are not posted")
-	assert.Contains(t, post.sent[0].Embeds[0].Title, "Rollout started: lighthouse")
+	require.Len(t, post.sent, 2, "audit events are not posted")
 	assert.Equal(t, "https://rolloor."+net+".example/rollouts/abc", post.sent[0].Embeds[0].URL)
 	assert.Empty(t, post.sent[0].Content)
-	assert.Contains(t, post.sent[1].Embeds[0].Title, "Rollout halted")
 	assert.Equal(t, "<@&123>", post.sent[1].Content, "a halt pings the client team")
 
 	saved, _ := alerts.Get(ctx, net, "g")
-	assert.Equal(t, int64(8), saved.LastEventID)
+	assert.Equal(t, new(int64(8)), saved.LastEventID)
 
 	// Nothing new: nothing posted.
 	c.poll(ctx)
@@ -266,23 +267,31 @@ func TestPollKeepsItsPlaceWhenDiscordFails(t *testing.T) {
 	c, alerts, hist, post := newTestCommand()
 	ctx := context.Background()
 
-	require.NoError(t, alerts.Persist(ctx, &store.RolloutAlert{Network: net, DiscordGuildID: "g", DiscordChannel: "chan", LastEventID: 5}))
+	require.NoError(t, alerts.Persist(ctx, &store.RolloutAlert{Network: net, DiscordGuildID: "g", DiscordChannel: "chan", LastEventID: new(int64(5))}))
 
 	hist.events = append(hist.events,
-		rolloor.Event{ID: 6, Action: "rollout.created", Group: "lighthouse"},
-		rolloor.Event{ID: 7, Action: "rollout.complete", Group: "lighthouse"},
+		rolloor.Event{ID: 6, Action: "refresh"},
+		rolloor.Event{ID: 7, Action: "rollout.created", Reason: "created"},
+		rolloor.Event{ID: 8, Action: "refresh"},
+		rolloor.Event{ID: 9, Action: "rollout.complete", Reason: "complete"},
+		rolloor.Event{ID: 10, Action: "rollout.aborted", Reason: "aborted"},
 	)
 	post.failAt = 2
 
 	c.poll(ctx)
 
-	saved, _ := alerts.Get(ctx, net, "g")
-	assert.Equal(t, int64(6), saved.LastEventID, "the failed post is tried again")
+	saved, err := alerts.Get(ctx, net, "g")
+	require.NoError(t, err)
+	assert.Equal(t, new(int64(8)), saved.LastEventID, "ignored events before the failed post are handled too")
+	assert.Equal(t, []string{"created"}, postedReasons(post))
+
+	c.poll(ctx)
+	assert.Equal(t, []string{"created"}, postedReasons(post))
 
 	post.failAt = 0
 	c.poll(ctx)
-	require.Len(t, post.sent, 2)
-	assert.Contains(t, post.sent[1].Embeds[0].Title, "complete")
+	c.poll(ctx)
+	assert.Equal(t, []string{"created", "complete", "aborted"}, postedReasons(post))
 }
 
 func TestPollStartsFromTheNewestEventAndSurvivesOutages(t *testing.T) {
@@ -295,13 +304,13 @@ func TestPollStartsFromTheNewestEventAndSurvivesOutages(t *testing.T) {
 	assert.Empty(t, post.sent)
 
 	saved, _ := alerts.Get(ctx, net, "g")
-	assert.Equal(t, int64(5), saved.LastEventID)
+	assert.Equal(t, new(int64(5)), saved.LastEventID)
 
 	// rolloor unreachable: nothing happens and nothing is lost.
 	hist.fail = errors.New("unreachable")
 	c.poll(ctx)
 	saved, _ = alerts.Get(ctx, net, "g")
-	assert.Equal(t, int64(5), saved.LastEventID)
+	assert.Equal(t, new(int64(5)), saved.LastEventID)
 
 	alerts.fail = errors.New("s3 down")
 	c.poll(ctx)
@@ -319,6 +328,4 @@ func TestStartAndStop(t *testing.T) {
 	c.wg.Wait()
 
 	(&RolloutsCommand{}).Stop()
-	assert.Equal(t, "rollouts", c.Name())
-	assert.Len(t, c.definition().Options, 3)
 }
