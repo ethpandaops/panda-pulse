@@ -69,7 +69,7 @@ func (c *RolloutsCommand) poll(ctx context.Context) {
 func (c *RolloutsCommand) pollOne(ctx context.Context, alert *store.RolloutAlert) {
 	log := c.log.WithField("network", alert.Network)
 
-	latest, err := c.rolloor.Latest(ctx, alert.Network)
+	pos, err := c.rolloor.Latest(ctx, alert.Network)
 	if err != nil {
 		log.WithError(err).Debug("rolloor did not answer")
 
@@ -77,28 +77,40 @@ func (c *RolloutsCommand) pollOne(ctx context.Context, alert *store.RolloutAlert
 	}
 
 	if alert.LastEventID == nil {
-		alert.LastEventID = new(latest)
+		alert.LastEventID, alert.HistoryID = new(pos.ID), pos.History
 		c.save(ctx, alert)
 
 		return
 	}
 
-	if *alert.LastEventID > latest {
+	reset := replaced(alert, &pos)
+	if reset {
 		// A recreated history starts at one, even if it is still empty.
 		alert.LastEventID = new(int64(0))
+	}
+
+	if reset || alert.HistoryID != pos.History {
+		alert.HistoryID = pos.History
 
 		if !c.save(ctx, alert) {
 			return
 		}
 	}
 
-	events, err := c.rolloor.History(ctx, alert.Network, *alert.LastEventID, pageSize)
+	page, err := c.rolloor.History(ctx, alert.Network, *alert.LastEventID, pageSize)
 	if err != nil {
 		log.WithError(err).Debug("rolloor did not answer")
 
 		return
 	}
 
+	// Replaced since Latest: the next poll starts the new history from its
+	// beginning.
+	if page.History != "" && page.History != alert.HistoryID {
+		return
+	}
+
+	events := page.Events
 	if len(events) == 0 {
 		return
 	}
@@ -122,6 +134,17 @@ func (c *RolloutsCommand) pollOne(ctx context.Context, alert *store.RolloutAlert
 		alert.LastEventID = new(last)
 		c.save(ctx, alert)
 	}
+}
+
+// replaced reports whether the history alert follows has been replaced by
+// another: by its identity when rolloor gives one, otherwise by the newest
+// event id falling behind the cursor.
+func replaced(alert *store.RolloutAlert, pos *rolloor.Position) bool {
+	if alert.HistoryID != "" && pos.History != "" {
+		return alert.HistoryID != pos.History
+	}
+
+	return *alert.LastEventID > pos.ID
 }
 
 func (c *RolloutsCommand) save(ctx context.Context, alert *store.RolloutAlert) bool {

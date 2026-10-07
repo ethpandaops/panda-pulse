@@ -41,8 +41,8 @@ type alertStore interface {
 // history is what the command needs from rolloor.
 type history interface {
 	Available(ctx context.Context, network string) bool
-	History(ctx context.Context, network string, after int64, limit int) ([]rolloor.Event, error)
-	Latest(ctx context.Context, network string) (int64, error)
+	History(ctx context.Context, network string, after int64, limit int) (rolloor.Page, error)
+	Latest(ctx context.Context, network string) (rolloor.Position, error)
 	URL(network string) string
 }
 
@@ -269,13 +269,13 @@ func (c *RolloutsCommand) register(ctx context.Context, guildID, network string,
 		return fmt.Sprintf("🚫 rolloor is not running on **%s**", network)
 	}
 
-	latest, err := c.rolloor.Latest(ctx, network)
+	pos, err := c.rolloor.Latest(ctx, network)
 	if err != nil {
 		return fmt.Sprintf("🚫 Could not read rolloor on **%s**: %v", network, err)
 	}
 
 	now := time.Now()
-	alert := &store.RolloutAlert{Network: network, DiscordGuildID: guildID, DiscordChannel: channel.ID, LastEventID: new(latest), CreatedAt: now, UpdatedAt: now}
+	alert := &store.RolloutAlert{Network: network, DiscordGuildID: guildID, DiscordChannel: channel.ID, LastEventID: new(pos.ID), HistoryID: pos.History, CreatedAt: now, UpdatedAt: now}
 
 	if existing, err := c.alerts.Get(ctx, network, guildID); err == nil {
 		alert.CreatedAt = existing.CreatedAt

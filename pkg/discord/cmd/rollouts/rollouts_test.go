@@ -92,6 +92,10 @@ type fakeHistory struct {
 	running map[string]bool
 	events  []rolloor.Event
 	fail    error
+	// id is the history's identity; pageID, when set, is what History
+	// reports instead, as if the history were replaced between reads.
+	id     string
+	pageID string
 }
 
 func (f *fakeHistory) Available(_ context.Context, network string) bool {
@@ -101,12 +105,17 @@ func (f *fakeHistory) Available(_ context.Context, network string) bool {
 	return f.running[network]
 }
 
-func (f *fakeHistory) History(_ context.Context, _ string, after int64, limit int) ([]rolloor.Event, error) {
+func (f *fakeHistory) History(_ context.Context, _ string, after int64, limit int) (rolloor.Page, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if f.fail != nil {
-		return nil, f.fail
+		return rolloor.Page{}, f.fail
+	}
+
+	id := f.id
+	if f.pageID != "" {
+		id = f.pageID
 	}
 
 	var out []rolloor.Event
@@ -120,22 +129,23 @@ func (f *fakeHistory) History(_ context.Context, _ string, after int64, limit in
 		}
 	}
 
-	return out, nil
+	return rolloor.Page{Events: out, History: id}, nil
 }
 
-func (f *fakeHistory) Latest(context.Context, string) (int64, error) {
+func (f *fakeHistory) Latest(context.Context, string) (rolloor.Position, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	if f.fail != nil {
-		return 0, f.fail
+		return rolloor.Position{}, f.fail
 	}
 
-	if len(f.events) == 0 {
-		return 0, nil
+	pos := rolloor.Position{History: f.id}
+	if len(f.events) > 0 {
+		pos.ID = f.events[len(f.events)-1].ID
 	}
 
-	return f.events[len(f.events)-1].ID, nil
+	return pos, nil
 }
 
 func (f *fakeHistory) URL(network string) string { return "https://rolloor." + network + ".example" }

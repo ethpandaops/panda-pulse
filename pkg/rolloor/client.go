@@ -22,6 +22,10 @@ const DefaultURLPattern = "https://rolloor.%s.ethpandaops.io"
 // probeTTL is how long an availability answer is trusted.
 const probeTTL = 5 * time.Minute
 
+// HistoryHeader names the response header carrying a history's identity,
+// which changes when the database holding it is recreated.
+const HistoryHeader = "Rolloor-History"
+
 var networkPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
 
 // Event is one line of a rolloor's history.
@@ -35,6 +39,20 @@ type Event struct {
 	Target   string    `json:"target"`
 	Selector string    `json:"selector"`
 	Reason   string    `json:"reason"`
+}
+
+// Page is part of a history, with the identity of the history it came from;
+// History is empty when rolloor does not say.
+type Page struct {
+	Events  []Event
+	History string
+}
+
+// Position is a history's newest event id, zero when it has none, and the
+// history's identity.
+type Position struct {
+	ID      int64
+	History string
 }
 
 // Client talks to the rolloor of any network.
@@ -106,7 +124,7 @@ func (c *Client) answers(ctx context.Context, network string) bool {
 		Environment string `json:"environment"`
 	}
 
-	if err := c.get(ctx, network, "/healthz", &health); err != nil {
+	if _, err := c.get(ctx, network, "/healthz", &health); err != nil {
 		return false
 	}
 
@@ -114,61 +132,72 @@ func (c *Client) answers(ctx context.Context, network string) bool {
 }
 
 // History returns the events after an id, oldest first, including after zero.
-func (c *Client) History(ctx context.Context, network string, after int64, limit int) ([]Event, error) {
+func (c *Client) History(ctx context.Context, network string, after int64, limit int) (Page, error) {
 	q := url.Values{}
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("after", strconv.FormatInt(after, 10))
 
-	var events []Event
-	if err := c.get(ctx, network, "/api/v1/history?"+q.Encode(), &events); err != nil {
-		return nil, err
+	var p Page
+
+	history, err := c.get(ctx, network, "/api/v1/history?"+q.Encode(), &p.Events)
+	if err != nil {
+		return Page{}, err
 	}
 
-	return events, nil
+	p.History = history
+
+	return p, nil
 }
 
-// Latest is the id of a network's newest event, or zero when it has none.
-func (c *Client) Latest(ctx context.Context, network string) (int64, error) {
+// Latest is where a network's history stands.
+func (c *Client) Latest(ctx context.Context, network string) (Position, error) {
 	var events []Event
 
-	err := c.get(ctx, network, "/api/v1/history?limit=1", &events)
-	if err != nil || len(events) == 0 {
-		return 0, err
+	history, err := c.get(ctx, network, "/api/v1/history?limit=1", &events)
+	if err != nil {
+		return Position{}, err
 	}
 
-	return events[0].ID, nil
+	pos := Position{History: history}
+	if len(events) > 0 {
+		pos.ID = events[0].ID
+	}
+
+	return pos, nil
 }
 
-func (c *Client) get(ctx context.Context, network, path string, out any) error {
+// get decodes a JSON answer into out and returns the history identity the
+// answer carried, if any.
+func (c *Client) get(ctx context.Context, network, path string, out any) (string, error) {
 	if !networkPattern.MatchString(network) {
-		return fmt.Errorf("invalid network name %q", network)
+		return "", fmt.Errorf("invalid network name %q", network)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL(network)+path, http.NoBody)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("rolloor for %s: %w", network, err)
+		return "", fmt.Errorf("rolloor for %s: %w", network, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return fmt.Errorf("rolloor for %s: %w", network, err)
+		return "", fmt.Errorf("rolloor for %s: %w", network, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("rolloor for %s answered %s", network, resp.Status)
+		return "", fmt.Errorf("rolloor for %s answered %s", network, resp.Status)
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("rolloor for %s: %w", network, err)
+		return "", fmt.Errorf("rolloor for %s: %w", network, err)
 	}
 
-	return nil
+	return resp.Header.Get(HistoryHeader), nil
 }

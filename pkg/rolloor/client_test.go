@@ -27,6 +27,8 @@ func fakeRolloor(t *testing.T, probes *atomic.Int32) *Client {
 		<-r.Context().Done()
 	})
 	mux.HandleFunc("GET /n/on-devnet-1/api/v1/history", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(HistoryHeader, "h-1")
+
 		if r.URL.Query().Get("after") == "0" {
 			_, _ = w.Write([]byte(`[{"id":1,"action":"rollout.created"},{"id":2,"action":"batch.started"}]`))
 
@@ -91,23 +93,28 @@ func TestHistoryAndLatest(t *testing.T) {
 	c := fakeRolloor(t, &probes)
 	ctx := context.Background()
 
-	events, err := c.History(ctx, "on-devnet-1", 0, 2)
+	page, err := c.History(ctx, "on-devnet-1", 0, 2)
 	require.NoError(t, err)
-	require.Len(t, events, 2)
-	assert.Equal(t, []int64{1, 2}, []int64{events[0].ID, events[1].ID})
+	require.Len(t, page.Events, 2)
+	assert.Equal(t, []int64{1, 2}, []int64{page.Events[0].ID, page.Events[1].ID})
+	assert.Equal(t, "h-1", page.History)
 
-	events, err = c.History(ctx, "on-devnet-1", 10, 200)
+	page, err = c.History(ctx, "on-devnet-1", 10, 200)
 	require.NoError(t, err)
-	require.Len(t, events, 2)
-	assert.Equal(t, "rollout.created", events[0].Action)
+	require.Len(t, page.Events, 2)
+	assert.Equal(t, "rollout.created", page.Events[0].Action)
 
-	latest, err := c.Latest(ctx, "on-devnet-1")
+	pos, err := c.Latest(ctx, "on-devnet-1")
 	require.NoError(t, err)
-	assert.Equal(t, int64(12), latest)
+	assert.Equal(t, Position{ID: 12, History: "h-1"}, pos)
 
-	latest, err = c.Latest(ctx, "empty-devnet-1")
+	// A rolloor that does not name its history leaves it empty.
+	pos, err = c.Latest(ctx, "empty-devnet-1")
 	require.NoError(t, err)
-	assert.Zero(t, latest)
+	assert.Equal(t, Position{}, pos)
+
+	_, err = c.Latest(ctx, "broken-devnet-1")
+	require.Error(t, err)
 
 	_, err = c.History(ctx, "broken-devnet-1", 0, 1)
 	require.Error(t, err)

@@ -13,6 +13,8 @@ import (
 	"github.com/ethpandaops/panda-pulse/pkg/store"
 )
 
+const actionCreated = "rollout.created"
+
 func postedReasons(post *fakePoster) []string {
 	reasons := make([]string, 0, len(post.sent))
 	for _, msg := range post.sent {
@@ -29,7 +31,7 @@ func TestRegisterAgainstEmptyHistoryFollowsFirstEvent(t *testing.T) {
 
 	c.register(ctx, "g", net, &discordgo.Channel{ID: "chan"})
 	c.poll(ctx)
-	hist.events = []rolloor.Event{{ID: 1, Action: "rollout.created", Reason: "first rollout"}}
+	hist.events = []rolloor.Event{{ID: 1, Action: actionCreated, Reason: "first rollout"}}
 	c.poll(ctx)
 	c.poll(ctx)
 
@@ -47,7 +49,7 @@ func TestPollInitialisesEmptyHistoryOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, new(int64(0)), saved.LastEventID)
 
-	hist.events = []rolloor.Event{{ID: 1, Action: "rollout.created", Reason: "first rollout"}}
+	hist.events = []rolloor.Event{{ID: 1, Action: actionCreated, Reason: "first rollout"}}
 	c.poll(ctx)
 	assert.Equal(t, []string{"first rollout"}, postedReasons(post))
 }
@@ -67,7 +69,7 @@ func TestPollRecoversResetHistory(t *testing.T) {
 			}
 
 			hist.events = []rolloor.Event{
-				{ID: 1, Action: "rollout.created", Reason: "new rollout"},
+				{ID: 1, Action: actionCreated, Reason: "new rollout"},
 				{ID: 2, Action: "rollout.paused", Reason: "new pause"},
 			}
 			c.poll(ctx)
@@ -91,7 +93,7 @@ func TestPollRetriesInOrderAcrossPages(t *testing.T) {
 			want := make([]string, 0, pageSize+3)
 			for id := int64(1); id <= pageSize+3; id++ {
 				reason := fmt.Sprintf("event %d", id)
-				hist.events = append(hist.events, rolloor.Event{ID: id, Action: "rollout.created", Reason: reason})
+				hist.events = append(hist.events, rolloor.Event{ID: id, Action: actionCreated, Reason: reason})
 				want = append(want, reason)
 			}
 
@@ -115,7 +117,7 @@ func TestPollRetriesFirstEventAfterReset(t *testing.T) {
 	ctx := context.Background()
 	c.register(ctx, "g", net, &discordgo.Channel{ID: "chan"})
 	hist.events = []rolloor.Event{
-		{ID: 1, Action: "rollout.created", Reason: "new rollout"},
+		{ID: 1, Action: actionCreated, Reason: "new rollout"},
 		{ID: 2, Action: "rollout.complete", Reason: "new completion"},
 	}
 	post.failAt = 1
@@ -183,4 +185,70 @@ func TestPollIgnoresObsoleteStatesAndAuditActions(t *testing.T) {
 	saved, err := alerts.Get(ctx, net, "g")
 	require.NoError(t, err)
 	assert.Equal(t, new(int64(8)), saved.LastEventID)
+}
+
+func TestPollFollowsAReplacedHistoryThatPassedTheCursor(t *testing.T) {
+	c, alerts, hist, post := newTestCommand()
+	ctx := context.Background()
+	hist.id = "first"
+	c.register(ctx, "g", net, &discordgo.Channel{ID: "chan"})
+
+	// The new database has already written more events than the old cursor.
+	hist.id = "second"
+	want := make([]string, 0, 8)
+	hist.events = nil
+
+	for id := int64(1); id <= 8; id++ {
+		reason := fmt.Sprintf("new %d", id)
+		hist.events = append(hist.events, rolloor.Event{ID: id, Action: actionCreated, Reason: reason})
+		want = append(want, reason)
+	}
+
+	c.poll(ctx)
+	c.poll(ctx)
+
+	assert.Equal(t, want, postedReasons(post))
+
+	saved, err := alerts.Get(ctx, net, "g")
+	require.NoError(t, err)
+	assert.Equal(t, "second", saved.HistoryID)
+	assert.Equal(t, new(int64(8)), saved.LastEventID)
+}
+
+func TestPollAdoptsTheIdentityOfTheHistoryItFollows(t *testing.T) {
+	c, alerts, hist, post := newTestCommand()
+	ctx := context.Background()
+	c.register(ctx, "g", net, &discordgo.Channel{ID: "chan"})
+
+	// The same database starts naming itself: nothing is posted again.
+	hist.id = "same"
+	c.poll(ctx)
+
+	saved, err := alerts.Get(ctx, net, "g")
+	require.NoError(t, err)
+	assert.Equal(t, "same", saved.HistoryID)
+	assert.Equal(t, new(int64(5)), saved.LastEventID)
+
+	hist.events = append(hist.events, rolloor.Event{ID: 6, Action: "rollout.halted", Reason: "halted"})
+	c.poll(ctx)
+
+	assert.Equal(t, []string{"halted"}, postedReasons(post))
+}
+
+func TestPollPostsNothingFromAHistoryReplacedBetweenReads(t *testing.T) {
+	c, _, hist, post := newTestCommand()
+	ctx := context.Background()
+	hist.id = "first"
+	c.register(ctx, "g", net, &discordgo.Channel{ID: "chan"})
+	hist.events = append(hist.events, rolloor.Event{ID: 6, Action: actionCreated, Reason: "from first"})
+
+	hist.pageID = "second"
+	c.poll(ctx)
+	assert.Empty(t, post.sent)
+
+	hist.id, hist.pageID = "second", ""
+	hist.events = []rolloor.Event{{ID: 1, Action: actionCreated, Reason: "from second"}}
+	c.poll(ctx)
+
+	assert.Equal(t, []string{"from second"}, postedReasons(post))
 }
