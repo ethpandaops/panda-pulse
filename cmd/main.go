@@ -75,6 +75,8 @@ func main() {
 
 	setConfig(&cfg)
 
+	rootCmd.AddCommand(newRollCommand(log))
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -101,6 +103,7 @@ func setConfig(cfg *service.Config) {
 	cfg.S3EndpointURL = os.Getenv("AWS_ENDPOINT_URL")
 	cfg.HealthCheckAddress = os.Getenv("HEALTH_CHECK_ADDRESS")
 	cfg.MetricsAddress = os.Getenv("METRICS_ADDRESS")
+	cfg.WatchtowerAPIToken = os.Getenv("WATCHTOWER_HTTP_API_TOKEN")
 
 	if cfg.GrafanaBaseURL == "" {
 		cfg.GrafanaBaseURL = grafana.DefaultGrafanaBaseURL

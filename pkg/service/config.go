@@ -27,6 +27,7 @@ type Config struct {
 	ClientsDataURL     string
 	MetricsAddress     string // Defaults to :9091
 	HealthCheckAddress string // Defaults to :9191
+	WatchtowerAPIToken string // watchtower API token for the /roll command
 }
 
 // AsS3Config converts the configuration to an S3Config.
