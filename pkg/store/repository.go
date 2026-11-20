@@ -89,12 +89,8 @@ func NewBaseRepo(ctx context.Context, log *logrus.Logger, cfg *S3Config, metrics
 
 // VerifyConnection verifies the S3 connection and bucket accessibility.
 func (b *BaseRepo) VerifyConnection(ctx context.Context) error {
-	// Test bucket listing.
-	if _, err := b.store.ListBuckets(ctx, &s3.ListBucketsInput{}); err != nil {
-		return fmt.Errorf("failed to list buckets: %w", err)
-	}
-
-	// Test bucket access.
+	// Only check the configured bucket: ListBuckets needs an account-wide key,
+	// and a key scoped to this bucket is all the service should hold.
 	if _, err := b.store.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(b.bucket),
 	}); err != nil {
