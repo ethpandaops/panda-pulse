@@ -26,8 +26,8 @@ dockers:
     goarch: amd64
     dockerfile: Dockerfile
     image_templates:
-      - "ethpandaops/panda-pulse:{{ .Version }}-amd64"
-      - "ethpandaops/panda-pulse:latest-amd64"
+      - "ghcr.io/ethpandaops/panda-pulse:{{ .Version }}-amd64"
+      - "ghcr.io/ethpandaops/panda-pulse:latest-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -41,8 +41,8 @@ dockers:
     goarch: arm64
     dockerfile: Dockerfile
     image_templates:
-      - "ethpandaops/panda-pulse:{{ .Version }}-arm64v8"
-      - "ethpandaops/panda-pulse:latest-arm64v8"
+      - "ghcr.io/ethpandaops/panda-pulse:{{ .Version }}-arm64v8"
+      - "ghcr.io/ethpandaops/panda-pulse:latest-arm64v8"
     build_flag_templates:
       - "--platform=linux/arm64/v8"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -52,14 +52,14 @@ dockers:
       - go.sum
 
 docker_manifests:
-  - name_template: ethpandaops/panda-pulse:{{ .Version }}
+  - name_template: ghcr.io/ethpandaops/panda-pulse:{{ .Version }}
     image_templates:
-      - ethpandaops/panda-pulse:{{ .Version }}-amd64
-      - ethpandaops/panda-pulse:{{ .Version }}-arm64v8
-  - name_template: ethpandaops/panda-pulse:latest
+      - ghcr.io/ethpandaops/panda-pulse:{{ .Version }}-amd64
+      - ghcr.io/ethpandaops/panda-pulse:{{ .Version }}-arm64v8
+  - name_template: ghcr.io/ethpandaops/panda-pulse:latest
     image_templates:
-      - ethpandaops/panda-pulse:latest-amd64
-      - ethpandaops/panda-pulse:latest-arm64v8
+      - ghcr.io/ethpandaops/panda-pulse:latest-amd64
+      - ghcr.io/ethpandaops/panda-pulse:latest-arm64v8
 
 archives:
   - format: tar.gz
