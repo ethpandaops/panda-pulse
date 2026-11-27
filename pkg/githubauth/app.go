@@ -60,9 +60,13 @@ type AppTokenSource struct {
 	httpClient     *http.Client
 	now            func() time.Time
 
+	// mu guards the maps below. It is never held during a network call.
 	mu        sync.Mutex
 	tokens    map[string]cachedToken
 	installed map[string]installCheck
+	// keyLocks serialises token creation per repository and permission set,
+	// so concurrent callers for the same token share one request.
+	keyLocks map[string]*sync.Mutex
 }
 
 type cachedToken struct {
@@ -108,6 +112,7 @@ func NewAppTokenSource(cfg AppConfig, httpClient *http.Client) (*AppTokenSource,
 		now:            time.Now,
 		tokens:         make(map[string]cachedToken),
 		installed:      make(map[string]installCheck),
+		keyLocks:       make(map[string]*sync.Mutex),
 	}, nil
 }
 
@@ -123,11 +128,13 @@ func (s *AppTokenSource) Token(ctx context.Context, repository string, perms Per
 	repoKey := strings.ToLower(owner + "/" + name)
 	tokenKey := repoKey + "|" + permissionsKey(perms)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	keyLock := s.keyLock(tokenKey)
 
-	if t, ok := s.tokens[tokenKey]; ok && s.now().Before(t.expiresAt.Add(-tokenRefreshMargin)) {
-		return t.token, nil
+	keyLock.Lock()
+	defer keyLock.Unlock()
+
+	if token, ok := s.lookupToken(tokenKey); ok {
+		return token, nil
 	}
 
 	installed, err := s.isInstalled(ctx, repoKey, owner, name)
@@ -144,9 +151,39 @@ func (s *AppTokenSource) Token(ctx context.Context, repository string, perms Per
 		return "", err
 	}
 
+	s.mu.Lock()
 	s.tokens[tokenKey] = t
+	s.mu.Unlock()
 
 	return t.token, nil
+}
+
+// keyLock returns the lock that serialises token creation for key.
+func (s *AppTokenSource) keyLock(key string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	l, ok := s.keyLocks[key]
+	if !ok {
+		l = &sync.Mutex{}
+		s.keyLocks[key] = l
+	}
+
+	return l
+}
+
+// lookupToken returns the cached token for key unless it is within
+// tokenRefreshMargin of expiry.
+func (s *AppTokenSource) lookupToken(key string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	t, ok := s.tokens[key]
+	if !ok || !s.now().Before(t.expiresAt.Add(-tokenRefreshMargin)) {
+		return "", false
+	}
+
+	return t.token, true
 }
 
 // ReadToken returns an installation token when the App is installed on
@@ -163,9 +200,12 @@ func (s *AppTokenSource) ReadToken(ctx context.Context, repository string, perms
 }
 
 // isInstalled reports whether the configured installation covers owner/name.
-// Callers must hold s.mu.
 func (s *AppTokenSource) isInstalled(ctx context.Context, repoKey, owner, name string) (bool, error) {
-	if c, ok := s.installed[repoKey]; ok && s.now().Sub(c.checkedAt) < installCheckTTL {
+	s.mu.Lock()
+	c, ok := s.installed[repoKey]
+	s.mu.Unlock()
+
+	if ok && s.now().Sub(c.checkedAt) < installCheckTTL {
 		return c.installed, nil
 	}
 
@@ -197,7 +237,9 @@ func (s *AppTokenSource) isInstalled(ctx context.Context, repoKey, owner, name s
 		return false, fmt.Errorf("GitHub App installation lookup for %s/%s failed: %s", owner, name, responseError(resp))
 	}
 
+	s.mu.Lock()
 	s.installed[repoKey] = installCheck{installed: installed, checkedAt: s.now()}
+	s.mu.Unlock()
 
 	return installed, nil
 }

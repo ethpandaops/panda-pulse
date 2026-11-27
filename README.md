@@ -142,7 +142,8 @@ The App needs these repository permissions on the repositories it is installed o
 | Permission | Used for |
 |------------|----------|
 | Actions: read and write | Dispatching and watching `/build` workflows in [eth-client-docker-image-builder](https://github.com/ethpandaops/eth-client-docker-image-builder), and dispatching `/hive trigger` workflows |
-| Contents: read | Listing the build workflows in eth-client-docker-image-builder |
+| Contents: read | Listing the build workflows in eth-client-docker-image-builder, and checking that a `/build` `ref` exists |
+| Pull requests: read (optional) | Resolving `/build` `pr` on repositories the App is installed on. Without it these reads are sent unauthenticated |
 
 `/hive trigger` only works for repositories the App is installed on; for any other repository it replies that the App is not installed there.
 

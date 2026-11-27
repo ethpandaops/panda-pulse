@@ -40,6 +40,10 @@ type fakeGitHub struct {
 	lookups       int
 	tokenStatus   int
 	tokenMessage  string
+
+	// Token requests whose body contains blockRepo wait for release.
+	blockRepo string
+	release   chan struct{}
 }
 
 func newFakeGitHub(t *testing.T) (*fakeGitHub, *httptest.Server) {
@@ -121,6 +125,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var body []byte
+	if r.Method == http.MethodPost {
+		body, _ = io.ReadAll(r.Body)
+
+		if f.blockRepo != "" && strings.Contains(string(body), f.blockRepo) {
+			<-f.release
+		}
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -139,7 +152,6 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": id})
 	case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/app/installations/%d/access_tokens", testInstallationID):
-		body, _ := io.ReadAll(r.Body)
 		f.tokenBodies = append(f.tokenBodies, string(body))
 
 		if f.tokenStatus != http.StatusCreated {
@@ -267,6 +279,34 @@ func TestAppTokenSourceCachesAndRefreshesBeforeExpiry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, refreshed, again)
 	assert.Equal(t, 2, f.mints())
+}
+
+func TestAppTokenSourceSlowRequestDoesNotBlockOtherTokens(t *testing.T) {
+	f, srv := newFakeGitHub(t)
+	f.installations["ethpandaops/slow-repo"] = testInstallationID
+	f.blockRepo = "slow-repo"
+	f.release = make(chan struct{})
+	src := newTestSource(t, f, srv)
+
+	slowDone := make(chan error, 1)
+
+	go func() {
+		_, err := src.Token(context.Background(), "ethpandaops/slow-repo", ActionsWrite)
+		slowDone <- err
+	}()
+
+	// Wait until the slow request has passed the installation lookup.
+	require.Eventually(t, func() bool { return f.lookupCount() == 1 }, 5*time.Second, 10*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	token, err := src.Token(ctx, testRepo, ActionsWrite)
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	close(f.release)
+	require.NoError(t, <-slowDone)
 }
 
 func TestAppTokenSourceNotInstalled(t *testing.T) {
