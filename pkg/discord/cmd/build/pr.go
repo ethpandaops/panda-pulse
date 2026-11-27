@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 )
 
 // prOption returns the shared slash-command option used to override
@@ -125,9 +126,7 @@ func (c *BuildCommand) resolvePR(input, fallbackRepo string) (*prResolution, err
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	if c.githubToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.githubToken)
-	}
+	c.authorizeRead(req.Context(), req, owner+"/"+repo, githubauth.PullRequestsRead)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

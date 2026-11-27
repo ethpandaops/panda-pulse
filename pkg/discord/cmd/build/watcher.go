@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/sirupsen/logrus"
 )
 
@@ -88,10 +89,10 @@ type workflowJobsResponse struct {
 
 // BuildWatcher tracks dispatched builds and DMs the invoker on completion.
 type BuildWatcher struct {
-	log         logrus.FieldLogger
-	session     *discordgo.Session
-	httpClient  *http.Client
-	githubToken string
+	log          logrus.FieldLogger
+	session      *discordgo.Session
+	httpClient   *http.Client
+	githubTokens githubauth.TokenSource
 
 	mu     sync.Mutex
 	tracks map[int64]*trackedBuild
@@ -100,13 +101,13 @@ type BuildWatcher struct {
 }
 
 // NewBuildWatcher creates a new BuildWatcher.
-func NewBuildWatcher(log logrus.FieldLogger, session *discordgo.Session, client *http.Client, githubToken string) *BuildWatcher {
+func NewBuildWatcher(log logrus.FieldLogger, session *discordgo.Session, client *http.Client, githubTokens githubauth.TokenSource) *BuildWatcher {
 	return &BuildWatcher{
-		log:         log.WithField("component", "build/watcher"),
-		session:     session,
-		httpClient:  client,
-		githubToken: githubToken,
-		tracks:      make(map[int64]*trackedBuild, 8),
+		log:          log.WithField("component", "build/watcher"),
+		session:      session,
+		httpClient:   client,
+		githubTokens: githubTokens,
+		tracks:       make(map[int64]*trackedBuild, 8),
 	}
 }
 
@@ -212,7 +213,10 @@ func (w *BuildWatcher) findRunByCorrelation(ctx context.Context, workflowFile, c
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+w.githubToken)
+
+	if authErr := githubauth.SetAuthorization(ctx, req, w.githubTokens, DefaultRepository, githubauth.ActionsRead); authErr != nil {
+		return nil, fmt.Errorf("get GitHub token: %w", authErr)
+	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
@@ -356,7 +360,10 @@ func (w *BuildWatcher) fetchRun(ctx context.Context, runID int64) (*workflowRun,
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+w.githubToken)
+
+	if authErr := githubauth.SetAuthorization(ctx, req, w.githubTokens, DefaultRepository, githubauth.ActionsRead); authErr != nil {
+		return nil, fmt.Errorf("get GitHub token: %w", authErr)
+	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
@@ -385,7 +392,10 @@ func (w *BuildWatcher) fetchJobs(ctx context.Context, runID int64) ([]workflowJo
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+w.githubToken)
+
+	if authErr := githubauth.SetAuthorization(ctx, req, w.githubTokens, DefaultRepository, githubauth.ActionsRead); authErr != nil {
+		return nil, fmt.Errorf("get GitHub token: %w", authErr)
+	}
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

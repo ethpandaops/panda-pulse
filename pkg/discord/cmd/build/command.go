@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,7 +30,7 @@ const (
 type BuildCommand struct {
 	log                *logrus.Logger
 	bot                common.BotContext
-	githubToken        string
+	githubTokens       githubauth.TokenSource
 	httpClient         *http.Client
 	workflowFetcher    *WorkflowFetcher
 	watcher            *BuildWatcher
@@ -37,14 +38,14 @@ type BuildCommand struct {
 }
 
 // NewBuildCommand creates a new build command.
-func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubToken string, client *http.Client) *BuildCommand {
+func NewBuildCommand(log *logrus.Logger, bot common.BotContext, githubTokens githubauth.TokenSource, client *http.Client) *BuildCommand {
 	return &BuildCommand{
 		log:             log,
 		bot:             bot,
-		githubToken:     githubToken,
+		githubTokens:    githubTokens,
 		httpClient:      client,
-		workflowFetcher: NewWorkflowFetcher(client, githubToken, log, bot),
-		watcher:         NewBuildWatcher(log, bot.GetSession(), client, githubToken),
+		workflowFetcher: NewWorkflowFetcher(client, githubTokens, log, bot),
+		watcher:         NewBuildWatcher(log, bot.GetSession(), client, githubTokens),
 	}
 }
 
@@ -273,5 +274,14 @@ func (c *BuildCommand) Handle(s *discordgo.Session, i *discordgo.InteractionCrea
 		if respErr != nil {
 			c.log.Errorf("Failed to respond to interaction: %v", respErr)
 		}
+	}
+}
+
+// authorizeRead sets the Authorization header for a read of a public
+// repository. When no token is available the request is sent
+// unauthenticated, which GitHub serves under the lower anonymous rate limit.
+func (c *BuildCommand) authorizeRead(ctx context.Context, req *http.Request, repository string, perms githubauth.Permissions) {
+	if err := githubauth.SetReadAuthorization(ctx, req, c.githubTokens, repository, perms); err != nil {
+		c.log.WithError(err).WithField("repository", repository).Warn("Failed to get GitHub token, sending request unauthenticated")
 	}
 }

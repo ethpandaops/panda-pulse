@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -492,7 +493,7 @@ func (c *BuildCommand) validateRef(ctx context.Context, repository, ref string) 
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+c.githubToken)
+	c.authorizeRead(ctx, req, repository, githubauth.ContentsRead)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -566,7 +567,7 @@ func (c *BuildCommand) validateRepository(ctx context.Context, targetName, repos
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+c.githubToken)
+	c.authorizeRead(ctx, req, repository, githubauth.MetadataRead)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -662,8 +663,11 @@ func (c *BuildCommand) triggerWorkflow(buildTarget, repository, ref, dockerTag, 
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+c.githubToken)
 	req.Header.Set("Content-Type", "application/json")
+
+	if authErr := githubauth.SetAuthorization(req.Context(), req, c.githubTokens, DefaultRepository, githubauth.ActionsWrite); authErr != nil {
+		return "", fmt.Errorf("failed to get GitHub token: %w", authErr)
+	}
 
 	// Use the HTTP client
 	resp, err := c.httpClient.Do(req)

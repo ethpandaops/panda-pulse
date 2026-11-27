@@ -9,6 +9,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/sirupsen/logrus"
 )
 
@@ -169,8 +170,11 @@ func (c *HiveCommand) triggerHiveWorkflow(
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+c.githubToken)
 	req.Header.Set("Content-Type", "application/json")
+
+	if authErr := githubauth.SetAuthorization(req.Context(), req, c.githubTokens, repository, githubauth.ActionsWrite); authErr != nil {
+		return authErr
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

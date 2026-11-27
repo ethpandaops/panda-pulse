@@ -74,6 +74,17 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	githubHTTPClient := createServiceClient("github")
 	clientsHTTPClient := createServiceClient("clients")
 
+	githubTokens, err := cfg.NewGithubTokenSource(githubHTTPClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure GitHub authentication: %w", err)
+	}
+
+	if cfg.usesGithubApp() {
+		log.Info("Authenticating to GitHub as a GitHub App installation")
+	} else {
+		log.Info("Authenticating to GitHub with GITHUB_TOKEN")
+	}
+
 	// Create cartographoor service
 	cartographoorConfig := cfg.AsCartographoorConfig()
 	cartographoorConfig.Logger = log
@@ -144,8 +155,8 @@ func NewService(ctx context.Context, log *logrus.Logger, cfg *Config) (*Service,
 	bot.SetCommands([]common.Command{
 		checks.NewChecksCommand(log, bot),
 		mentions.NewMentionsCommand(log, bot),
-		cmdhive.NewHiveCommand(log, bot, cfg.GithubToken, githubHTTPClient),
-		build.NewBuildCommand(log, bot, cfg.GithubToken, githubHTTPClient),
+		cmdhive.NewHiveCommand(log, bot, githubTokens, githubHTTPClient),
+		build.NewBuildCommand(log, bot, githubTokens, githubHTTPClient),
 	})
 
 	return &Service{
