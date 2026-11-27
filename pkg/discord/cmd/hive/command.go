@@ -8,6 +8,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/ethpandaops/panda-pulse/pkg/hive"
 	"github.com/ethpandaops/panda-pulse/pkg/queue"
 	"github.com/sirupsen/logrus"
@@ -24,19 +25,19 @@ const (
 type HiveCommand struct {
 	log                *logrus.Logger
 	bot                common.BotContext
-	githubToken        string
+	githubTokens       githubauth.TokenSource
 	httpClient         *http.Client
 	queue              *queue.AlertQueue
 	guildRegistrations map[string]string // Maps guild ID to registered command ID for updates
 }
 
 // NewHiveCommand creates a new hive command.
-func NewHiveCommand(log *logrus.Logger, bot common.BotContext, githubToken string, httpClient *http.Client) *HiveCommand {
+func NewHiveCommand(log *logrus.Logger, bot common.BotContext, githubTokens githubauth.TokenSource, httpClient *http.Client) *HiveCommand {
 	cmd := &HiveCommand{
-		log:         log,
-		bot:         bot,
-		githubToken: githubToken,
-		httpClient:  httpClient,
+		log:          log,
+		bot:          bot,
+		githubTokens: githubTokens,
+		httpClient:   httpClient,
 	}
 
 	return cmd

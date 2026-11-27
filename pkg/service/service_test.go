@@ -127,6 +127,7 @@ func (h *testHelper) createConfig() *Config {
 		MetricsAddress:     ":9091",
 		GrafanaToken:       "test-grafana-token",
 		DiscordToken:       "test-discord-token",
+		GithubToken:        "test-github-token",
 		GrafanaBaseURL:     "http://localhost",
 		PromDatasourceID:   "test-datasource",
 		AccessKeyID:        "test",

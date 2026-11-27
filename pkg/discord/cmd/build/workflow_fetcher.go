@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethpandaops/panda-pulse/pkg/discord/cmd/common"
+	"github.com/ethpandaops/panda-pulse/pkg/githubauth"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -89,7 +91,7 @@ type WorkflowStep struct {
 // WorkflowFetcher handles fetching and caching workflow information.
 type WorkflowFetcher struct {
 	httpClient      *http.Client
-	githubToken     string
+	githubTokens    githubauth.TokenSource
 	log             *logrus.Logger
 	cache           map[string]WorkflowInfo
 	cacheMutex      sync.RWMutex
@@ -99,10 +101,10 @@ type WorkflowFetcher struct {
 }
 
 // NewWorkflowFetcher creates a new workflow fetcher.
-func NewWorkflowFetcher(httpClient *http.Client, githubToken string, log *logrus.Logger, botContext common.BotContext) *WorkflowFetcher {
+func NewWorkflowFetcher(httpClient *http.Client, githubTokens githubauth.TokenSource, log *logrus.Logger, botContext common.BotContext) *WorkflowFetcher {
 	return &WorkflowFetcher{
 		httpClient:      httpClient,
-		githubToken:     githubToken,
+		githubTokens:    githubTokens,
 		log:             log,
 		cache:           make(map[string]WorkflowInfo),
 		cacheExpiration: 1 * time.Hour, // Cache for 1 hour
@@ -228,12 +230,13 @@ func (wf *WorkflowFetcher) getClientToWorkflowName(clientName string) string {
 
 // fetchWorkflows fetches workflow information from GitHub.
 func (wf *WorkflowFetcher) fetchWorkflows() (map[string]WorkflowInfo, error) {
-	if wf.githubToken == "" {
-		return nil, fmt.Errorf("GitHub token is required for workflow fetching")
+	token, err := wf.githubTokens.Token(context.Background(), DefaultRepository, githubauth.ContentsRead)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitHub token for workflow fetching: %w", err)
 	}
 
 	// Fetch workflow files from GitHub
-	files, err := wf.getWorkflowFiles()
+	files, err := wf.getWorkflowFiles(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get workflow files: %w", err)
 	}
@@ -251,7 +254,7 @@ func (wf *WorkflowFetcher) fetchWorkflows() (map[string]WorkflowInfo, error) {
 		workflowName = strings.TrimSuffix(workflowName, ".yml")
 
 		// Fetch and parse workflow content
-		workflowInfo, err := wf.parseWorkflow(file.DownloadURL, workflowName)
+		workflowInfo, err := wf.parseWorkflow(token, file.DownloadURL, workflowName)
 		if err != nil {
 			wf.log.WithError(err).WithField("workflow", workflowName).Warn("Failed to parse workflow, skipping")
 
@@ -265,7 +268,7 @@ func (wf *WorkflowFetcher) fetchWorkflows() (map[string]WorkflowInfo, error) {
 }
 
 // getWorkflowFiles fetches the list of workflow files from GitHub.
-func (wf *WorkflowFetcher) getWorkflowFiles() ([]GitHubFile, error) {
+func (wf *WorkflowFetcher) getWorkflowFiles(token string) ([]GitHubFile, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/.github/workflows", DefaultRepository)
 
 	req, err := http.NewRequest("GET", url, http.NoBody)
@@ -274,7 +277,7 @@ func (wf *WorkflowFetcher) getWorkflowFiles() ([]GitHubFile, error) {
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Authorization", "Bearer "+wf.githubToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := wf.httpClient.Do(req)
 	if err != nil {
@@ -295,13 +298,13 @@ func (wf *WorkflowFetcher) getWorkflowFiles() ([]GitHubFile, error) {
 }
 
 // parseWorkflow fetches and parses a workflow file to extract metadata.
-func (wf *WorkflowFetcher) parseWorkflow(downloadURL, workflowName string) (WorkflowInfo, error) {
+func (wf *WorkflowFetcher) parseWorkflow(token, downloadURL, workflowName string) (WorkflowInfo, error) {
 	req, err := http.NewRequest("GET", downloadURL, http.NoBody)
 	if err != nil {
 		return WorkflowInfo{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+wf.githubToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := wf.httpClient.Do(req)
 	if err != nil {

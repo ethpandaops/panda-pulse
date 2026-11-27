@@ -118,11 +118,36 @@ The build system dynamically discovers available Docker workflows from GitHub:
 |----------|-------------|
 | `GRAFANA_SERVICE_TOKEN` | Grafana service account token for metrics access |
 | `DISCORD_BOT_TOKEN` | Discord bot token for API access |
-| `GITHUB_TOKEN` | GitHub token for workflow triggers and API access |
+| `GITHUB_TOKEN` | GitHub token for workflow triggers and API access. Not needed when the GitHub App settings below are set |
 | `AWS_ACCESS_KEY_ID` | AWS access key for S3 storage |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key for S3 storage |
 | `S3_BUCKET` | S3 bucket name for data persistence |
 | `CLIENTS_DATA_URL` | URL to client metadata JSON (Cartographoor data) |
+
+### GitHub Authentication
+
+Panda-Pulse calls the GitHub API with either a personal access token or a GitHub App. When `GITHUB_TOKEN` is set it is used for every request and the App settings are ignored. Otherwise, all of the following are required:
+
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_APP_ID` | GitHub App ID |
+| `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on the organization |
+| `GITHUB_APP_PRIVATE_KEY` | The App's private key (PEM). Set this or `GITHUB_APP_PRIVATE_KEY_FILE` |
+| `GITHUB_APP_PRIVATE_KEY_FILE` | Path to a file containing the App's private key (PEM) |
+
+With App authentication, each request uses an installation access token limited to the target repository and the permissions that request needs. Tokens are cached and replaced 5 minutes before they expire.
+
+The App needs these repository permissions on the repositories it is installed on:
+
+| Permission | Used for |
+|------------|----------|
+| Actions: read and write | Dispatching and watching `/build` workflows in [eth-client-docker-image-builder](https://github.com/ethpandaops/eth-client-docker-image-builder), and dispatching `/hive trigger` workflows |
+| Contents: read | Listing the build workflows in eth-client-docker-image-builder, and checking that a `/build` `ref` exists |
+| Pull requests: read (optional) | Resolving `/build` `pr` on repositories the App is installed on. Without it these reads are sent unauthenticated |
+
+`/hive trigger` only works for repositories the App is installed on; for any other repository it replies that the App is not installed there.
+
+Reads of public client repositories (resolving `pr`, checking that a `ref` exists, and checking a `repository` override is a fork) use an installation token only when the App is installed on that repository. Installation tokens grant access only to repositories in the installation, so other repositories are read unauthenticated, which GitHub limits to 60 requests per hour per IP address. If that limit is hit, ref and fork checks are skipped and the build is dispatched anyway, while `pr` resolution fails with the GitHub error.
 
 ### Optional Environment Variables
 

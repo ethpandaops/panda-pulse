@@ -10,6 +10,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/ethpandaops/cartographoor v0.0.0-20260601034537-1072505afa69
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/robfig/cron/v3 v3.0.1
